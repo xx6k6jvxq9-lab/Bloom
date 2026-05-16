@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import type { ChatGroup, ChatMessage, WorldBookEntry } from '../../../types';
+import { buildGroupWorldBookRetrievalOptions } from '../../group-world-book/groupWorldBookRetrieval';
+import { buildWorldBookPromptDiagnostics } from '../../../services/world-book/worldBookBudget';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatBackgroundPage } from './GroupChatBackgroundPage';
 import { GroupBubbleColorSettingsPage } from './GroupBubbleColorSettingsPage';
 import { GroupCustomizationPage } from './GroupCustomizationPage';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
+import { GroupDynamicPermissionManagementPage } from './GroupDynamicPermissionManagementPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
 import { GroupInterfaceSettingsPage } from './GroupInterfaceSettingsPage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
@@ -19,6 +22,9 @@ type GroupSettingsScreenProps = {
   groupName: string;
   formState: GroupSettingsFormState;
   actingRole: GroupMemberRole;
+  canEditNotice: boolean;
+  noticePermissionHint: string;
+  canManageDynamicPermissions: boolean;
   memberCount: number;
   members: GroupSettingsMemberSummary[];
   inviteCandidates: GroupSettingsMemberSummary[];
@@ -33,15 +39,22 @@ type GroupSettingsScreenProps = {
   onBack: () => void;
   onJumpToMessage: (target: { timestamp: number; text: string }) => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
+  onRevealGroupToMember: (memberId: string) => Promise<void> | void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
+  onAssignDutyAdmin: (memberId: string) => Promise<void> | void;
+  onClearDutyAdmin: (memberId: string) => Promise<void> | void;
+  onGrantTemporaryPermission: (memberId: string) => Promise<void> | void;
+  onRevokeTemporaryPermission: (memberId: string) => Promise<void> | void;
   onUpdateBadge: (memberId: string, payload: { label: string; color: string }) => Promise<void> | void;
   onUpdateBubbleColor: (memberId: string, color: string | null) => Promise<void> | void;
   onUpdateGroupBackground: (value: string) => void;
   resolveSenderLabel: (message: ChatMessage) => string;
   isInvitingMember?: boolean;
+  isRevealingGroup?: boolean;
   isRemovingMember?: boolean;
   isUpdatingAdmin?: boolean;
+  isUpdatingDynamicPermissions?: boolean;
   isUpdatingBadge?: boolean;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
@@ -60,6 +73,9 @@ export function GroupSettingsScreen({
   groupName,
   formState,
   actingRole,
+  canEditNotice,
+  noticePermissionHint,
+  canManageDynamicPermissions,
   memberCount,
   members,
   inviteCandidates,
@@ -74,22 +90,37 @@ export function GroupSettingsScreen({
   onBack,
   onJumpToMessage,
   onInviteMember,
+  onRevealGroupToMember,
   onRemoveMember,
   onToggleAdmin,
+  onAssignDutyAdmin,
+  onClearDutyAdmin,
+  onGrantTemporaryPermission,
+  onRevokeTemporaryPermission,
   onUpdateBadge,
   onUpdateBubbleColor,
   onUpdateGroupBackground,
   resolveSenderLabel,
   isInvitingMember = false,
+  isRevealingGroup = false,
   isRemovingMember = false,
   isUpdatingAdmin = false,
+  isUpdatingDynamicPermissions = false,
   isUpdatingBadge = false,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
   const [page, setPage] = useState<
-    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges' | 'world-books' | 'memory'
+    'settings' | 'search' | 'member-management' | 'permission-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges' | 'world-books' | 'memory'
   >('settings');
+  const activeGroupWorldBooks = worldBooks.filter((worldBook) => formState.activeWorldBookIds.includes(worldBook.id));
+  const groupWorldBookDiagnostics = activeGroupWorldBooks.length > 0
+    ? buildWorldBookPromptDiagnostics(
+        activeGroupWorldBooks,
+        'group',
+        buildGroupWorldBookRetrievalOptions({ history: messages }),
+      )
+    : null;
 
   return (
     <div className="absolute inset-0 z-[120] flex flex-col bg-zinc-50">
@@ -106,14 +137,20 @@ export function GroupSettingsScreen({
       <div className="flex-1 overflow-y-auto">
         <GroupSettingsPage
           formState={formState}
+          actingRole={actingRole}
+          canEditNotice={canEditNotice}
+          noticePermissionHint={noticePermissionHint}
           memberCount={memberCount}
           members={members}
           inviteCandidates={inviteCandidates}
           onChange={onChange}
           onAvatarPick={onAvatarPick}
           onInviteMember={onInviteMember}
+          onRevealGroupToMember={onRevealGroupToMember}
           onOpenMemberManagement={() => setPage('member-management')}
+          onOpenPermissionManagement={() => setPage('permission-management')}
           isInvitingMember={isInvitingMember}
+          isRevealingGroup={isRevealingGroup}
           onOpenSearch={() => setPage('search')}
           onOpenProfile={() => setPage('profile')}
           onOpenCustomization={() => setPage('customization')}
@@ -138,6 +175,7 @@ export function GroupSettingsScreen({
       {page === 'member-management' ? (
         <GroupMemberManagementPage
           members={members.filter((member) => member.id !== 'user')}
+          actingRole={actingRole}
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
           onToggleAdmin={onToggleAdmin}
@@ -154,6 +192,20 @@ export function GroupSettingsScreen({
           onChange={onChange}
           onOpenWorldBooks={() => setPage('world-books')}
           onBack={() => setPage('settings')}
+        />
+      ) : null}
+
+      {page === 'permission-management' ? (
+        <GroupDynamicPermissionManagementPage
+          members={members.filter((member) => member.id !== 'user')}
+          actingRole={actingRole}
+          canManageDynamicPermissions={canManageDynamicPermissions}
+          isUpdatingPermissions={isUpdatingDynamicPermissions}
+          onBack={() => setPage('settings')}
+          onAssignDutyAdmin={onAssignDutyAdmin}
+          onClearDutyAdmin={onClearDutyAdmin}
+          onGrantTemporaryPermission={onGrantTemporaryPermission}
+          onRevokeTemporaryPermission={onRevokeTemporaryPermission}
         />
       ) : null}
 
@@ -239,6 +291,7 @@ export function GroupSettingsScreen({
         <GroupWorldBookSettingsPage
           worldBooks={worldBooks}
           activeWorldBookIds={formState.activeWorldBookIds}
+          diagnostics={groupWorldBookDiagnostics}
           onBack={() => setPage('profile')}
           onToggleWorldBook={(worldBookId) => {
             const currentIds = formState.activeWorldBookIds || [];

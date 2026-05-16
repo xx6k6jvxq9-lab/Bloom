@@ -34,6 +34,14 @@ function buildPublicPersonaGuideBlock(sceneInput: GroupChatSceneInput): string {
   return sceneInput.speakerPublicPersonaGuide?.trim() || '';
 }
 
+function getStructuralRoleUsageHint(roleLabel: string): string {
+  if (roleLabel === '群主' || roleLabel === '管理员') {
+    return '这只代表群内公开权限位置，只影响是否有资格发公告或发起群事件，不改变角色说话风格。';
+  }
+
+  return '这只代表群内公开权限位置，不改变角色说话风格。';
+}
+
 function formatTypedResidueLines<T extends { summary: string }>(
   title: string,
   items: T[] | undefined,
@@ -74,6 +82,15 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
       : '',
     sceneInput.recentContext?.groupSharedHistory
       ? `群共同经历：${sceneInput.recentContext.groupSharedHistory}`
+      : '',
+    sceneInput.recentContext?.speakerStructuralGroupRole
+      ? `当前角色的群内明面身份：${sceneInput.recentContext.speakerStructuralGroupRole}\n${getStructuralRoleUsageHint(sceneInput.recentContext.speakerStructuralGroupRole)}`
+      : '',
+    sceneInput.recentContext?.userStructuralGroupRole
+      ? `用户当前的群内明面身份：${sceneInput.recentContext.userStructuralGroupRole}`
+      : '',
+    sceneInput.recentContext?.groupManagementSummary
+      ? `群管理结构：${sceneInput.recentContext.groupManagementSummary}`
       : '',
     sceneInput.recentContext?.speakerLongTermGroupRole
       ? `当前角色在群里的长期位置：${sceneInput.recentContext.speakerLongTermGroupRole}\n只把它当作熟悉度、接话习惯和角色位置的轻微影响，不要直接复述成记忆说明。`

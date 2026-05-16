@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { OptionButtonGroup } from '../../../components/shared/OptionButtonGroup';
 import { GROUP_RELATIONSHIP_OPTIONS, GROUP_SETTINGS_PLACEHOLDERS } from '../constants';
 import type { GroupSettingsFormState } from '../types';
 
@@ -87,6 +88,9 @@ export function GroupChatProfilePage({
   const directInteropSummary = formState.allowDirectMemoryInterop
     ? '\u5f53\u524d\u7fa4\u8d44\u6599\u4f1a\u7ee7\u7eed\u5f71\u54cd\u5bf9\u5e94\u89d2\u8272\u7684\u5355\u804a\u8bed\u5883\u3002'
     : '\u5f53\u524d\u7fa4\u8d44\u6599\u9ed8\u8ba4\u53ea\u5728\u8fd9\u4e2a\u7fa4\u91cc\u751f\u6548\u3002';
+  const awarenessModeSummary = formState.awarenessMode === 'public'
+    ? '公开群：群外角色默认可能知道这个群存在。'
+    : '私密群：只有成员本人或被明确告知的角色知道这个群存在。';
 
   return (
     <div className="absolute inset-0 z-[121] flex flex-col bg-zinc-50">
@@ -102,6 +106,28 @@ export function GroupChatProfilePage({
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-3">
+          <SectionCard
+            title={'\u7fa4\u516c\u5f00\u5ea6'}
+            summary={awarenessModeSummary}
+          >
+            <OptionButtonGroup
+              value={formState.awarenessMode}
+              onChange={(value) => onChange({ awarenessMode: value as GroupSettingsFormState['awarenessMode'] })}
+              options={[
+                {
+                  value: 'private',
+                  label: '私密群',
+                  description: '只有成员本人或被你明确告知的角色知道这个群存在。',
+                },
+                {
+                  value: 'public',
+                  label: '公开群',
+                  description: '群外角色默认可能知道这个群存在，后面更容易自然触发入群申请。',
+                },
+              ]}
+            />
+          </SectionCard>
+
           <SectionCard
             title={'\u4e0e\u5355\u804a\u8d44\u6599\u4e92\u901a'}
             summary={directInteropSummary}

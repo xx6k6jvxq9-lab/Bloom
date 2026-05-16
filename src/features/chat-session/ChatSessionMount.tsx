@@ -20,6 +20,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { getPartnerCoupleSpaceData, isPartnerCoupleSpaceDismissed } from '../persistence/coupleSpaceStore';
+import { buildDirectChatMentionAwarenessForCharacter } from '../group-settings/groupAwarenessPropagation';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
 import { GroupChatSessionContainer } from './GroupChatSessionContainer';
 
@@ -206,6 +207,44 @@ export function ChatSessionMount({
     setBusyGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
     setRetainedGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
   }, [chatGroups]);
+
+  useEffect(() => {
+    setChatGroups((prevGroups) => {
+      let nextGroups = prevGroups;
+      let changed = false;
+
+      Object.entries(chatHistory || {}).forEach(([characterId, history]) => {
+        const patches = buildDirectChatMentionAwarenessForCharacter({
+          characterId,
+          history,
+          chatGroups: nextGroups,
+        });
+
+        if (patches.length === 0) {
+          return;
+        }
+
+        const patchByGroupId = new Map(
+          patches.map((patch) => [patch.groupId, patch.awarenessEntries] as const),
+        );
+
+        nextGroups = nextGroups.map((group) => {
+          const awarenessEntries = patchByGroupId.get(group.id);
+          if (!awarenessEntries) {
+            return group;
+          }
+
+          changed = true;
+          return {
+            ...group,
+            awarenessEntries,
+          };
+        });
+      });
+
+      return changed ? nextGroups : prevGroups;
+    });
+  }, [chatHistory, setChatGroups]);
 
   const handleDirectRuntimeBusyChange = useCallback((characterId: string, busy: boolean) => {
     setBusyDirectCharacterIds((currentIds) => (

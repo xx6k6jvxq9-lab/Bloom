@@ -25,6 +25,17 @@ export function getGroupRoleLabel(role: GroupMemberRole): string {
   }
 }
 
+export function getGroupRoleCapabilitySummary(role: GroupMemberRole): string {
+  switch (role) {
+    case 'owner':
+      return '可邀请成员、设管理员、移出成员、管理动态权限';
+    case 'admin':
+      return '可邀请成员、移出成员';
+    default:
+      return '当前仅可查看成员身份';
+  }
+}
+
 export function canManageGroupMembers(group: ChatGroup, actorId: string): boolean {
   const role = resolveGroupMemberRole(group, actorId);
   return role === 'owner' || role === 'admin';

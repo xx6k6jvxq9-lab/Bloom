@@ -1,4 +1,5 @@
 import { GROUP_SETTINGS_SECTIONS } from '../constants';
+import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupBasicInfoSection } from './GroupBasicInfoSection';
 import { GroupChatPreferencesSection } from './GroupChatPreferencesSection';
@@ -7,14 +8,20 @@ import { GroupProfileSection } from './GroupProfileSection';
 
 type GroupSettingsPageProps = {
   formState: GroupSettingsFormState;
+  actingRole: GroupMemberRole;
+  canEditNotice: boolean;
+  noticePermissionHint: string;
   memberCount: number;
   members: GroupSettingsMemberSummary[];
   inviteCandidates: GroupSettingsMemberSummary[];
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
   onAvatarPick: () => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
+  onRevealGroupToMember: (memberId: string) => Promise<void> | void;
   onOpenMemberManagement: () => void;
+  onOpenPermissionManagement: () => void;
   isInvitingMember?: boolean;
+  isRevealingGroup?: boolean;
   onOpenSearch: () => void;
   onOpenProfile: () => void;
   onOpenCustomization: () => void;
@@ -30,14 +37,20 @@ const TEXT = {
 
 export function GroupSettingsPage({
   formState,
+  actingRole,
+  canEditNotice,
+  noticePermissionHint,
   memberCount,
   members,
   inviteCandidates,
   onChange,
   onAvatarPick,
   onInviteMember,
+  onRevealGroupToMember,
   onOpenMemberManagement,
+  onOpenPermissionManagement,
   isInvitingMember = false,
+  isRevealingGroup = false,
   onOpenSearch,
   onOpenProfile,
   onOpenCustomization,
@@ -59,12 +72,19 @@ export function GroupSettingsPage({
           memberCount={memberCount}
           members={members}
           inviteCandidates={inviteCandidates}
+          actingRole={actingRole}
+          canInviteMembers={actingRole === 'owner' || actingRole === 'admin'}
           onInviteMember={onInviteMember}
+          onRevealGroupToMember={onRevealGroupToMember}
           onOpenMemberManagement={onOpenMemberManagement}
+          onOpenPermissionManagement={onOpenPermissionManagement}
           isInviting={isInvitingMember}
+          isRevealingGroup={isRevealingGroup}
         />
 
         <GroupProfileSection
+          canEditNotice={canEditNotice}
+          noticePermissionHint={noticePermissionHint}
           formState={formState}
           onChange={onChange}
           onOpenSearch={onOpenSearch}

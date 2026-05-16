@@ -1,5 +1,6 @@
 import type { ChatGroup } from '../../types';
 import type { GroupSettingsFormState, GroupSettingsPatch } from './types';
+import { getGroupAwarenessMode } from './groupAwareness';
 
 function getEffectiveAllowDirectMemoryInterop(group: ChatGroup): boolean {
   return group.allowDirectMemoryInteropConfigured === true
@@ -31,6 +32,7 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     memberRelationshipNote: group.memberRelationshipNote || '',
     currentScene: group.currentScene || '',
     publicFacts: group.publicFacts || '',
+    awarenessMode: getGroupAwarenessMode(group),
     activeWorldBookIds: group.activeWorldBookIds || [],
     allowDirectMemoryInterop: getEffectiveAllowDirectMemoryInterop(group),
     muteNotifications: !!group.muteNotifications,
@@ -58,6 +60,7 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     memberRelationshipNote: toOptionalTrimmedValue(state.memberRelationshipNote),
     currentScene: toOptionalTrimmedValue(state.currentScene),
     publicFacts: toOptionalTrimmedValue(state.publicFacts),
+    awarenessMode: state.awarenessMode,
     activeWorldBookIds: state.activeWorldBookIds,
     allowDirectMemoryInterop: state.allowDirectMemoryInterop,
     allowDirectMemoryInteropConfigured: true,
@@ -86,6 +89,7 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
     || (patch.memberRelationshipNote || '') !== (group.memberRelationshipNote || '')
     || (patch.currentScene || '') !== (group.currentScene || '')
     || (patch.publicFacts || '') !== (group.publicFacts || '')
+    || patch.awarenessMode !== getGroupAwarenessMode(group)
     || JSON.stringify(patch.activeWorldBookIds || []) !== JSON.stringify(group.activeWorldBookIds || [])
     || patch.allowDirectMemoryInterop !== getEffectiveAllowDirectMemoryInterop(group)
     || patch.muteNotifications !== !!group.muteNotifications

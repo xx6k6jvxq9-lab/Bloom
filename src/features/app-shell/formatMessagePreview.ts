@@ -71,6 +71,18 @@ export const formatMessagePreview = (text: string | undefined): string => {
   if (text.startsWith('[group-task]')) {
     return '[群任务]';
   }
+  if (text.startsWith('[group-join-request]')) {
+    return '[入群申请]';
+  }
+  if (text.startsWith('[group-admin-nomination]')) {
+    return '[管理员提名]';
+  }
+  if (text.startsWith('[group-offline]')) {
+    return '[群线下进行中]';
+  }
+  if (text.startsWith('[group-offline-ended]')) {
+    return '[群线下已结束]';
+  }
   if (text.startsWith('[GAME_CARD]')) {
     return '[游戏卡片]';
   }

@@ -19,6 +19,7 @@ import {
   publishGeneratedCharacterMomentToFeed,
   runAutoMomentSchedulerPass,
 } from '../../services/moments/autoRuntime';
+import { buildMomentExposureAwarenessPatches } from '../../features/group-settings/groupAwarenessPropagation';
 import {
   canCharacterAutoCommentOnMoment,
   canCharacterAutoLikeMoment,
@@ -707,7 +708,26 @@ export function MomentsApp({
       likes: 0,
       comments: [],
     };
-    setAppData((prev) => ({ ...prev, moments: [newMoment, ...(prev.moments || [])] }));
+    setAppData((prev) => {
+      const exposurePatches = buildMomentExposureAwarenessPatches({
+        moment: newMoment,
+        characters: prev.characters,
+        chatGroups: prev.chatGroups || [],
+        now: newMoment.timestamp,
+      });
+      const patchByGroupId = new Map(
+        exposurePatches.map((patch) => [patch.groupId, patch.awarenessEntries] as const),
+      );
+
+      return {
+        ...prev,
+        chatGroups: (prev.chatGroups || []).map((group) => {
+          const awarenessEntries = patchByGroupId.get(group.id);
+          return awarenessEntries ? { ...group, awarenessEntries } : group;
+        }),
+        moments: [newMoment, ...(prev.moments || [])],
+      };
+    });
     setShowPublish(false);
     setPublishContent('');
     setPublishImages([]);

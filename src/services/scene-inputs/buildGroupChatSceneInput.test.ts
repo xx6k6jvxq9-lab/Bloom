@@ -6,7 +6,7 @@ import {
 } from '../../features/persistence/testPersistenceHarness';
 import { STORAGE_KEYS } from '../../features/persistence/storageKeys';
 import { resetMemoryRecordData } from '../../features/persistence/memoryRecordStore';
-import type { Character } from '../../types';
+import type { Character, ChatGroup } from '../../types';
 import { buildGroupChatSceneInput } from './buildGroupChatSceneInput';
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
@@ -25,6 +25,18 @@ function createCharacter(overrides: Partial<Character> = {}): Character {
     boundaryPack: overrides.boundaryPack ?? '不会把私聊原话直接搬到群里。',
     ...overrides,
   } as Character;
+}
+
+function createGroup(overrides: Partial<ChatGroup> = {}): ChatGroup {
+  return {
+    id: overrides.id ?? 'group-1',
+    name: overrides.name ?? '测试群',
+    memberIds: overrides.memberIds ?? ['alpha', 'beta'],
+    creatorId: overrides.creatorId ?? 'user',
+    createdAt: overrides.createdAt ?? 1,
+    adminIds: overrides.adminIds ?? [],
+    ...overrides,
+  };
 }
 
 test.beforeEach(async () => {
@@ -57,4 +69,34 @@ test('buildGroupChatSceneInput exposes only the public persona guide for group p
   assert.match(sceneInput.speakerPublicPersonaGuide || '', /## 公开场合角色锚点/);
   assert.match(sceneInput.speakerPublicPersonaGuide || '', /宣示主权/);
   assert.match(sceneInput.speakerPublicPersonaGuide || '', /不会把私聊原话直接搬到群里/);
+});
+
+test('buildGroupChatSceneInput includes structural group roles for admin gameplay context', () => {
+  const speaker = createCharacter();
+  const peer = createCharacter({
+    id: 'beta',
+    name: 'Beta',
+    setting: '普通群友。',
+  });
+
+  const sceneInput = buildGroupChatSceneInput({
+    speaker,
+    members: [speaker, peer],
+    group: createGroup({
+      memberIds: [speaker.id, peer.id],
+      creatorId: 'user',
+      adminIds: [speaker.id],
+    }),
+    userName: 'User',
+    history: [],
+    directChatHistory: {
+      alpha: [],
+      beta: [],
+    },
+  });
+
+  assert.equal(sceneInput.recentContext?.speakerStructuralGroupRole, '管理员');
+  assert.equal(sceneInput.recentContext?.userStructuralGroupRole, '群主');
+  assert.match(sceneInput.recentContext?.groupManagementSummary || '', /群主：User/);
+  assert.match(sceneInput.recentContext?.groupManagementSummary || '', /管理员：Alpha/);
 });

@@ -605,7 +605,7 @@ export type CharacterPresenceState = {
 
 export type CharacterSharedState = {
   updatedAt: number;
-  sourceScene: 'direct_chat' | 'group_chat' | 'dating' | 'music_together' | 'couple_space' | 'forum' | 'moments';
+  sourceScene: 'direct_chat' | 'group_chat' | 'group_offline' | 'dating' | 'music_together' | 'couple_space' | 'forum' | 'moments';
   availability: CharacterPresenceState['availability'];
   resumeTone?: CharacterPresenceState['resumeTone'];
   currentActivity?: string;
@@ -883,6 +883,55 @@ export type GroupTaskCard = {
   entries: GroupTaskEntry[];
 };
 
+export type GroupAwarenessMode = 'private' | 'public';
+export type GroupAwarenessSource =
+  | 'direct_invite'
+  | 'direct_chat_mention'
+  | 'manual_reveal'
+  | 'moment_exposure'
+  | 'approved_join_request'
+  | 'former_member'
+  | 'public_group';
+
+export type GroupAwarenessEntry = {
+  memberId: string;
+  knownAt: number;
+  source: GroupAwarenessSource;
+  joinRequestCooldownUntil?: number;
+};
+
+export type GroupJoinRequestCard = {
+  kind: 'join-request';
+  requestId: string;
+  targetMemberId: string;
+  targetMemberName: string;
+  proposedById: string;
+  proposedByName: string;
+  createdAt: number;
+  expiresAt: number;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  resolvedAt?: number;
+  resolvedById?: string;
+  resolvedByName?: string;
+};
+
+export type GroupAdminNominationCard = {
+  kind: 'admin-nomination';
+  nominationId: string;
+  nomineeId: string;
+  nomineeName: string;
+  proposedById: string;
+  proposedByName: string;
+  createdAt: number;
+  expiresAt: number;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  resolvedAt?: number;
+  resolvedById?: string;
+  resolvedByName?: string;
+};
+
+export type GroupGovernanceCard = GroupJoinRequestCard | GroupAdminNominationCard;
+
 export type GroupOfflineMode = 'daily' | 'scenario' | 'random';
 export type GroupOfflineGenerationMode = 'blocks' | 'ensemble' | 'single' | 'pair' | 'group';
 export type GroupOfflineRoundDispatchMode = 'recommend' | 'random' | 'manual' | 'continue';
@@ -976,6 +1025,22 @@ export type GroupOfflineRoundCharacterEntry = {
   lastOperation?: 'generated' | 'retried' | 'polished' | 'edited';
 };
 
+export type GroupOfflineRoundArticleHighlight = {
+  characterId: string;
+  speakerLabel: string;
+  quote: string;
+  target?: GroupOfflineTargetRef;
+};
+
+export type GroupOfflineRoundArticleParagraph = {
+  id: string;
+  text: string;
+  highlights: GroupOfflineRoundArticleHighlight[];
+  presentCharacterIds?: string[];
+  focusCharacterIds?: string[];
+  speakerCharacterIds?: string[];
+};
+
 export type GroupOfflineRoundRuntimeProjectionSnapshot = {
   userName: string;
   groupName: string;
@@ -1059,6 +1124,7 @@ export type GroupOfflineRound = {
   id: string;
   title?: string;
   sceneText?: string;
+  articleParagraphs?: GroupOfflineRoundArticleParagraph[];
   characterEntries: GroupOfflineRoundCharacterEntry[];
   generationMode?: GroupOfflineGenerationMode;
   dispatchMode?: GroupOfflineRoundDispatchMode;
@@ -1184,6 +1250,42 @@ export type LightInteractionMessageMeta = {
   counterActionType?: 'none' | 'poke_back';
 };
 
+export type AssistantReplyEnvelopeTokenName =
+  | 'COUPLE_SPACE_INVITE'
+  | 'COUPLE_SPACE_INVITE_ACCEPTED';
+
+export type AssistantReplyEnvelopeTextItem = {
+  kind: 'text';
+  text: string;
+  translation?: string;
+};
+
+export type AssistantReplyEnvelopeGameCardItem = {
+  kind: 'game_card';
+  payload: Record<string, unknown>;
+  translation?: string;
+};
+
+export type AssistantReplyEnvelopeTransferItem = {
+  kind: 'transfer';
+  amount: string;
+};
+
+export type AssistantReplyEnvelopeTokenItem = {
+  kind: 'token';
+  name: AssistantReplyEnvelopeTokenName;
+};
+
+export type AssistantReplyEnvelopeItem =
+  | AssistantReplyEnvelopeTextItem
+  | AssistantReplyEnvelopeGameCardItem
+  | AssistantReplyEnvelopeTransferItem
+  | AssistantReplyEnvelopeTokenItem;
+
+export type AssistantReplyEnvelope = {
+  items: AssistantReplyEnvelopeItem[];
+};
+
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
@@ -1230,6 +1332,7 @@ export type ChatMessage = {
   groupPollCard?: GroupPollCard;
   groupRelayCard?: GroupRelayCard;
   groupTaskCard?: GroupTaskCard;
+  groupGovernanceCard?: GroupGovernanceCard;
   groupOfflineCard?: GroupOfflineCard;
   memorySnapshot?: ChatMemorySnapshot;
   lightInteractionMeta?: LightInteractionMessageMeta;
@@ -1705,6 +1808,13 @@ export type ChatGroup = {
   activeWorldBookIds?: string[];
   allowDirectMemoryInterop?: boolean;
   allowDirectMemoryInteropConfigured?: boolean;
+  awarenessMode?: GroupAwarenessMode;
+  awarenessEntries?: GroupAwarenessEntry[];
+  adminNominationCooldowns?: Array<{
+    memberId: string;
+    cooldownUntil: number;
+    updatedAt: number;
+  }>;
   adminIds?: string[];
   dutyAdminAssignment?: {
     memberId: string;

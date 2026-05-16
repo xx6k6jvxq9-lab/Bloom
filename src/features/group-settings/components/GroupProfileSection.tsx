@@ -3,6 +3,8 @@ import { GROUP_SETTINGS_PLACEHOLDERS, GROUP_SETTINGS_SECTIONS } from '../constan
 import type { GroupSettingsFormState } from '../types';
 
 type GroupProfileSectionProps = {
+  canEditNotice: boolean;
+  noticePermissionHint: string;
   formState: GroupSettingsFormState;
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
   onOpenSearch: () => void;
@@ -11,15 +13,21 @@ type GroupProfileSectionProps = {
   onOpenMemory: () => void;
 };
 
+function Divider() {
+  return <div className="border-t border-zinc-100" />;
+}
+
 function TextRow({
   label,
   value,
   placeholder,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: string;
   placeholder: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -27,19 +35,22 @@ function TextRow({
       <div className="w-20 shrink-0 pt-1 text-[15px] text-zinc-900">{label}</div>
       <input
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-right text-[14px] text-zinc-500 outline-none placeholder:text-zinc-400"
+        className={`min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-right text-[14px] outline-none placeholder:text-zinc-400 ${
+          disabled
+            ? 'cursor-not-allowed text-zinc-400'
+            : 'text-zinc-500'
+        }`}
       />
     </label>
   );
 }
 
-function Divider() {
-  return <div className="border-t border-zinc-100" />;
-}
-
 export function GroupProfileSection({
+  canEditNotice,
+  noticePermissionHint,
   formState,
   onChange,
   onOpenSearch,
@@ -53,12 +64,18 @@ export function GroupProfileSection({
         {GROUP_SETTINGS_SECTIONS.profileTitle}
       </div>
 
-      <TextRow
-        label="群公告"
-        value={formState.groupNotice}
-        placeholder={GROUP_SETTINGS_PLACEHOLDERS.groupNotice}
-        onChange={(value) => onChange({ groupNotice: value })}
-      />
+      <div>
+        <TextRow
+          label="群公告"
+          value={formState.groupNotice}
+          placeholder={GROUP_SETTINGS_PLACEHOLDERS.groupNotice}
+          disabled={!canEditNotice}
+          onChange={(value) => onChange({ groupNotice: value })}
+        />
+        <div className="px-4 pb-4 text-right text-[11px] text-zinc-400">
+          {noticePermissionHint}
+        </div>
+      </div>
       <Divider />
 
       <button
@@ -84,7 +101,7 @@ export function GroupProfileSection({
           <div className="min-w-0">
             <div className="text-[15px] text-zinc-900">群自定义</div>
             <div className="mt-1 line-clamp-2 text-[13px] text-zinc-500">
-              管理群聊天背景、群气泡颜色和群头衔设置
+              管理群聊背景、群气泡颜色和群头衔设置
             </div>
           </div>
         </div>

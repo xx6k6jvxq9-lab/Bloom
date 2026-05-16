@@ -19,6 +19,7 @@ export type GroupSettingsFormState = {
   memberRelationshipNote: string;
   currentScene: string;
   publicFacts: string;
+  awarenessMode: NonNullable<ChatGroup['awarenessMode']>;
   activeWorldBookIds: string[];
   allowDirectMemoryInterop: boolean;
   muteNotifications: boolean;
@@ -45,6 +46,7 @@ export type GroupSettingsPatch = Pick<
   | 'memberRelationshipNote'
   | 'currentScene'
   | 'publicFacts'
+  | 'awarenessMode'
   | 'activeWorldBookIds'
   | 'allowDirectMemoryInterop'
   | 'allowDirectMemoryInteropConfigured'
@@ -61,4 +63,17 @@ export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remark
   badgeColor?: string;
   bubbleColor?: string;
   voiceEnabled?: boolean;
+  isDutyAdmin?: boolean;
+  dutyAdminExpiresAt?: number;
+  hasTemporaryManagedFeatureGrant?: boolean;
+  temporaryManagedFeatureGrantExpiresAt?: number;
+  temporaryManagedFeatureGrantRemainingUses?: number;
+  knowsGroup?: boolean;
+  groupAwarenessSource?: ChatGroup['awarenessEntries'] extends Array<infer T>
+    ? T extends { source?: infer S }
+      ? S
+      : never
+    : never;
+  joinRequestCooldownUntil?: number;
+  nominationCooldownUntil?: number;
 };

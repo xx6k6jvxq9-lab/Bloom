@@ -1,6 +1,9 @@
 import type { AppData, Character, ChatGroup, MomentItem } from '../../types';
 import { sanitizeGroupMemberBadges } from '../group-settings/memberBadges';
 import { sanitizeGroupMemberBubbleColors } from '../group-settings/groupBubbleColors';
+import { getGroupAwarenessMode, sanitizeGroupAwarenessEntries } from '../group-settings/groupAwareness';
+import { sanitizeDutyAdminAssignment, sanitizeTemporaryPermissionGrants } from '../group-settings/groupDynamicPermissions';
+import { sanitizeAdminNominationCooldowns } from '../group-settings/groupGovernanceState';
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-chat/groupShortTermMemory';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
@@ -115,6 +118,7 @@ export function sanitizeChatGroupsWithCharacters(
     memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
     currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
     publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
+    awarenessMode: getGroupAwarenessMode(group),
     groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
       ? group.groupShortTermSummary.trim() || undefined
       : undefined,
@@ -143,6 +147,20 @@ export function sanitizeChatGroupsWithCharacters(
         )),
       ),
     ),
+    dutyAdminAssignment: sanitizeDutyAdminAssignment(group.dutyAdminAssignment, {
+      memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+      creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
+    }),
+    temporaryPermissionGrants: sanitizeTemporaryPermissionGrants(group.temporaryPermissionGrants, {
+      memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+      creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
+    }),
+    awarenessEntries: sanitizeGroupAwarenessEntries(group.awarenessEntries, {
+      validCharacterIds: Array.from(validCharacterIds),
+    }),
+    adminNominationCooldowns: sanitizeAdminNominationCooldowns(group.adminNominationCooldowns, {
+      memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+    }),
     memberBadges: sanitizeGroupMemberBadges({
       memberBadges: group.memberBadges,
       memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],

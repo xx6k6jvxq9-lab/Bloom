@@ -31,7 +31,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupOfflineSession, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
@@ -51,6 +51,8 @@ import {
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
+import { persistSceneSettlementBatch } from '../../services/memory/sceneSettlement';
+import { buildGroupOfflineSharedSettlement } from '../../services/group-offline/buildGroupOfflineSharedSettlement';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
@@ -59,14 +61,60 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
 import {
   buildGroupSettingsSystemMessages,
+  createAssignDutyAdminSystemMessage,
+  createApproveAdminNominationSystemMessage,
+  createApproveJoinRequestSystemMessage,
   createCancelAdminSystemMessage,
   createClearMemberBadgeSystemMessage,
+  createClearDutyAdminSystemMessage,
+  createConsumeTemporaryPermissionSystemMessage,
+  createExpireAdminNominationSystemMessage,
+  createExpireDutyAdminSystemMessage,
+  createExpireJoinRequestSystemMessage,
+  createExpireTemporaryPermissionSystemMessage,
+  createGrantTemporaryPermissionSystemMessage,
   createInviteMemberSystemMessage,
+  createLaunchGroupFeatureSystemMessage,
   createLeaveGroupSystemMessage,
   createRemoveMemberSystemMessage,
-  createSetMemberBadgeSystemMessage,
+  createRevealGroupAwarenessSystemMessage,
+  createRejectAdminNominationSystemMessage,
+  createRejectJoinRequestSystemMessage,
+  createRevokeTemporaryPermissionSystemMessage,
   createSetAdminSystemMessage,
+  createSetMemberBadgeSystemMessage,
 } from '../group-settings/groupSystemMessages';
+import {
+  canEditGroupNotice,
+  canLaunchManagedGroupFeature,
+  canManageDynamicGroupPermissions,
+  filterGroupSettingsPatchForActor,
+  getGroupNoticePermissionHintForActor,
+  getManagedGroupFeaturePermissionHintForActor,
+} from '../group-settings/groupPermissionRules';
+import {
+  buildJoinRequestCooldownPatch,
+  buildRevealGroupPatch,
+  canCharacterRequestToJoinGroup,
+  doesCharacterKnowGroup,
+  getGroupAwarenessEntry,
+} from '../group-settings/groupAwareness';
+import {
+  buildDutyAdminAssignment,
+  buildTemporaryManagedFeatureGrant,
+  consumeTemporaryManagedFeatureGrant,
+  getActiveDutyAdminAssignment,
+  getDynamicPermissionExpiryCleanup,
+  getNearestDynamicPermissionExpiryAt,
+  getTemporaryManagedFeatureGrant,
+} from '../group-settings/groupDynamicPermissions';
+import {
+  buildAdminNominationCooldownPatch,
+  canNominateMember,
+  cleanupAdminNominationCooldowns,
+  getAdminNominationCooldownEntry,
+  getNearestAdminNominationCooldownExpiryAt,
+} from '../group-settings/groupGovernanceState';
 import {
   canManageGroupAdmins,
   canManageGroupMembers,
@@ -79,6 +127,7 @@ import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { GroupChatFunPanel } from './GroupChatFunPanel';
+import { GroupOfflineModal } from '../group-offline/GroupOfflineModal';
 import {
   appendGroupRelayEntry,
   appendGroupTaskEntry,
@@ -90,6 +139,16 @@ import {
   updateGroupTaskMessage,
   voteOnGroupPollMessage,
 } from './groupFeatureCards';
+import {
+  createGroupAdminNominationMessage,
+  createGroupJoinRequestMessage,
+  expireGroupGovernanceMessage,
+  getNearestPendingGovernanceExpiryAt,
+  hasGovernanceCardExpired,
+  isPendingAdminNominationForMember,
+  isPendingJoinRequestForMember,
+  resolveGroupGovernanceMessage,
+} from './groupGovernanceCards';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
@@ -262,11 +321,98 @@ function parseGroupTaskAiEntry(rawText: string) {
   };
 }
 
+function parseGovernanceReactionMessage(rawText: string) {
+  const candidates = extractCandidateJsonObjects(rawText);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { message?: string };
+      if (typeof parsed.message === 'string') {
+        return parsed.message.trim();
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return rawText
+    .trim()
+    .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+    .replace(/^[^：:]*[:：]\s*/, '')
+    .trim();
+}
+
+function extractCandidateJsonObjects(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (value: string | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    pushCandidate(trimmed);
+  }
+
+  const fencedBlocks = trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi);
+  for (const block of fencedBlocks) {
+    pushCandidate(block[1]);
+  }
+
+  return candidates;
+}
+
+function parseGroupOfflineReturnReactions(rawText: string) {
+  const candidates = extractCandidateJsonObjects(rawText);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as {
+        reactions?: Array<{ characterId?: string; text?: string }>;
+      };
+
+      const reactions = Array.isArray(parsed.reactions)
+        ? parsed.reactions
+            .map((item) => {
+              if (!item || typeof item !== 'object') return null;
+              const characterId = typeof item.characterId === 'string' ? item.characterId.trim() : '';
+              const text = typeof item.text === 'string' ? item.text.trim() : '';
+              if (!characterId || !text) return null;
+              return { characterId, text };
+            })
+            .filter((item): item is { characterId: string; text: string } => !!item)
+        : [];
+
+      if (reactions.length > 0) {
+        return reactions;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
+}
+
 type GroupFeatureInitiativePlan =
   | { feature: 'none' }
   | { feature: 'poll'; title: string; options: string[] }
   | { feature: 'relay'; topic: string; starterText: string }
   | { feature: 'task'; prompt: string };
+
+type GroupJoinRequestInitiativePlan =
+  | { action: 'none' }
+  | { action: 'request' };
+
+type GroupAdminNominationInitiativePlan =
+  | { action: 'none' }
+  | { action: 'nominate'; nomineeId: string };
 
 function parseGroupFeatureInitiativePlan(rawText: string): GroupFeatureInitiativePlan {
   const trimmed = rawText.trim();
@@ -317,6 +463,104 @@ function parseGroupFeatureInitiativePlan(rawText: string): GroupFeatureInitiativ
   }
 
   return { feature: 'none' };
+}
+
+function parseGroupJoinRequestInitiativePlan(rawText: string): GroupJoinRequestInitiativePlan {
+  const candidates = extractCandidateJsonObjects(rawText);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { action?: string };
+      const action = (parsed.action || '').trim().toLowerCase();
+      if (action === 'request') {
+        return { action: 'request' };
+      }
+      if (action === 'none') {
+        return { action: 'none' };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { action: 'none' };
+}
+
+function parseGroupAdminNominationInitiativePlan(
+  rawText: string,
+  allowedNomineeIds: string[],
+): GroupAdminNominationInitiativePlan {
+  const candidates = extractCandidateJsonObjects(rawText);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { action?: string; nomineeId?: string };
+      const action = (parsed.action || '').trim().toLowerCase();
+      const nomineeId = (parsed.nomineeId || '').trim();
+
+      if (action === 'nominate' && nomineeId && allowedNomineeIds.includes(nomineeId)) {
+        return { action: 'nominate', nomineeId };
+      }
+      if (action === 'none') {
+        return { action: 'none' };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { action: 'none' };
+}
+
+function pickGovernanceReactionSpeakers(params: {
+  members: Character[];
+  history: ChatMessage[];
+  priorityMemberIds?: string[];
+  excludeMemberIds?: string[];
+  maxCount: number;
+}): Character[] {
+  const excludedIds = new Set(params.excludeMemberIds || []);
+  const selectedIds = new Set<string>();
+  const selectedMembers: Character[] = [];
+
+  const tryPush = (memberId: string | undefined) => {
+    if (!memberId || excludedIds.has(memberId) || selectedIds.has(memberId)) {
+      return;
+    }
+
+    const member = params.members.find((item) => item.id === memberId);
+    if (!member) {
+      return;
+    }
+
+    selectedIds.add(memberId);
+    selectedMembers.push(member);
+  };
+
+  (params.priorityMemberIds || []).forEach((memberId) => {
+    if (selectedMembers.length < params.maxCount) {
+      tryPush(memberId);
+    }
+  });
+
+  const recentSpeakerIds = [...params.history]
+    .reverse()
+    .map((message) => message.senderCharacterId)
+    .filter((memberId): memberId is string => !!memberId);
+
+  recentSpeakerIds.forEach((memberId) => {
+    if (selectedMembers.length < params.maxCount) {
+      tryPush(memberId);
+    }
+  });
+
+  params.members.forEach((member) => {
+    if (selectedMembers.length < params.maxCount) {
+      tryPush(member.id);
+    }
+  });
+
+  return selectedMembers;
 }
 
 function shouldShowChatTimeDivider(
@@ -433,6 +677,18 @@ const formatMessagePreview = (text: string | undefined): string => {
   }
   if (text.startsWith('[group-task]')) {
     return '[群小任务]';
+  }
+  if (text.startsWith('[group-join-request]')) {
+    return '[入群申请]';
+  }
+  if (text.startsWith('[group-admin-nomination]')) {
+    return '[管理员提名]';
+  }
+  if (text.startsWith('[group-offline]')) {
+    return '[群线下进行中]';
+  }
+  if (text.startsWith('[group-offline-ended]')) {
+    return '[群线下已结束]';
   }
   if (text.startsWith('[GAME_CARD]')) {
     return '[游戏卡片]';
@@ -685,10 +941,13 @@ export function GroupChatSessionScreen({
   const [groupTaskPromptDraft, setGroupTaskPromptDraft] = useState('');
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
+  const [isRevealingGroup, setIsRevealingGroup] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false);
+  const [isUpdatingDynamicPermissions, setIsUpdatingDynamicPermissions] = useState(false);
   const [isUpdatingBadge, setIsUpdatingBadge] = useState(false);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
@@ -713,7 +972,9 @@ export function GroupChatSessionScreen({
   const previousSettingsGroupIdRef = useRef(group.id);
   const latestGroupBackgroundRef = useRef(group.groupBackground || '');
   const lastProcessedInitiativeTriggerRef = useRef<number | null>(null);
+  const lastProcessedGovernanceTriggerRef = useRef<number | null>(null);
   const lastInitiativeAtRef = useRef(0);
+  const lastGovernanceInitiativeAtRef = useRef(0);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -738,7 +999,14 @@ export function GroupChatSessionScreen({
   const latestViewReadyRef = useRef(false);
   const previousActiveStateRef = useRef(isActive);
   const historyWindowRestoreRef = useRef<{ previousScrollHeight: number; previousScrollTop: number } | null>(null);
-  const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
+  const groupCharacterPool = useMemo(() => {
+    const map = new Map<string, Character>();
+    [...members, ...inviteableCharacters].forEach((character) => {
+      map.set(character.id, character);
+    });
+    return Array.from(map.values());
+  }, [inviteableCharacters, members]);
+  const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: groupCharacterPool });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'group-chat',
@@ -748,11 +1016,36 @@ export function GroupChatSessionScreen({
   const inputContainerClass = layoutConfig.inputContainerClass.replace('border-t', '').trim();
   const participantCount = members.length + 1;
   const actingRole = resolveGroupMemberRole(group, 'user');
+  const canCurrentUserApproveGovernance = actingRole === 'owner';
+  const canCurrentUserManageDynamicPermissions = canManageDynamicGroupPermissions(group, 'user');
+  const canCurrentUserEditGroupNotice = canEditGroupNotice(group, 'user');
+  const canCurrentUserLaunchManagedFeatures = canLaunchManagedGroupFeature(group, 'user');
+  const managedFeaturePermissionHint = canCurrentUserLaunchManagedFeatures
+    ? ''
+    : getManagedGroupFeaturePermissionHintForActor(group, 'user');
+  const groupNoticePermissionHint = getGroupNoticePermissionHintForActor(group, 'user');
+  const activeDutyAdminAssignment = getActiveDutyAdminAssignment(group);
   const openingSessionKey = `${group.id}:${group.lastTime || 0}`;
   const hasGroupInfoChanges = hasGroupSettingsChanges(group, groupSettingsForm);
   const groupDisplayName = group.groupRemark?.trim() || group.name;
   const groupUserDisplayName = group.groupNickname?.trim() || userName;
   const groupNotice = group.groupNotice?.trim() || '';
+  const currentTemporaryPermissionGrants = Array.isArray(group.temporaryPermissionGrants)
+    ? group.temporaryPermissionGrants
+    : [];
+  const currentMemberBadges = Array.isArray(group.memberBadges)
+    ? group.memberBadges
+    : [];
+  const currentMemberBubbleColors = Array.isArray(group.memberBubbleColors)
+    ? group.memberBubbleColors
+    : [];
+  const activeGroupWorldBooks = useMemo(() => {
+    const activeIds = new Set(group.activeWorldBookIds || []);
+    if (activeIds.size === 0) {
+      return [];
+    }
+    return worldBooks.filter((worldBook) => activeIds.has(worldBook.id));
+  }, [group.activeWorldBookIds, worldBooks]);
   const { resolvedUrl: resolvedGroupBackgroundUrl } = useResolvedPersistentValue(group.groupBackground);
   const groupBackgroundUrl =
     getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl)
@@ -854,28 +1147,196 @@ export function GroupChatSessionScreen({
   }, [groupModelBubbleTextStyle, members]);
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole, voiceEnabled: false },
-    ...members.map((member) => ({
-      id: member.id,
-      name: member.name,
-      remarkName: member.remarkName,
-      avatar: member.avatar,
-      role: resolveGroupMemberRole(group, member.id),
-      badgeLabel: getGroupMemberBadge(group, member.id)?.label,
-      badgeColor: getGroupMemberBadge(group, member.id)?.color,
-      bubbleColor: getGroupMemberBubbleColor(group, member.id) || undefined,
-      voiceEnabled: member.voiceProfile?.enabled === true,
-    })),
+    ...members.map((member) => {
+      const temporaryGrant = getTemporaryManagedFeatureGrant(group, member.id);
+
+      return {
+        id: member.id,
+        name: member.name,
+        remarkName: member.remarkName,
+        avatar: member.avatar,
+        role: resolveGroupMemberRole(group, member.id),
+        badgeLabel: getGroupMemberBadge(group, member.id)?.label,
+        badgeColor: getGroupMemberBadge(group, member.id)?.color,
+        bubbleColor: getGroupMemberBubbleColor(group, member.id) || undefined,
+        voiceEnabled: member.voiceProfile?.enabled === true,
+        isDutyAdmin: activeDutyAdminAssignment?.memberId === member.id,
+        dutyAdminExpiresAt: activeDutyAdminAssignment?.memberId === member.id ? activeDutyAdminAssignment.expiresAt : undefined,
+        hasTemporaryManagedFeatureGrant: !!temporaryGrant,
+        temporaryManagedFeatureGrantExpiresAt: temporaryGrant?.expiresAt,
+        temporaryManagedFeatureGrantRemainingUses: temporaryGrant?.remainingUses,
+        nominationCooldownUntil: getAdminNominationCooldownEntry(group, member.id)?.cooldownUntil,
+      };
+    }),
   ];
-  const groupSettingsInviteCandidates = inviteableCharacters.map((character) => ({
-    id: character.id,
-    name: character.name,
-    remarkName: character.remarkName,
-    avatar: character.avatar,
-    role: 'member' as const,
-    badgeLabel: undefined,
-    badgeColor: undefined,
-    bubbleColor: undefined,
-  }));
+  const groupSettingsInviteCandidates = inviteableCharacters.map((character) => {
+    const awarenessEntry = getGroupAwarenessEntry(group, character.id);
+
+    return {
+      id: character.id,
+      name: character.name,
+      remarkName: character.remarkName,
+      avatar: character.avatar,
+      role: 'member' as const,
+      badgeLabel: undefined,
+      badgeColor: undefined,
+      bubbleColor: undefined,
+      knowsGroup: doesCharacterKnowGroup(group, character.id),
+      groupAwarenessSource: awarenessEntry?.source,
+      joinRequestCooldownUntil: awarenessEntry?.joinRequestCooldownUntil,
+    };
+  });
+  const resolveGroupManagedMemberName = useCallback((memberId: string) => {
+    if (memberId === 'user') {
+      return groupUserDisplayName;
+    }
+
+    const member = members.find((item) => item.id === memberId);
+    return member?.remarkName?.trim() || member?.name || '成员';
+  }, [groupUserDisplayName, members]);
+
+  useEffect(() => {
+    const runCleanup = () => {
+      const cleanup = getDynamicPermissionExpiryCleanup(group);
+      if (!cleanup) {
+        return;
+      }
+
+      const nextMessages: ChatMessage[] = [];
+      let nextTimestamp = Date.now();
+
+      if (cleanup.expiredDutyAdminAssignment) {
+        nextMessages.push(createExpireDutyAdminSystemMessage(
+          resolveGroupManagedMemberName(cleanup.expiredDutyAdminAssignment.memberId),
+          nextTimestamp,
+        ));
+        nextTimestamp += 1;
+      }
+
+      cleanup.expiredTemporaryPermissionGrants.forEach((grant) => {
+        nextMessages.push(createExpireTemporaryPermissionSystemMessage(
+          resolveGroupManagedMemberName(grant.memberId),
+          nextTimestamp,
+        ));
+        nextTimestamp += 1;
+      });
+
+      onUpdateGroup(cleanup.patch);
+      if (nextMessages.length > 0) {
+        setHistory((prev) => [...prev, ...nextMessages]);
+      }
+    };
+
+    runCleanup();
+
+    const nextExpiryAt = getNearestDynamicPermissionExpiryAt(group);
+    if (!nextExpiryAt) {
+      return;
+    }
+
+    const timeoutMs = Math.max(250, nextExpiryAt - Date.now() + 250);
+    const timer = window.setTimeout(runCleanup, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    group,
+    onUpdateGroup,
+    resolveGroupManagedMemberName,
+    setHistory,
+  ]);
+
+  useEffect(() => {
+    const runGovernanceCleanup = () => {
+      const now = Date.now();
+      const expiredGovernanceMessages = history.filter((message) => (
+        !!message.groupGovernanceCard && hasGovernanceCardExpired(message.groupGovernanceCard, now)
+      ));
+      const nominationCooldownCleanup = cleanupAdminNominationCooldowns(group, now);
+
+      if (expiredGovernanceMessages.length === 0 && !nominationCooldownCleanup) {
+        return;
+      }
+
+      let nextHistory = history;
+      let awarenessEntries = group.awarenessEntries;
+      let adminNominationCooldowns = nominationCooldownCleanup?.adminNominationCooldowns ?? group.adminNominationCooldowns;
+      const governanceMessages: ChatMessage[] = [];
+      let nextTimestamp = now + 1;
+
+      expiredGovernanceMessages.forEach((message) => {
+        if (!message.groupGovernanceCard) {
+          return;
+        }
+
+        const governanceCard = message.groupGovernanceCard;
+        const expiredMessage = expireGroupGovernanceMessage(message, nextTimestamp);
+        nextHistory = nextHistory.map((item) => (
+          item.timestamp === message.timestamp ? expiredMessage : item
+        ));
+
+        if (governanceCard.kind === 'join-request') {
+          awarenessEntries = buildJoinRequestCooldownPatch(
+            { awarenessEntries, awarenessMode: group.awarenessMode },
+            governanceCard.targetMemberId,
+            nextTimestamp,
+          ).awarenessEntries;
+          governanceMessages.push(createExpireJoinRequestSystemMessage(governanceCard.targetMemberName, nextTimestamp));
+        } else {
+          adminNominationCooldowns = buildAdminNominationCooldownPatch(
+            { adminNominationCooldowns },
+            governanceCard.nomineeId,
+            nextTimestamp,
+          ).adminNominationCooldowns;
+          governanceMessages.push(createExpireAdminNominationSystemMessage(governanceCard.nomineeName, nextTimestamp));
+        }
+
+        nextTimestamp += 1;
+      });
+
+      const nextPatch: Partial<ChatGroup> = {};
+      if (expiredGovernanceMessages.length > 0) {
+        nextPatch.awarenessEntries = awarenessEntries;
+        nextPatch.adminNominationCooldowns = adminNominationCooldowns;
+      } else if (nominationCooldownCleanup) {
+        nextPatch.adminNominationCooldowns = nominationCooldownCleanup.adminNominationCooldowns;
+      }
+
+      if (Object.keys(nextPatch).length > 0) {
+        onUpdateGroup(nextPatch);
+      }
+
+      if (governanceMessages.length > 0) {
+        setHistory([...nextHistory, ...governanceMessages]);
+      }
+    };
+
+    runGovernanceCleanup();
+
+    const candidateExpiryAt = [
+      getNearestPendingGovernanceExpiryAt(history),
+      getNearestAdminNominationCooldownExpiryAt(group),
+    ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+
+    if (candidateExpiryAt.length === 0) {
+      return;
+    }
+
+    const timeoutMs = Math.max(250, Math.min(...candidateExpiryAt) - Date.now() + 250);
+    const timer = window.setTimeout(runGovernanceCleanup, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    group,
+    history,
+    onUpdateGroup,
+    resolveGroupManagedMemberName,
+    setHistory,
+  ]);
+
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || isVoiceMode) {
@@ -2253,14 +2714,41 @@ export function GroupChatSessionScreen({
     senderCharacterId?: string;
     plan: GroupFeatureInitiativePlan;
   }) => {
+    if (!canLaunchManagedGroupFeature(group, params.initiatorId)) {
+      return;
+    }
+
+    const baseTimestamp = Date.now();
+    const consumedTemporaryGrant = consumeTemporaryManagedFeatureGrant(group, params.initiatorId, baseTimestamp);
+    const consumedTemporaryPermissionMessage = consumedTemporaryGrant
+      ? createConsumeTemporaryPermissionSystemMessage(params.initiatorName, baseTimestamp + 2)
+      : null;
+
+    if (consumedTemporaryGrant) {
+      onUpdateGroup(consumedTemporaryGrant.patch);
+    }
+
     if (params.plan.feature === 'poll') {
+      const systemMessage = createLaunchGroupFeatureSystemMessage({
+        kind: 'poll',
+        title: params.plan.title,
+        initiatorName: params.initiatorName,
+        isSelf: params.initiatorId === 'user',
+        timestamp: baseTimestamp,
+      });
       const pollMessage = createGroupPollMessage({
         title: params.plan.title,
         options: params.plan.options,
         creatorName: params.initiatorName,
         senderCharacterId: params.senderCharacterId,
+        timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [...prev, pollMessage]);
+      setHistory((prev) => [
+        ...prev,
+        systemMessage,
+        pollMessage,
+        ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
+      ]);
       void runAiVotesForPoll({
         pollMessage,
         pollOptions: params.plan.options,
@@ -2269,6 +2757,13 @@ export function GroupChatSessionScreen({
     }
 
     if (params.plan.feature === 'relay') {
+      const systemMessage = createLaunchGroupFeatureSystemMessage({
+        kind: 'relay',
+        title: params.plan.topic,
+        initiatorName: params.initiatorName,
+        isSelf: params.initiatorId === 'user',
+        timestamp: baseTimestamp,
+      });
       const relayMessage = createGroupRelayMessage({
         topic: params.plan.topic,
         starterText: params.plan.starterText,
@@ -2276,8 +2771,14 @@ export function GroupChatSessionScreen({
         creatorName: params.initiatorName,
         role: params.role,
         senderCharacterId: params.senderCharacterId,
+        timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [...prev, relayMessage]);
+      setHistory((prev) => [
+        ...prev,
+        systemMessage,
+        relayMessage,
+        ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
+      ]);
       void runAiRelayEntries({
         relayMessage,
       });
@@ -2285,14 +2786,27 @@ export function GroupChatSessionScreen({
     }
 
     if (params.plan.feature === 'task') {
+      const systemMessage = createLaunchGroupFeatureSystemMessage({
+        kind: 'task',
+        title: params.plan.prompt,
+        initiatorName: params.initiatorName,
+        isSelf: params.initiatorId === 'user',
+        timestamp: baseTimestamp,
+      });
       const taskMessage = createGroupTaskMessage({
         prompt: params.plan.prompt,
         creatorId: params.initiatorId,
         creatorName: params.initiatorName,
         role: params.role,
         senderCharacterId: params.senderCharacterId,
+        timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [...prev, taskMessage]);
+      setHistory((prev) => [
+        ...prev,
+        systemMessage,
+        taskMessage,
+        ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
+      ]);
       void runAiTaskEntries({
         taskMessage,
       });
@@ -2300,6 +2814,11 @@ export function GroupChatSessionScreen({
   };
 
   const handleLaunchGroupPoll = () => {
+    if (!canCurrentUserLaunchManagedFeatures) {
+      window.alert(managedFeaturePermissionHint);
+      return;
+    }
+
     const title = groupPollTitleDraft.trim();
     const options = groupPollOptionsDraft
       .split(/\r?\n/)
@@ -2326,6 +2845,11 @@ export function GroupChatSessionScreen({
   };
 
   const handleLaunchGroupRelay = () => {
+    if (!canCurrentUserLaunchManagedFeatures) {
+      window.alert(managedFeaturePermissionHint);
+      return;
+    }
+
     const topic = groupRelayTopicDraft.trim();
     if (!topic) return;
 
@@ -2345,6 +2869,11 @@ export function GroupChatSessionScreen({
   };
 
   const handleLaunchGroupTask = () => {
+    if (!canCurrentUserLaunchManagedFeatures) {
+      window.alert(managedFeaturePermissionHint);
+      return;
+    }
+
     const prompt = groupTaskPromptDraft.trim();
     if (!prompt) return;
 
@@ -2359,6 +2888,75 @@ export function GroupChatSessionScreen({
     });
     setGroupTaskPromptDraft('');
     setActiveGroupFeatureComposer(null);
+    setShowFunPanel(false);
+  };
+
+  const runOfflineReturnReactions = useCallback(async (session: GroupOfflineSession) => {
+    if (!activeConfig || !hasUsableConfig) {
+      return;
+    }
+
+    const participantMembers = members.filter((member) => session.participants.some((participant) => participant.characterId === member.id));
+    if (participantMembers.length === 0) {
+      return;
+    }
+
+    const roundsSummary = (session.generatedContent?.rounds || [])
+      .slice(-2)
+      .map((round) => [
+        round.sceneText || '',
+        ...round.characterEntries.map((entry) => `${entry.speakerLabel}：${entry.text}`),
+      ].filter(Boolean).join('\n'))
+      .join('\n\n');
+
+    const prompt = [
+      '一场群聊线下刚刚结束，所有人现在已经回到原群聊线上聊天。',
+      '请生成参与角色回到群聊后的公开反应。',
+      '要求：',
+      '1. 这不是线下现场续写，不要再写现场动作。',
+      '2. 这是回到群聊后的新消息，要像群里真的会发出来的话。',
+      '3. 每个角色一条消息，显示为单独的群消息。',
+      '4. 不要照搬结束收尾原文，要像回到线上后的新反应。',
+      '5. 输出 JSON：{"reactions":[{"characterId":"角色id","text":"消息内容"}]}',
+      '',
+      `局类型：${session.customActivityType?.trim() || session.activityType}`,
+      `地点：${session.location}`,
+      `时间：${session.timeLabel}`,
+      `在场角色：${participantMembers.map((member) => member.name).join('、')}`,
+      '',
+      '刚结束的线下内容摘要：',
+      roundsSummary || '暂无',
+      '',
+      '只输出 JSON。',
+    ].join('\n');
+
+    try {
+      const rawText = await generateTextFromMessagesWithConfig({
+        activeConfig,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const reactions = parseGroupOfflineReturnReactions(rawText);
+      if (reactions.length === 0) {
+        return;
+      }
+
+      setHistory((prev) => [
+        ...prev,
+        ...reactions.map((reaction, index) => ({
+          role: 'model' as const,
+          text: reaction.text,
+          timestamp: Date.now() + index + 1,
+          senderCharacterId: reaction.characterId,
+        })),
+      ]);
+    } catch (error) {
+      console.error('[group-chat] Failed to generate offline return reactions', error);
+    }
+  }, [activeConfig, hasUsableConfig, members, setHistory]);
+
+  const handleOpenGroupOffline = () => {
+    setActiveGroupFeatureComposer(null);
+    setShowOfflineModal(true);
     setShowFunPanel(false);
   };
 
@@ -2385,6 +2983,8 @@ export function GroupChatSessionScreen({
       && !message.groupPollCard
       && !message.groupRelayCard
       && !message.groupTaskCard
+      && !message.groupGovernanceCard
+      && !message.groupOfflineCard
     ));
     const latestUserMessage = [...recentNormalMessages].reverse().find((message) => message.role === 'user');
     if (!latestUserMessage) {
@@ -2401,11 +3001,11 @@ export function GroupChatSessionScreen({
     }
 
     const latestFeatureMessage = [...history].reverse().find((message) => (
-      message.groupPollCard || message.groupRelayCard || message.groupTaskCard
+      message.groupPollCard || message.groupRelayCard || message.groupTaskCard || message.groupGovernanceCard || message.groupOfflineCard
     ));
     const recentMessages = history.slice(-12);
     const featureInRecentWindow = recentMessages.some((message) => (
-      message.groupPollCard || message.groupRelayCard || message.groupTaskCard
+      message.groupPollCard || message.groupRelayCard || message.groupTaskCard || message.groupGovernanceCard || message.groupOfflineCard
     ));
 
     if (featureInRecentWindow) {
@@ -2431,7 +3031,8 @@ export function GroupChatSessionScreen({
       return;
     }
 
-    const initiator = members[Math.floor(Math.random() * members.length)];
+    const initiativeCandidates = members.filter((member) => canLaunchManagedGroupFeature(group, member.id));
+    const initiator = initiativeCandidates[Math.floor(Math.random() * initiativeCandidates.length)];
     if (!initiator) {
       return;
     }
@@ -2516,21 +3117,285 @@ export function GroupChatSessionScreen({
     setHistory,
   ]);
 
-  const handleSaveGroupInfo = () => {
-    const trimmedName = groupSettingsForm.name.trim();
-    if (!trimmedName) return;
+  useEffect(() => {
+    if (!activeConfig || !hasUsableConfig || isLoading || pendingMessage || members.length === 0) {
+      return;
+    }
 
-    const nextNotice = groupSettingsForm.groupNotice.trim();
-    const previousNotice = group.groupNotice?.trim() || '';
-    const systemMessages = buildGroupSettingsSystemMessages(group, groupSettingsForm, Date.now());
-    onUpdateGroup(buildGroupSettingsPatch({
+    const recentNormalMessages = history.filter((message) => (
+      !message.isSystem
+      && !message.groupPollCard
+      && !message.groupRelayCard
+      && !message.groupTaskCard
+      && !message.groupGovernanceCard
+      && !message.groupOfflineCard
+    ));
+    const latestUserMessage = [...recentNormalMessages].reverse().find((message) => message.role === 'user');
+    if (!latestUserMessage) {
+      return;
+    }
+
+    if (lastProcessedGovernanceTriggerRef.current === latestUserMessage.timestamp) {
+      return;
+    }
+
+    const followupMessages = recentNormalMessages.filter((message) => message.timestamp > latestUserMessage.timestamp);
+    if (followupMessages.length < 2) {
+      return;
+    }
+
+    if (history.some((message) => message.groupGovernanceCard?.status === 'pending')) {
+      lastProcessedGovernanceTriggerRef.current = latestUserMessage.timestamp;
+      return;
+    }
+
+    const latestGovernanceMessage = [...history].reverse().find((message) => message.groupGovernanceCard);
+    if (
+      latestGovernanceMessage
+      && latestUserMessage.timestamp - latestGovernanceMessage.timestamp < 12 * 60 * 1000
+    ) {
+      lastProcessedGovernanceTriggerRef.current = latestUserMessage.timestamp;
+      return;
+    }
+
+    if (Date.now() - Math.max(lastInitiativeAtRef.current, lastGovernanceInitiativeAtRef.current) < 45 * 1000) {
+      return;
+    }
+
+    lastProcessedGovernanceTriggerRef.current = latestUserMessage.timestamp;
+
+    const eligibleJoinRequestCharacters = inviteableCharacters.filter((character) => (
+      canCharacterRequestToJoinGroup(group, character.id)
+      && !history.some((message) => isPendingJoinRequestForMember(message, character.id))
+    ));
+    const eligibleAdminNominees = members.filter((member) => (
+      resolveGroupMemberRole(group, member.id) === 'member'
+      && canNominateMember(group, member.id)
+      && !history.some((message) => isPendingAdminNominationForMember(message, member.id))
+    ));
+    const initiativeKinds: Array<'join-request' | 'admin-nomination'> = [];
+
+    if (eligibleJoinRequestCharacters.length > 0 && recentNormalMessages.length >= 5 && Math.random() <= 0.14) {
+      initiativeKinds.push('join-request');
+    }
+
+    if (eligibleAdminNominees.length > 0 && recentNormalMessages.length >= 6 && Math.random() <= 0.12) {
+      initiativeKinds.push('admin-nomination');
+    }
+
+    if (initiativeKinds.length === 0) {
+      return;
+    }
+
+    const initiativeKind = initiativeKinds[Math.floor(Math.random() * initiativeKinds.length)];
+    let cancelled = false;
+
+    const runGovernanceInitiative = async () => {
+      try {
+        if (initiativeKind === 'join-request') {
+          const requester = eligibleJoinRequestCharacters[Math.floor(Math.random() * eligibleJoinRequestCharacters.length)];
+          if (!requester) {
+            return;
+          }
+
+          const systemPrompt = buildGroupChatPrompt({
+            sceneInput: buildGroupChatSceneInput({
+              speaker: requester,
+              members: [...members, requester],
+              group,
+              history,
+              userName: groupUserDisplayName,
+              directChatHistory,
+              perception,
+            }),
+          });
+
+          const response = await generateTextFromMessagesWithConfig({
+            activeConfig,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              {
+                role: 'user',
+                content: [
+                  '你目前不在这个群里，但你已经知道这个群存在。',
+                  '请判断：这个角色现在会不会主动向群主发起一次入群申请。',
+                  '目标是低频、顺势、像这个角色自己的临场决定，不要像系统任务或硬触发剧情。',
+                  '只有在这个角色真的会想加入、觉得时机合适、并且不显得冒失的时候，才选择 request。',
+                  '如果现在不适合，就输出 none。',
+                  '只输出 JSON，不要解释。',
+                  '格式：{\"action\":\"request\"} 或 {\"action\":\"none\"}',
+                ].join('\n'),
+              },
+            ],
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          const plan = parseGroupJoinRequestInitiativePlan(response);
+          if (plan.action === 'request') {
+            lastGovernanceInitiativeAtRef.current = Date.now();
+            const requesterName = requester.remarkName?.trim() || requester.name;
+            setHistory((prev) => [
+              ...prev,
+              createGroupJoinRequestMessage({
+                targetMemberId: requester.id,
+                targetMemberName: requesterName,
+                proposedById: requester.id,
+                proposedByName: requesterName,
+              }),
+            ]);
+          }
+
+          return;
+        }
+
+        const nominationProposers = members.filter((member) => eligibleAdminNominees.some((nominee) => nominee.id !== member.id));
+        const proposer = nominationProposers[Math.floor(Math.random() * nominationProposers.length)];
+        if (!proposer) {
+          return;
+        }
+
+        const allowedNominees = eligibleAdminNominees.filter((member) => member.id !== proposer.id);
+        if (allowedNominees.length === 0) {
+          return;
+        }
+
+        const systemPrompt = buildGroupChatPrompt({
+          sceneInput: buildGroupChatSceneInput({
+            speaker: proposer,
+            members,
+            group,
+            history,
+            userName: groupUserDisplayName,
+            directChatHistory,
+            perception,
+          }),
+        });
+
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                '请判断：这个角色现在会不会主动在群里提议，把某个现有成员设为管理员。',
+                '目标是低频、顺势、像这个角色自己的判断，不要像系统派任务。',
+                '更容易被提名的人通常是最近常帮忙控场、值日、拿过临时群事件权限、或者在群里确实比较靠谱的人，但最终仍以这个角色自己的判断为准。',
+                '不能提自己。',
+                '候选成员：',
+                ...allowedNominees.map((member) => {
+                  const tags = [
+                    activeDutyAdminAssignment?.memberId === member.id ? '值日中' : '',
+                    getTemporaryManagedFeatureGrant(group, member.id) ? '有临时群事件权' : '',
+                    resolveGroupMemberRole(group, member.id) === 'member' ? '普通成员' : '',
+                  ].filter(Boolean).join(' / ');
+                  return `- ${member.id} | ${member.remarkName?.trim() || member.name}${tags ? ` | ${tags}` : ''}`;
+                }),
+                '如果现在不适合提名，就输出 none。',
+                '只输出 JSON，不要解释。',
+                '格式：{\"action\":\"nominate\",\"nomineeId\":\"候选成员id\"} 或 {\"action\":\"none\"}',
+              ].join('\n'),
+            },
+          ],
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const plan = parseGroupAdminNominationInitiativePlan(
+          response,
+          allowedNominees.map((member) => member.id),
+        );
+
+        if (plan.action === 'nominate') {
+          const nominee = allowedNominees.find((member) => member.id === plan.nomineeId);
+          if (!nominee) {
+            return;
+          }
+
+          lastGovernanceInitiativeAtRef.current = Date.now();
+          setHistory((prev) => [
+            ...prev,
+            createGroupAdminNominationMessage({
+              nomineeId: nominee.id,
+              nomineeName: nominee.remarkName?.trim() || nominee.name,
+              proposedById: proposer.id,
+              proposedByName: proposer.remarkName?.trim() || proposer.name,
+            }),
+          ]);
+        }
+      } catch {
+        // Ignore governance initiative failure and keep the normal group flow running.
+      }
+    };
+
+    void runGovernanceInitiative();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    hasUsableConfig,
+    history,
+    inviteableCharacters,
+    isLoading,
+    members,
+    pendingMessage,
+    perception,
+    setHistory,
+  ]);
+
+  const handleSaveGroupInfo = () => {
+    let nextPatch = filterGroupSettingsPatchForActor(group, 'user', buildGroupSettingsPatch({
       ...groupSettingsForm,
       groupBackground: latestGroupBackgroundRef.current,
     }));
+
+    if (nextPatch.awarenessMode === 'public') {
+      let awarenessEntries = group.awarenessEntries;
+      inviteableCharacters.forEach((character) => {
+        if (getGroupAwarenessEntry({ awarenessEntries }, character.id)) {
+          return;
+        }
+        awarenessEntries = buildRevealGroupPatch(
+          { awarenessEntries },
+          character.id,
+          'public_group',
+          Date.now(),
+        ).awarenessEntries;
+      });
+      nextPatch = {
+        ...nextPatch,
+        ...(awarenessEntries ? { awarenessEntries } : {}),
+      };
+    }
+
+    if ('name' in nextPatch && !String(nextPatch.name || '').trim()) {
+      return;
+    }
+
+    const previousNotice = group.groupNotice?.trim() || '';
+    const nextNotice = 'groupNotice' in nextPatch
+      ? (nextPatch.groupNotice?.trim() || '')
+      : previousNotice;
+    const systemMessages = buildGroupSettingsSystemMessages(group, nextPatch, Date.now());
+
+    if (Object.keys(nextPatch).length > 0) {
+      onUpdateGroup(nextPatch);
+    }
+
     if (systemMessages.length > 0) {
       setHistory((prev) => [...prev, ...systemMessages]);
     }
-    if (nextNotice && nextNotice !== previousNotice) {
+    if (canCurrentUserEditGroupNotice && nextNotice && nextNotice !== previousNotice) {
       void reactToNoticeUpdate({
         noticeText: nextNotice,
         currentHistory: [...history, ...systemMessages],
@@ -2539,7 +3404,7 @@ export function GroupChatSessionScreen({
   };
 
   const handleCloseGroupSettings = () => {
-    if (hasGroupInfoChanges && groupSettingsForm.name.trim()) {
+    if (hasGroupInfoChanges) {
       handleSaveGroupInfo();
     }
     setShowGroupSettings(false);
@@ -2556,32 +3421,17 @@ export function GroupChatSessionScreen({
     });
   };
 
-  const handleInviteMember = async (memberId: string) => {
-    const invitedCharacter = inviteableCharacters.find((character) => character.id === memberId);
-    if (!invitedCharacter || group.memberIds.includes(memberId) || isInvitingMember) {
+  const runApprovedJoinReaction = useCallback(async (
+    invitedCharacter: Character,
+    currentHistory: ChatMessage[],
+    timestamp: number,
+  ) => {
+    if (!activeConfig) {
       return;
     }
-
-    setIsInvitingMember(true);
-
-    onUpdateGroup({
-      memberIds: [...group.memberIds, memberId],
-    });
 
     const invitedName = invitedCharacter.remarkName?.trim() || invitedCharacter.name;
-    const timestamp = Date.now();
-    const noticeMessage = createInviteMemberSystemMessage(invitedName, timestamp);
-    const inviteGenerationHistory = buildInviteGenerationHistory(history, invitedName, timestamp);
-
-    setHistory((prev) => [
-      ...prev,
-      noticeMessage,
-    ]);
-
-    if (!activeConfig) {
-      setIsInvitingMember(false);
-      return;
-    }
+    const inviteGenerationHistory = buildInviteGenerationHistory(currentHistory, invitedName, timestamp);
 
     try {
       const responseText = await generateTextFromMessagesWithConfig({
@@ -2629,9 +3479,191 @@ export function GroupChatSessionScreen({
       ]);
     } catch (error) {
       console.error('Failed to generate invited member reply:', error);
+    }
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    members,
+    worldBooks,
+  ]);
+
+  const runGovernanceFollowupReactions = useCallback(async (params: {
+    kind: 'join-request' | 'admin-nomination';
+    outcome: 'approved' | 'rejected';
+    targetMemberId: string;
+    targetMemberName: string;
+    proposerId?: string;
+    currentHistory: ChatMessage[];
+    contextMembers?: Character[];
+    groupOverride?: ChatGroup;
+  }) => {
+    if (!activeConfig || !hasUsableConfig || manualReplyModeEnabled) {
+      return;
+    }
+
+    const contextMembers = params.contextMembers || members;
+    const candidateMembers = params.kind === 'join-request'
+      ? members
+      : contextMembers;
+
+    const selectedSpeakers = pickGovernanceReactionSpeakers({
+      members: candidateMembers,
+      history: params.currentHistory,
+      priorityMemberIds:
+        params.kind === 'admin-nomination'
+          ? [params.targetMemberId, params.proposerId].filter((value): value is string => !!value)
+          : [],
+      excludeMemberIds: params.kind === 'join-request' ? [params.targetMemberId] : [],
+      maxCount: params.kind === 'join-request' ? 1 : 2,
+    });
+
+    if (selectedSpeakers.length === 0) {
+      return;
+    }
+
+    let workingHistory = params.currentHistory;
+    for (const speaker of selectedSpeakers) {
+      const systemPrompt = buildGroupChatPrompt({
+        sceneInput: buildGroupChatSceneInput({
+          speaker,
+          members: contextMembers,
+          group: params.groupOverride || group,
+          history: workingHistory,
+          userName: groupUserDisplayName,
+          directChatHistory,
+          perception,
+        }),
+      });
+
+      const eventLabel = params.kind === 'join-request'
+        ? `${params.targetMemberName} 的入群申请`
+        : `${params.targetMemberName} 的管理员提名`;
+      const outcomeText = params.outcome === 'approved' ? '刚刚被通过了' : '刚刚被驳回了';
+      const roleContext = [
+        speaker.id === params.targetMemberId ? '你就是这件事的主角。' : '',
+        params.proposerId && speaker.id === params.proposerId ? '这件事最初是你提出来的。' : '',
+      ].filter(Boolean).join('\n');
+
+      try {
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                `${eventLabel}${outcomeText}`,
+                roleContext,
+                '请判断：这个角色现在会不会在群里自然接一句。',
+                '只允许短促、像真群聊里会冒出来的反应，不要总结流程，不要解释规则，不要长篇发言。',
+                '如果这个角色此刻不需要说话，就留空。',
+                '只输出 JSON，不要解释。',
+                '格式：{"message":"要发出的群聊短消息；如果不发就留空"}',
+              ].filter(Boolean).join('\n'),
+            },
+          ],
+        });
+
+        const nextText = normalizeInvitedReply(parseGovernanceReactionMessage(response), speaker);
+        if (!nextText) {
+          continue;
+        }
+
+        const reactionMessage: ChatMessage = {
+          role: 'model',
+          text: nextText,
+          timestamp: Date.now() + Math.floor(Math.random() * 120) + workingHistory.length,
+          senderCharacterId: speaker.id,
+        };
+
+        workingHistory = [...workingHistory, reactionMessage];
+        setHistory((prev) => [...prev, reactionMessage]);
+      } catch (error) {
+        console.error('[group-chat] Failed to generate governance follow-up reaction', error);
+        break;
+      }
+    }
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    hasUsableConfig,
+    manualReplyModeEnabled,
+    members,
+    perception,
+  ]);
+
+  const handleInviteMember = async (memberId: string) => {
+    const invitedCharacter = inviteableCharacters.find((character) => character.id === memberId);
+    if (
+      !invitedCharacter
+      || group.memberIds.includes(memberId)
+      || isInvitingMember
+      || !canManageGroupMembers(group, 'user')
+    ) {
+      return;
+    }
+
+    setIsInvitingMember(true);
+    const invitedName = invitedCharacter.remarkName?.trim() || invitedCharacter.name;
+    const pendingJoinRequest = history.find((message) => (
+      message.groupGovernanceCard?.kind === 'join-request'
+      && message.groupGovernanceCard.targetMemberId === invitedCharacter.id
+      && message.groupGovernanceCard.status === 'pending'
+    ));
+    const resolvedAt = Date.now();
+    const noticeTimestamp = resolvedAt + 1;
+    const resolvedHistory = pendingJoinRequest
+      ? history.map((message) => (
+          message.timestamp === pendingJoinRequest.timestamp
+            ? resolveGroupGovernanceMessage({
+                message,
+                status: 'approved',
+                resolvedById: 'user',
+                resolvedByName: groupUserDisplayName,
+                resolvedAt,
+              })
+            : message
+        ))
+      : history;
+    const noticeMessage = createInviteMemberSystemMessage(invitedName, noticeTimestamp);
+    const nextHistory = [...resolvedHistory, noticeMessage];
+
+    onUpdateGroup({
+      memberIds: Array.from(new Set([...group.memberIds, invitedCharacter.id])),
+      ...buildRevealGroupPatch(group, invitedCharacter.id, 'direct_invite', resolvedAt),
+    });
+    setHistory(nextHistory);
+
+    try {
+      await runApprovedJoinReaction(invitedCharacter, nextHistory, noticeTimestamp);
     } finally {
       setIsInvitingMember(false);
     }
+  };
+
+  const handleRevealGroupToMember = async (memberId: string) => {
+    const targetCharacter = inviteableCharacters.find((character) => character.id === memberId);
+    if (
+      !targetCharacter
+      || isRevealingGroup
+      || !canManageGroupMembers(group, 'user')
+      || doesCharacterKnowGroup(group, memberId)
+    ) {
+      return;
+    }
+
+    setIsRevealingGroup(true);
+    const timestamp = Date.now();
+    onUpdateGroup(buildRevealGroupPatch(group, memberId, 'manual_reveal', timestamp));
+    setHistory((prev) => [
+      ...prev,
+      createRevealGroupAwarenessSystemMessage(targetCharacter.remarkName?.trim() || targetCharacter.name, timestamp),
+    ]);
+    setIsRevealingGroup(false);
   };
 
   const handleRemoveMember = async (memberId: string) => {
@@ -2650,6 +3682,9 @@ export function GroupChatSessionScreen({
     onUpdateGroup({
       memberIds: group.memberIds.filter((id) => id !== memberId),
       adminIds: (group.adminIds || []).filter((id) => id !== memberId),
+      ...buildRevealGroupPatch(group, memberId, 'former_member', Date.now()),
+      dutyAdminAssignment: group.dutyAdminAssignment?.memberId === memberId ? undefined : group.dutyAdminAssignment,
+      temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId),
       voiceReplyMemberIds: (group.voiceReplyMemberIds || []).filter((id) => id !== memberId),
     });
 
@@ -2669,22 +3704,305 @@ export function GroupChatSessionScreen({
 
     const memberName = member.remarkName?.trim() || member.name;
     const isAdmin = (group.adminIds || []).includes(memberId);
+    const pendingNomination = history.find((message) => (
+      message.groupGovernanceCard?.kind === 'admin-nomination'
+      && message.groupGovernanceCard.nomineeId === memberId
+      && message.groupGovernanceCard.status === 'pending'
+    ));
     setIsUpdatingAdmin(true);
 
+    if (!isAdmin) {
+      const resolvedAt = Date.now();
+      const resolvedHistory = pendingNomination
+        ? history.map((message) => (
+            message.timestamp === pendingNomination.timestamp
+              ? resolveGroupGovernanceMessage({
+                  message,
+                  status: 'approved',
+                  resolvedById: 'user',
+                  resolvedByName: groupUserDisplayName,
+                  resolvedAt,
+                })
+              : message
+          ))
+        : history;
+
+      onUpdateGroup({
+        adminIds: [...new Set([...(group.adminIds || []), memberId])],
+        dutyAdminAssignment: group.dutyAdminAssignment?.memberId === memberId
+          ? undefined
+          : group.dutyAdminAssignment,
+        temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId),
+      });
+
+      setHistory([
+        ...resolvedHistory,
+        createSetAdminSystemMessage(memberName, resolvedAt + 1),
+      ]);
+      setIsUpdatingAdmin(false);
+      return;
+    }
+
     onUpdateGroup({
-      adminIds: isAdmin
-        ? (group.adminIds || []).filter((id) => id !== memberId)
-        : [...new Set([...(group.adminIds || []), memberId])],
+      adminIds: (group.adminIds || []).filter((id) => id !== memberId),
     });
 
     setHistory((prev) => [
       ...prev,
-      isAdmin
-        ? createCancelAdminSystemMessage(memberName, Date.now())
-        : createSetAdminSystemMessage(memberName, Date.now()),
+      createCancelAdminSystemMessage(memberName, Date.now()),
     ]);
 
     setIsUpdatingAdmin(false);
+  };
+
+  const handleResolveJoinRequest = async (messageTimestamp: number, decision: 'approved' | 'rejected') => {
+    if (!canCurrentUserApproveGovernance) {
+      return;
+    }
+
+    const targetMessage = history.find((message) => (
+      message.timestamp === messageTimestamp
+      && message.groupGovernanceCard?.kind === 'join-request'
+      && message.groupGovernanceCard.status === 'pending'
+    ));
+
+    if (!targetMessage?.groupGovernanceCard || targetMessage.groupGovernanceCard.kind !== 'join-request') {
+      return;
+    }
+
+    const targetName = targetMessage.groupGovernanceCard.targetMemberName;
+    const targetMemberId = targetMessage.groupGovernanceCard.targetMemberId;
+    const resolvedAt = Date.now();
+    const resolvedMessage = resolveGroupGovernanceMessage({
+      message: targetMessage,
+      status: decision,
+      resolvedById: 'user',
+      resolvedByName: groupUserDisplayName,
+      resolvedAt,
+    });
+    const resolvedHistory = history.map((message) => (
+      message.timestamp === messageTimestamp ? resolvedMessage : message
+    ));
+    const systemMessage = decision === 'approved'
+      ? createApproveJoinRequestSystemMessage(targetName, resolvedAt + 1)
+      : createRejectJoinRequestSystemMessage(targetName, resolvedAt + 1);
+    const nextHistory = [...resolvedHistory, systemMessage];
+
+    setHistory(nextHistory);
+
+    if (decision === 'approved') {
+      onUpdateGroup({
+        memberIds: Array.from(new Set([...group.memberIds, targetMemberId])),
+        ...buildRevealGroupPatch(group, targetMemberId, 'approved_join_request', resolvedAt),
+      });
+      const invitedCharacter = inviteableCharacters.find((character) => character.id === targetMemberId);
+      if (invitedCharacter) {
+        await runApprovedJoinReaction(invitedCharacter, nextHistory, resolvedAt + 1);
+        void runGovernanceFollowupReactions({
+          kind: 'join-request',
+          outcome: 'approved',
+          targetMemberId,
+          targetMemberName: targetName,
+          proposerId: targetMessage.groupGovernanceCard.proposedById,
+          currentHistory: nextHistory,
+          contextMembers: [...members, invitedCharacter],
+          groupOverride: {
+            ...group,
+            memberIds: Array.from(new Set([...group.memberIds, targetMemberId])),
+          },
+        });
+      }
+      return;
+    }
+
+    onUpdateGroup(buildJoinRequestCooldownPatch(group, targetMemberId, resolvedAt));
+    void runGovernanceFollowupReactions({
+      kind: 'join-request',
+      outcome: 'rejected',
+      targetMemberId,
+      targetMemberName: targetName,
+      proposerId: targetMessage.groupGovernanceCard.proposedById,
+      currentHistory: nextHistory,
+    });
+  };
+
+  const handleResolveAdminNomination = async (messageTimestamp: number, decision: 'approved' | 'rejected') => {
+    if (!canCurrentUserApproveGovernance) {
+      return;
+    }
+
+    const targetMessage = history.find((message) => (
+      message.timestamp === messageTimestamp
+      && message.groupGovernanceCard?.kind === 'admin-nomination'
+      && message.groupGovernanceCard.status === 'pending'
+    ));
+
+    if (!targetMessage?.groupGovernanceCard || targetMessage.groupGovernanceCard.kind !== 'admin-nomination') {
+      return;
+    }
+
+    const nomineeName = targetMessage.groupGovernanceCard.nomineeName;
+    const nomineeId = targetMessage.groupGovernanceCard.nomineeId;
+    const resolvedAt = Date.now();
+    const resolvedMessage = resolveGroupGovernanceMessage({
+      message: targetMessage,
+      status: decision,
+      resolvedById: 'user',
+      resolvedByName: groupUserDisplayName,
+      resolvedAt,
+    });
+    const resolvedHistory = history.map((message) => (
+      message.timestamp === messageTimestamp ? resolvedMessage : message
+    ));
+    const systemMessage = decision === 'approved'
+      ? createApproveAdminNominationSystemMessage(nomineeName, resolvedAt + 1)
+      : createRejectAdminNominationSystemMessage(nomineeName, resolvedAt + 1);
+
+    setHistory([...resolvedHistory, systemMessage]);
+
+    if (decision === 'approved') {
+      onUpdateGroup({
+        adminIds: [...new Set([...(group.adminIds || []), nomineeId])],
+        dutyAdminAssignment: group.dutyAdminAssignment?.memberId === nomineeId ? undefined : group.dutyAdminAssignment,
+        temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== nomineeId),
+        ...buildAdminNominationCooldownPatch(group, nomineeId, resolvedAt),
+      });
+      void runGovernanceFollowupReactions({
+        kind: 'admin-nomination',
+        outcome: 'approved',
+        targetMemberId: nomineeId,
+        targetMemberName: nomineeName,
+        proposerId: targetMessage.groupGovernanceCard.proposedById,
+        currentHistory: [...resolvedHistory, systemMessage],
+        groupOverride: {
+          ...group,
+          adminIds: [...new Set([...(group.adminIds || []), nomineeId])],
+        },
+      });
+      return;
+    }
+
+    onUpdateGroup(buildAdminNominationCooldownPatch(group, nomineeId, resolvedAt));
+    void runGovernanceFollowupReactions({
+      kind: 'admin-nomination',
+      outcome: 'rejected',
+      targetMemberId: nomineeId,
+      targetMemberName: nomineeName,
+      proposerId: targetMessage.groupGovernanceCard.proposedById,
+      currentHistory: [...resolvedHistory, systemMessage],
+    });
+  };
+
+  const handleAssignDutyAdmin = async (memberId: string) => {
+    const member = members.find((item) => item.id === memberId);
+    if (
+      !member
+      || isUpdatingDynamicPermissions
+      || !canCurrentUserManageDynamicPermissions
+      || resolveGroupMemberRole(group, memberId) !== 'member'
+      || activeDutyAdminAssignment?.memberId === memberId
+    ) {
+      return;
+    }
+
+    setIsUpdatingDynamicPermissions(true);
+
+    const timestamp = Date.now();
+    const nextAssignment = buildDutyAdminAssignment({
+      memberId,
+      grantedById: 'user',
+      grantedAt: timestamp,
+    });
+    const nextMessages: ChatMessage[] = [];
+
+    if (activeDutyAdminAssignment) {
+      nextMessages.push(createClearDutyAdminSystemMessage(
+        resolveGroupManagedMemberName(activeDutyAdminAssignment.memberId),
+        timestamp,
+      ));
+    }
+
+    nextMessages.push(createAssignDutyAdminSystemMessage(
+      member.remarkName?.trim() || member.name,
+      timestamp + nextMessages.length,
+    ));
+
+    onUpdateGroup({
+      dutyAdminAssignment: nextAssignment,
+    });
+    setHistory((prev) => [...prev, ...nextMessages]);
+    setIsUpdatingDynamicPermissions(false);
+  };
+
+  const handleClearDutyAdmin = async (memberId: string) => {
+    if (
+      isUpdatingDynamicPermissions
+      || !canCurrentUserManageDynamicPermissions
+      || activeDutyAdminAssignment?.memberId !== memberId
+    ) {
+      return;
+    }
+
+    const memberName = resolveGroupManagedMemberName(memberId);
+    setIsUpdatingDynamicPermissions(true);
+    onUpdateGroup({
+      dutyAdminAssignment: undefined,
+    });
+    setHistory((prev) => [
+      ...prev,
+      createClearDutyAdminSystemMessage(memberName, Date.now()),
+    ]);
+    setIsUpdatingDynamicPermissions(false);
+  };
+
+  const handleGrantTemporaryPermission = async (memberId: string) => {
+    const member = members.find((item) => item.id === memberId);
+    if (
+      !member
+      || isUpdatingDynamicPermissions
+      || !canCurrentUserManageDynamicPermissions
+      || resolveGroupMemberRole(group, memberId) !== 'member'
+      || !!getTemporaryManagedFeatureGrant(group, memberId)
+    ) {
+      return;
+    }
+
+    setIsUpdatingDynamicPermissions(true);
+    const nextGrant = buildTemporaryManagedFeatureGrant({
+      memberId,
+      grantedById: 'user',
+    });
+    const currentGrants = currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId);
+
+    onUpdateGroup({
+      temporaryPermissionGrants: [...currentGrants, nextGrant],
+    });
+    setHistory((prev) => [
+      ...prev,
+      createGrantTemporaryPermissionSystemMessage(member.remarkName?.trim() || member.name, Date.now()),
+    ]);
+    setIsUpdatingDynamicPermissions(false);
+  };
+
+  const handleRevokeTemporaryPermission = async (memberId: string) => {
+    const currentGrant = getTemporaryManagedFeatureGrant(group, memberId);
+    if (
+      isUpdatingDynamicPermissions
+      || !canCurrentUserManageDynamicPermissions
+      || !currentGrant
+    ) {
+      return;
+    }
+
+    setIsUpdatingDynamicPermissions(true);
+    onUpdateGroup({
+      temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.id !== currentGrant.id),
+    });
+    setHistory((prev) => [
+      ...prev,
+      createRevokeTemporaryPermissionSystemMessage(resolveGroupManagedMemberName(memberId), Date.now()),
+    ]);
+    setIsUpdatingDynamicPermissions(false);
   };
 
   const handleUpdateBadge = async (memberId: string, payload: { label: string; color: string }) => {
@@ -2696,7 +4014,7 @@ export function GroupChatSessionScreen({
     const memberName = member.remarkName?.trim() || member.name;
     const nextLabel = payload.label.trim();
     const nextColor = payload.color.trim() || '#22c55e';
-    const currentBadges = group.memberBadges || [];
+    const currentBadges = currentMemberBadges;
     const nextBadges = nextLabel
       ? [
           ...currentBadges.filter((badge) => badge.memberId !== memberId),
@@ -2722,7 +4040,7 @@ export function GroupChatSessionScreen({
       return;
     }
 
-    const currentColors = group.memberBubbleColors || [];
+    const currentColors = currentMemberBubbleColors;
     const nextColors = color
       ? [
           ...currentColors.filter((item) => item.memberId !== memberId),
@@ -2780,6 +4098,14 @@ export function GroupChatSessionScreen({
       return 'task' as const;
     }
 
+    if (message.groupGovernanceCard) {
+      return 'governance' as const;
+    }
+
+    if (message.groupOfflineCard) {
+      return 'offline' as const;
+    }
+
     if (message.isSystem || content.startsWith('[notice]')) {
       return 'notice' as const;
     }
@@ -2812,8 +4138,8 @@ export function GroupChatSessionScreen({
     currentMessage: ChatMessage;
     currentContent: string;
     streakIndex: number;
-    previousVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task';
-    currentVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task';
+    previousVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
+    currentVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
   }) => {
     const {
       previousMessage,
@@ -3197,6 +4523,163 @@ export function GroupChatSessionScreen({
                         );
                       })}
                     </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (visualKind === 'governance' && msg.groupGovernanceCard) {
+            const governanceCard = msg.groupGovernanceCard;
+            const governanceStatusLabel = governanceCard.status === 'approved'
+              ? '已通过'
+              : governanceCard.status === 'rejected'
+                ? '已驳回'
+                : governanceCard.status === 'expired'
+                  ? '已过期'
+                : '待处理';
+            const statusToneClassName = governanceCard.status === 'approved'
+              ? 'bg-emerald-50 text-emerald-700'
+              : governanceCard.status === 'rejected'
+                ? 'bg-rose-50 text-rose-700'
+                : governanceCard.status === 'expired'
+                  ? 'bg-zinc-100 text-zinc-600'
+                : 'bg-amber-50 text-amber-700';
+            const isJoinRequest = governanceCard.kind === 'join-request';
+            const title = isJoinRequest
+              ? `${governanceCard.targetMemberName} 的入群申请`
+              : `${governanceCard.nomineeName} 的管理员提名`;
+            const subtitle = isJoinRequest
+              ? `${governanceCard.proposedByName} 发起 · 等待群主处理`
+              : `${governanceCard.proposedByName} 发起 · 等待群主任命`;
+
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="w-full max-w-[88%] rounded-[24px] border border-zinc-200 bg-white/92 px-4 py-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                      {isJoinRequest ? '入群申请' : '管理员提名'}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[16px] font-semibold text-zinc-900">{title}</div>
+                      <div className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${statusToneClassName}`}>
+                        {governanceStatusLabel}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[12px] text-zinc-500">{subtitle}</div>
+                    {governanceCard.status !== 'pending' ? (
+                      <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3 py-3 text-[12px] leading-5 text-zinc-600">
+                        {governanceCard.status === 'expired'
+                          ? `系统于 ${formatChatDividerTime(governanceCard.resolvedAt || msg.timestamp)} 标记为过期`
+                          : `${governanceCard.resolvedByName || '群主'} 于 ${formatChatDividerTime(governanceCard.resolvedAt || msg.timestamp)} ${governanceCard.status === 'approved' ? '通过' : '驳回'}`}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3 py-3 text-[12px] leading-5 text-zinc-600">
+                        {canCurrentUserApproveGovernance
+                          ? '你可以直接在这里通过或驳回。'
+                          : '等待群主在聊天里处理。'}
+                      </div>
+                    )}
+                    {governanceCard.status === 'pending' && canCurrentUserApproveGovernance ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isJoinRequest) {
+                              void handleResolveJoinRequest(msg.timestamp, 'approved');
+                              return;
+                            }
+                            void handleResolveAdminNomination(msg.timestamp, 'approved');
+                          }}
+                          className="rounded-full bg-emerald-50 px-3 py-1.5 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                        >
+                          {isJoinRequest ? '通过申请' : '确认任命'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isJoinRequest) {
+                              void handleResolveJoinRequest(msg.timestamp, 'rejected');
+                              return;
+                            }
+                            void handleResolveAdminNomination(msg.timestamp, 'rejected');
+                          }}
+                          className="rounded-full bg-rose-50 px-3 py-1.5 text-[12px] font-medium text-rose-700 transition-colors hover:bg-rose-100"
+                        >
+                          {isJoinRequest ? '驳回申请' : '驳回提名'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (visualKind === 'offline' && msg.groupOfflineCard) {
+            const offlineCard = msg.groupOfflineCard;
+            const offlineStatus = offlineCard.status === 'ended' ? '已结束' : '进行中';
+
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="w-full max-w-[88%] overflow-hidden rounded-[28px] border border-white/34 bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(255,255,255,0.14))] px-4 py-4 shadow-[0_22px_54px_rgba(15,23,42,0.24),inset_0_1px_0_rgba(255,255,255,0.3)] backdrop-blur-[22px]">
+                    <div className="mb-1 flex items-start justify-between gap-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500/84">群线下</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistory((prev) => prev.filter((item) => item.timestamp !== msg.timestamp));
+                        }}
+                        className="rounded-full border border-white/22 bg-white/10 p-1 text-zinc-500/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-white/18 hover:text-zinc-700"
+                        aria-label="删除群线下卡片"
+                        title="删除"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[17px] font-semibold text-zinc-950/92">{offlineCard.title}</div>
+                      <div className="rounded-full border border-white/28 bg-white/16 px-2.5 py-1 text-[11px] text-zinc-700/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md">
+                        {offlineStatus}
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-2 text-[13px] leading-6 text-zinc-800/88">
+                      <div><span className="mr-2 text-zinc-500/86">时间</span>{offlineCard.timeLabel}</div>
+                      <div><span className="mr-2 text-zinc-500/86">地点</span>{offlineCard.locationLabel}</div>
+                      {offlineCard.weatherLabel ? <div><span className="mr-2 text-zinc-500/86">天气</span>{offlineCard.weatherLabel}</div> : null}
+                      <div><span className="mr-2 text-zinc-500/86">在场</span>{offlineCard.participantLabels.join('、')}</div>
+                      {offlineCard.roundLabel ? <div><span className="mr-2 text-zinc-500/86">进度</span>{offlineCard.roundLabel}</div> : null}
+                      {offlineCard.objectiveLabel ? <div><span className="mr-2 text-zinc-500/86">备注</span>{offlineCard.objectiveLabel}</div> : null}
+                    </div>
+                    {offlineCard.summaryLines && offlineCard.summaryLines.length > 0 ? (
+                      <div className="mt-4 rounded-[22px] border border-white/26 bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0.08))] px-3 py-3 text-[13px] leading-6 text-zinc-800/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-[18px]">
+                        {offlineCard.summaryLines.map((line, index) => (
+                          <div key={`${offlineCard.sessionId}-summary-${index}`}>{line}</div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {offlineCard.soundtrack ? (
+                      <div className="mt-4 rounded-[22px] border border-white/26 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.07))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[18px]">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500/82">场景歌曲</div>
+                        <div className="mt-1 text-[14px] font-semibold text-zinc-950/92">{offlineCard.soundtrack.title}</div>
+                        <div className="mt-0.5 text-[12px] text-zinc-600/88">{offlineCard.soundtrack.artist}</div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3745,7 +5228,13 @@ export function GroupChatSessionScreen({
           ) : (
             <button
               onClick={() => {
-                setShowFunPanel(!showFunPanel);
+                setShowFunPanel((previous) => {
+                  const next = !previous;
+                  if (!next) {
+                    setActiveGroupFeatureComposer(null);
+                  }
+                  return next;
+                });
                 if (showEmojiPanel) setShowEmojiPanel(false);
               }}
               className={`chat-footer-plus-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
@@ -3872,12 +5361,22 @@ export function GroupChatSessionScreen({
                 groupPollOptionsDraft={groupPollOptionsDraft}
                 groupRelayTopicDraft={groupRelayTopicDraft}
                 groupTaskPromptDraft={groupTaskPromptDraft}
+                canLaunchManagedFeatures={canCurrentUserLaunchManagedFeatures}
+                managedFeaturePermissionHint={managedFeaturePermissionHint}
                 onOpenImagePicker={() => fileInputRef.current?.click()}
                 onOpenLocationPicker={() => {
                   setShowLocationPicker(true);
+                  setActiveGroupFeatureComposer(null);
                   setShowFunPanel(false);
                 }}
-                onSelectFeature={(feature) => setActiveGroupFeatureComposer(feature)}
+                onOpenGroupOffline={handleOpenGroupOffline}
+                onSelectFeature={(feature) => {
+                  if (!canCurrentUserLaunchManagedFeatures) {
+                    window.alert(managedFeaturePermissionHint);
+                    return;
+                  }
+                  setActiveGroupFeatureComposer(feature);
+                }}
                 onCancelFeature={() => setActiveGroupFeatureComposer(null)}
                 onGroupPollTitleChange={setGroupPollTitleDraft}
                 onGroupPollOptionsChange={setGroupPollOptionsDraft}
@@ -3889,6 +5388,7 @@ export function GroupChatSessionScreen({
               />
             )}
           </AnimatePresence>
+
           <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
         </div>
       </div>
@@ -3917,6 +5417,83 @@ export function GroupChatSessionScreen({
         onSend={sendLocationMessage}
       />
 
+      <GroupOfflineModal
+        isOpen={showOfflineModal}
+        group={group}
+        members={members}
+        inviteableCharacters={inviteableCharacters}
+        userName={groupUserDisplayName}
+        activeConfig={activeConfig || null}
+        activeWorldBooks={activeGroupWorldBooks}
+        history={history}
+        directChatHistory={directChatHistory}
+        perception={perception}
+        initialSession={group.activeOfflineSession || null}
+        onClose={() => setShowOfflineModal(false)}
+        onSessionStart={(session, startMessage) => {
+          onUpdateGroup({ activeOfflineSession: session });
+          setHistory((prev) => [...prev, startMessage]);
+        }}
+        onSessionUpdate={(nextSession) => {
+          onUpdateGroup({ activeOfflineSession: nextSession });
+        }}
+        onSessionComplete={({ archivedSession, endMessage, followupMessages }) => {
+          onUpdateGroup({
+            activeOfflineSession: null,
+            currentScene: archivedSession.location,
+          });
+          setHistory((prev) => [...prev, endMessage, ...followupMessages]);
+          void (async () => {
+            const participantMembers = groupCharacterPool.filter((member) => (
+              archivedSession.participants.some((participant) => participant.characterId === member.id)
+            ));
+            if (participantMembers.length === 0) {
+              return;
+            }
+
+            try {
+              const results = await persistSceneSettlementBatch(
+                participantMembers.map((member) => ({
+                  characterId: member.id,
+                  sourceScene: 'group_offline',
+                  sourceSessionType: 'group',
+                  sourceSessionId: archivedSession.id,
+                  settlement: buildGroupOfflineSharedSettlement(member, archivedSession),
+                  timestamp: archivedSession.endedAt || Date.now(),
+                })),
+              );
+
+              results.forEach((result, index) => {
+                const member = participantMembers[index];
+                if (!member) return;
+                patchCharacter(member.id, result.characterPatch);
+              });
+
+              const groupShortTermSummary = archivedSession.summaryCard?.lines
+                ?.map((line) => line.trim())
+                .filter(Boolean)
+                .join('\n');
+              const groupMemberPerspectiveSummaries = Object.fromEntries(
+                participantMembers.map((member, index) => {
+                  const result = results[index];
+                  return [member.id, result?.characterPatch.shortTermSummary || ''] as const;
+                })
+                  .filter((entry) => entry[1].trim().length > 0),
+              );
+
+              onUpdateGroup({
+                ...(groupShortTermSummary ? { groupShortTermSummary } : {}),
+                ...(Object.keys(groupMemberPerspectiveSummaries).length > 0
+                  ? { groupMemberPerspectiveSummaries }
+                  : {}),
+              });
+            } catch (error) {
+              console.error('[group-chat] Failed to persist group offline settlement memory snapshots', error);
+            }
+          })();
+        }}
+      />
+
       <AnimatePresence>
         {showGroupSettings && (
           <>
@@ -3931,6 +5508,9 @@ export function GroupChatSessionScreen({
                 groupName={groupDisplayName}
                 formState={groupSettingsForm}
                 actingRole={actingRole}
+                canEditNotice={canCurrentUserEditGroupNotice}
+                noticePermissionHint={groupNoticePermissionHint}
+                canManageDynamicPermissions={canCurrentUserManageDynamicPermissions}
                 memberCount={participantCount}
                 members={groupSettingsMembers}
                 inviteCandidates={groupSettingsInviteCandidates}
@@ -3949,8 +5529,13 @@ export function GroupChatSessionScreen({
                   setHighlightedMessageTarget(target);
                 }}
                 onInviteMember={handleInviteMember}
+                onRevealGroupToMember={handleRevealGroupToMember}
                 onRemoveMember={handleRemoveMember}
                 onToggleAdmin={handleToggleAdmin}
+                onAssignDutyAdmin={handleAssignDutyAdmin}
+                onClearDutyAdmin={handleClearDutyAdmin}
+                onGrantTemporaryPermission={handleGrantTemporaryPermission}
+                onRevokeTemporaryPermission={handleRevokeTemporaryPermission}
                 onUpdateBadge={handleUpdateBadge}
                 onUpdateBubbleColor={handleUpdateBubbleColor}
                 resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
@@ -3958,8 +5543,10 @@ export function GroupChatSessionScreen({
                   getCharacterById,
                 })}
                 isInvitingMember={isInvitingMember}
+                isRevealingGroup={isRevealingGroup}
                 isRemovingMember={isRemovingMember}
                 isUpdatingAdmin={isUpdatingAdmin}
+                isUpdatingDynamicPermissions={isUpdatingDynamicPermissions}
                 isUpdatingBadge={isUpdatingBadge}
                 onClearHistory={() => {
                   if (!window.confirm('确认清空当前群聊记录吗？')) return;

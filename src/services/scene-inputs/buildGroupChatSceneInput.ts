@@ -1,5 +1,7 @@
 import type { Character, ChatGroup, ChatHistory, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
+import { buildGroupWorldBookRetrievalOptions, extractGroupWorldBookRecallText } from '../../features/group-world-book/groupWorldBookRetrieval';
+import { getGroupRoleLabel, resolveGroupMemberRole } from '../../features/group-settings/groupRoles';
 import { buildPublicPersonaGuide } from '../ai/prompts/character/buildPublicPersonaGuide';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
@@ -46,6 +48,9 @@ export type GroupChatSceneInput = {
     groupLongTermAtmosphere?: string;
     groupRecurringDynamics?: string;
     groupSharedHistory?: string;
+    speakerStructuralGroupRole?: string;
+    userStructuralGroupRole?: string;
+    groupManagementSummary?: string;
     speakerLongTermGroupRole?: string;
     backgroundSummary?: string;
     memberRelationshipState?: string;
@@ -305,6 +310,47 @@ function getMemberRelationshipStateLabel(value: ChatGroup['memberRelationshipSta
   return undefined;
 }
 
+function getGroupParticipantDisplayName(memberId: string, members: Character[], userName: string): string {
+  if (memberId === 'user') {
+    return userName.trim() || '用户';
+  }
+
+  const matchedMember = members.find((member) => member.id === memberId);
+  return matchedMember?.remarkName?.trim() || matchedMember?.name || memberId;
+}
+
+function getStructuralGroupRoleLabel(group: ChatGroup | undefined, memberId: string): string | undefined {
+  if (!group) {
+    return undefined;
+  }
+
+  const roleLabel = getGroupRoleLabel(resolveGroupMemberRole(group, memberId));
+  return roleLabel === '普通成员' ? undefined : roleLabel;
+}
+
+function buildGroupManagementSummary(
+  group: ChatGroup | undefined,
+  members: Character[],
+  userName: string,
+): string | undefined {
+  if (!group) {
+    return undefined;
+  }
+
+  const ownerName = getGroupParticipantDisplayName(group.creatorId, members, userName);
+  const adminNames = Array.from(new Set(
+    (group.adminIds || [])
+      .map((memberId) => getGroupParticipantDisplayName(memberId, members, userName))
+      .filter((name) => name && name !== ownerName),
+  ));
+  const summaryLines = [
+    ownerName ? `群主：${ownerName}` : '',
+    adminNames.length > 0 ? `管理员：${adminNames.join('、')}` : '',
+  ].filter(Boolean);
+
+  return summaryLines.length > 0 ? summaryLines.join('；') : undefined;
+}
+
 function buildPeerAwareness(
   speaker: Character,
   members: Character[],
@@ -432,35 +478,10 @@ function buildHistoryTranscript(history: ChatMessage[], userName: string): strin
     .join('\n');
 }
 
-function extractGroupRecallText(message: ChatMessage): string {
-  const text = message.text?.trim();
-  return text ? text : '';
-}
-
-function buildGroupWorldBookRetrievalOptions(history: ChatMessage[]) {
-  const recentText = history
-    .map(extractGroupRecallText)
-    .filter(Boolean)
-    .slice(-8);
-
-  const latestUserText = [...history]
-    .reverse()
-    .find((message) => message.role === 'user' && extractGroupRecallText(message))?.text?.trim();
-  const latestConversationText = [...history]
-    .reverse()
-    .map(extractGroupRecallText)
-    .find(Boolean);
-
-  return {
-    query: latestUserText || latestConversationText,
-    recentText,
-  };
-}
-
 function buildRecentGroupTranscriptQueryText(history: ChatMessage[], limit = 6): string | undefined {
   const transcript = history
     .slice(-limit)
-    .map((message) => extractGroupRecallText(message))
+    .map((message) => extractGroupWorldBookRecallText(message))
     .filter(Boolean)
     .join(' ');
 
@@ -555,10 +576,12 @@ export function buildGroupChatSceneInput(
 ): GroupChatSceneInput {
   const mode = options.mode ?? 'reply';
   const groupStage = options.group?.groupStage ?? 'new';
-  const worldBookRetrievalOptions = buildGroupWorldBookRetrievalOptions(options.history);
+  const worldBookRetrievalOptions = buildGroupWorldBookRetrievalOptions({
+    history: options.history,
+  });
   const latestGroupUserText = [...options.history]
     .reverse()
-    .find((message) => message.role === 'user' && extractGroupRecallText(message))
+    .find((message) => message.role === 'user' && extractGroupWorldBookRecallText(message))
     ?.text
     ?.trim();
   const characterContext = buildCharacterContext({
@@ -737,6 +760,9 @@ export function buildGroupChatSceneInput(
       groupLongTermAtmosphere: options.group?.groupLongTermMemory?.atmosphere?.trim() || undefined,
       groupRecurringDynamics: options.group?.groupLongTermMemory?.recurringDynamics?.trim() || undefined,
       groupSharedHistory: options.group?.groupLongTermMemory?.sharedHistory?.trim() || undefined,
+      speakerStructuralGroupRole: getStructuralGroupRoleLabel(options.group, options.speaker.id),
+      userStructuralGroupRole: getStructuralGroupRoleLabel(options.group, 'user'),
+      groupManagementSummary: buildGroupManagementSummary(options.group, options.members, options.userName),
       speakerLongTermGroupRole: options.group?.groupLongTermMemory?.memberRoles?.[options.speaker.id]?.trim() || undefined,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,

@@ -30,6 +30,7 @@ import {
   buildRecentMomentVarietyPromptLines,
 } from './momentRecentVariety';
 import { buildMomentPublishedSettlement } from './buildMomentPublishedSettlement';
+import { buildMomentExposureAwarenessPatches } from '../../features/group-settings/groupAwarenessPropagation';
 import { generateMomentPostContent } from './generators';
 import {
   canCharacterAutoCommentOnMoment,
@@ -343,21 +344,39 @@ export async function publishGeneratedCharacterMomentToFeed(
   });
   const settlementPatch = buildSceneSettlementCharacterPatch(settlement);
 
-  setAppData((prev) => ({
-    ...prev,
-    characters: prev.characters.map((character) => (
-      character.id !== payload.authorId
-        ? character
-        : {
-            ...character,
-            sharedContextSnapshots: settlementPatch.sharedContextSnapshots,
-            shortTermSummary: settlementPatch.shortTermSummary ?? character.shortTermSummary,
-            openLoopRegistry: settlementPatch.openLoopRegistry ?? character.openLoopRegistry,
-            sharedState: settlementPatch.sharedState ?? character.sharedState,
-          }
-    )),
-    moments: [newMoment, ...(prev.moments || [])],
-  }));
+  setAppData((prev) => {
+    const exposurePatches = buildMomentExposureAwarenessPatches({
+      moment: newMoment,
+      characters: prev.characters,
+      chatGroups: prev.chatGroups || [],
+      now: newMoment.timestamp,
+    });
+    const patchByGroupId = new Map(
+      exposurePatches.map((patch) => [patch.groupId, patch.awarenessEntries] as const),
+    );
+
+    return {
+      ...prev,
+      characters: prev.characters.map((character) => {
+        if (character.id !== payload.authorId) {
+          return character;
+        }
+
+        return {
+          ...character,
+          sharedContextSnapshots: settlementPatch.sharedContextSnapshots,
+          shortTermSummary: settlementPatch.shortTermSummary ?? character.shortTermSummary,
+          openLoopRegistry: settlementPatch.openLoopRegistry ?? character.openLoopRegistry,
+          sharedState: settlementPatch.sharedState ?? character.sharedState,
+        };
+      }),
+      chatGroups: (prev.chatGroups || []).map((group) => {
+        const awarenessEntries = patchByGroupId.get(group.id);
+        return awarenessEntries ? { ...group, awarenessEntries } : group;
+      }),
+      moments: [newMoment, ...(prev.moments || [])],
+    };
+  });
 
   try {
     await persistSceneSettlement({
