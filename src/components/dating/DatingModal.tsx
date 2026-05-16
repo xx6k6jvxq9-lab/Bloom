@@ -24,6 +24,7 @@ import type {
   DateWritingReference,
   DateSession,
   DateWritingPreset,
+  Mask,
   PerceptionSettings,
   UserProfileExtended,
   WorldBookEntry,
@@ -43,6 +44,7 @@ interface DatingModalProps {
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
   chatHistory: ChatMessage[];
+  masks?: Mask[];
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   onSaveDate: (session: DateSession) => void;
@@ -134,6 +136,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   userProfile,
   activeConfig,
   chatHistory,
+  masks = [],
   worldBooks,
   perception,
   onSaveDate,
@@ -149,6 +152,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const [localBackground, setLocalBackground] = useState('');
   const [activeSceneSession, setActiveSceneSession] = useState<RecoverableDateSession | null>(null);
   const [sceneStartToken, setSceneStartToken] = useState(0);
+  const [directorLaunchToken, setDirectorLaunchToken] = useState(0);
+  const [initialDirectorSection, setInitialDirectorSection] = useState<'instruction' | undefined>(undefined);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [narrativePerspective, setNarrativePerspective] = useState<DateNarrativePerspective>('default');
   const [writingPreset, setWritingPreset] = useState<DateWritingPreset>('default');
@@ -188,6 +193,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
       wasOpenRef.current = false;
       setActiveSceneSession(null);
       setSceneStartToken(0);
+      setDirectorLaunchToken(0);
+      setInitialDirectorSection(undefined);
       resetDatingScenePresentation();
       return;
     }
@@ -256,6 +263,10 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   );
   const { resolvedUrl: resolvedPreviewBackgroundUrl } = useResolvedPersistentValue(resolvedBackground.image);
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
+  const activeMask = useMemo(
+    () => masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id)) || null,
+    [character.id, masks],
+  );
 
   const resolveSessionAccent = () => {
     const normalizedCustomAccent = normalizeHexColor(customAccentColor);
@@ -272,7 +283,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     return normalizedExistingAccent;
   };
 
-  const buildSession = (): RecoverableDateSession => ({
+  const buildSession = (overrides: Partial<RecoverableDateSession> = {}): RecoverableDateSession => ({
     id: initialSession?.id || Date.now().toString(),
     characterId: character.id,
     location,
@@ -284,6 +295,11 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     dialogueFormat,
     descriptionDensity,
     writingStyleCustom: writingStyleCustom.trim(),
+    relationshipStageOverride: recoverableInitialSession?.relationshipStageOverride,
+    allowAdultIntimacy: recoverableInitialSession?.allowAdultIntimacy,
+    highlightTextColor: recoverableInitialSession?.highlightTextColor,
+    bodyTextColor: recoverableInitialSession?.bodyTextColor,
+    directorInstruction: recoverableInitialSession?.directorInstruction,
     accentColorMode,
     accentColor: resolveSessionAccent(),
     backgroundScene: '',
@@ -295,6 +311,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     status: recoverableInitialSession?.status || 'active',
     endedAt: recoverableInitialSession?.endedAt,
     isSaved: recoverableInitialSession?.isSaved || false,
+    ...overrides,
   });
 
   const resetBackgroundInputs = () => {
@@ -321,6 +338,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     setShowMenu(false);
     setActiveSceneSession(null);
     setSceneStartToken(0);
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
   };
 
   const handleSaveAndExit = () => {
@@ -334,6 +353,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     setShowMenu(false);
     setActiveSceneSession(null);
     setSceneStartToken(0);
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
     onClose();
   };
 
@@ -354,6 +375,26 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     setShowMenu(false);
     setActiveSceneSession(nextSession);
     setSceneStartToken(Date.now());
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
+  };
+
+  const handleOpenSideStoryWorkbench = () => {
+    const nextSession: RecoverableDateSession = {
+      ...buildSession({
+        location: location.trim() || recoverableInitialSession?.location || '留白场景',
+        scenario: scenario.trim() || '番外模式',
+        mood: customMood.trim() || mood || '自由',
+      }),
+      isSaved: false,
+      status: 'active',
+      endedAt: undefined,
+    };
+    setShowMenu(false);
+    setActiveSceneSession(nextSession);
+    setSceneStartToken(0);
+    setInitialDirectorSection('instruction');
+    setDirectorLaunchToken(Date.now());
   };
 
   const handleLocalBackgroundChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -376,10 +417,13 @@ export const DatingModal: React.FC<DatingModalProps> = ({
             <DatingScene
               session={activeSceneSession}
               startToken={sceneStartToken}
+              directorLaunchToken={directorLaunchToken}
+              initialDirectorSection={initialDirectorSection}
               character={character}
               userProfile={userProfile}
               activeConfig={activeConfig}
               chatHistory={chatHistory}
+              activeMask={activeMask}
               worldBooks={worldBooks}
               perception={perception}
               onBackToPlanner={handleDirectExit}
@@ -489,7 +533,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                     <div className="min-w-0 flex-1">
                       <h3 className="text-[16px] font-semibold text-zinc-900">{character.name}</h3>
                       <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-zinc-500">
-                        {character.signature || buildCharacterContext({ character }).corePersona || '给这次约会先定下一个适合你们的开场。'}
+                        {character.signature || buildCharacterContext({ character, activeMask }).corePersona || '给这次约会先定下一个适合你们的开场。'}
                       </p>
                     </div>
                   </div>
@@ -757,6 +801,24 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                   ) : null}
                 </section>
 
+                <section className="rounded-[18px] border border-zinc-200 bg-white px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[14px] font-semibold text-zinc-900">番外入口</div>
+                      <div className="mt-1 text-[12px] leading-5 text-zinc-500">
+                        先进入约会页，不立即生成。会直接打开导演台的“指令”标签，等你输入番外要求后再生成。
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenSideStoryWorkbench}
+                      className="shrink-0 rounded-[14px] border border-zinc-200 bg-zinc-100 px-3.5 py-2 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+                    >
+                      进入
+                    </button>
+                  </div>
+                </section>
+
                 <section className="border-t border-zinc-200/80 pt-4">
                   <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-zinc-700">
                     <ImagePlus size={16} className="text-zinc-400" />
@@ -819,18 +881,27 @@ export const DatingModal: React.FC<DatingModalProps> = ({
             </div>
 
             <div className="absolute inset-x-0 bottom-0 border-t border-zinc-200/70 bg-white/95 px-4 py-3 backdrop-blur-sm">
-              <button
-                type="button"
-                onClick={handleConfirmPlan}
-                disabled={!location.trim() || !scenario.trim()}
-                className={`h-12 w-full rounded-[16px] text-[15px] font-semibold transition-all ${
-                  location.trim() && scenario.trim()
-                    ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-200'
-                    : 'bg-zinc-200 text-zinc-400'
-                }`}
-              >
-                开始约会
-              </button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleOpenSideStoryWorkbench}
+                  className="h-12 w-full rounded-[16px] border border-zinc-200 bg-white text-[15px] font-semibold text-zinc-900 shadow-sm transition-all hover:bg-zinc-50"
+                >
+                  番外入口
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmPlan}
+                  disabled={!location.trim() || !scenario.trim()}
+                  className={`h-12 w-full rounded-[16px] text-[15px] font-semibold transition-all ${
+                    location.trim() && scenario.trim()
+                      ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-200'
+                      : 'bg-zinc-200 text-zinc-400'
+                  }`}
+                >
+                  开始约会
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

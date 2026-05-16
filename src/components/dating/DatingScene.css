@@ -235,7 +235,56 @@
 }
 
 .dating-scene__scene-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-bottom: 10px;
+}
+
+.dating-scene__scene-header-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.dating-scene__scene-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dating-scene__scene-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 250, 255, 0.94);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dating-scene__scene-tool--primary {
+  background: var(--dating-accent-soft, rgba(146, 235, 242, 0.16));
+  color: var(--dating-accent, #ffffff);
+  border-color: var(--dating-accent-strong, rgba(146, 235, 242, 0.26));
+}
+
+.dating-scene__scene-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 236, 194, 0.14);
+  color: #ffe8ab;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .dating-scene__scene-title {
@@ -252,7 +301,7 @@
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.45;
-  color: rgba(240, 243, 255, 0.9);
+  color: var(--dating-body-text-soft, rgba(240, 243, 255, 0.9));
   text-shadow:
     0 1px 4px rgba(0, 0, 0, 0.34),
     0 6px 16px rgba(0, 0, 0, 0.24);
@@ -264,10 +313,75 @@
   gap: 11px;
   font-size: 15px;
   line-height: 1.92;
-  color: rgba(250, 251, 255, 0.98);
+  color: var(--dating-body-text, rgba(250, 251, 255, 0.98));
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 0.58),
     0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.dating-scene__page-episode {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dating-scene__page-frame {
+  width: min(100%, 390px);
+  min-height: 560px;
+  align-self: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.dating-scene__page-caption {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(247, 249, 255, 0.82);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dating-scene__page-story-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dating-scene__page-story-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(247, 249, 255, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dating-scene__page-story {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 2px;
+  border-radius: 22px;
+  background: rgba(7, 10, 16, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dating-scene__page-story-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(247, 249, 255, 0.68);
+  text-transform: uppercase;
 }
 
 .dating-scene__segment {
@@ -276,15 +390,46 @@
 }
 
 .dating-scene__segment--dialogue {
-  color: var(--dating-accent, #92ebf2);
+  color: var(--dating-highlight-text, var(--dating-accent, #92ebf2));
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 0.62),
-    0 0 18px var(--dating-accent-glow, rgba(146, 235, 242, 0.45));
+    0 0 18px var(--dating-highlight-glow, rgba(146, 235, 242, 0.45));
   font-weight: 600;
 }
 
 .dating-scene__segment--placeholder {
   color: rgba(241, 244, 255, 0.68);
+}
+
+.dating-scene__segment--edited {
+  color: rgba(250, 251, 255, 0.98);
+}
+
+.dating-scene__scene-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dating-scene__scene-textarea {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(8, 10, 16, 0.68);
+  color: rgba(250, 251, 255, 0.98);
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.72;
+  resize: vertical;
+  outline: none;
+}
+
+.dating-scene__scene-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dating-scene__folds {
@@ -322,7 +467,7 @@
   padding-left: 22px;
   font-size: 12px;
   line-height: 1.8;
-  color: rgba(236, 240, 255, 0.9);
+  color: var(--dating-body-text-soft, rgba(236, 240, 255, 0.9));
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.32);
 }
 
@@ -545,6 +690,180 @@ html[data-android='true'] .dating-scene__composer-wrap::after {
 
 .dating-scene__send:disabled {
   opacity: 0.55;
+}
+
+.dating-scene__director-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(2px);
+}
+
+.dating-scene__director-sheet {
+  width: 100%;
+  border-radius: 28px 28px 0 0;
+  background: rgba(248, 248, 248, 0.98);
+  color: #17181d;
+  padding: 18px 16px calc(var(--app-safe-area-bottom-full, env(safe-area-inset-bottom)) + 14px);
+  box-shadow: 0 -14px 36px rgba(0, 0, 0, 0.18);
+}
+
+.dating-scene__director-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dating-scene__director-sheet-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #101114;
+}
+
+.dating-scene__director-sheet-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #697083;
+}
+
+.dating-scene__director-option-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5b6172;
+}
+
+.dating-scene__director-option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dating-scene__director-option {
+  min-height: 42px;
+  border: 1px solid rgba(16, 17, 20, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+  color: #313542;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+}
+
+.dating-scene__director-option.is-active {
+  border-color: rgba(16, 17, 20, 0.22);
+  background: rgba(255, 236, 194, 0.46);
+  color: #11131a;
+}
+
+.dating-scene__director-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(16, 17, 20, 0.08);
+  border-radius: 18px;
+  background: #ffffff;
+  text-align: left;
+}
+
+.dating-scene__director-toggle.is-active {
+  background: rgba(255, 236, 194, 0.4);
+  border-color: rgba(16, 17, 20, 0.18);
+}
+
+.dating-scene__director-toggle-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #11131a;
+}
+
+.dating-scene__director-toggle-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #666d7e;
+}
+
+.dating-scene__director-switch {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d5d8e1;
+  padding: 2px;
+  transition: background 0.18s ease;
+}
+
+.dating-scene__director-switch.is-on {
+  background: #11131a;
+}
+
+.dating-scene__director-switch-knob {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: transform 0.18s ease;
+}
+
+.dating-scene__director-switch.is-on .dating-scene__director-switch-knob {
+  transform: translateX(18px);
+}
+
+.dating-scene__director-textarea {
+  width: 100%;
+  min-height: 132px;
+  border: 1px solid rgba(16, 17, 20, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #17181d;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  resize: none;
+  outline: none;
+}
+
+.dating-scene__director-textarea::placeholder {
+  color: #8c92a0;
+}
+
+.dating-scene__director-sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.dating-scene__director-secondary,
+.dating-scene__director-primary {
+  min-height: 40px;
+  border: none;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dating-scene__director-secondary {
+  background: rgba(16, 17, 20, 0.06);
+  color: #3a4050;
+}
+
+.dating-scene__director-primary {
+  background: #11131a;
+  color: #ffffff;
 }
 
 .dating-scene__confirm-backdrop {
@@ -870,17 +1189,17 @@ html[data-android='true'] .dating-scene__composer-wrap::after {
 }
 
 .dating-scene__ending-line--highlight {
-  color: var(--dating-accent, #92ebf2);
+  color: var(--dating-highlight-text, var(--dating-accent, #92ebf2));
   text-shadow:
     0 2px 10px rgba(0, 0, 0, 0.44),
-    0 0 18px var(--dating-accent-glow, rgba(146, 235, 242, 0.45));
+    0 0 18px var(--dating-highlight-glow, rgba(146, 235, 242, 0.45));
 }
 
 .dating-scene__ending-rule {
   width: 0;
   height: 1px;
   margin: 28px 0 20px;
-  background: linear-gradient(90deg, var(--dating-accent-glow, rgba(146, 235, 242, 0.45)), transparent);
+  background: linear-gradient(90deg, var(--dating-highlight-glow, rgba(146, 235, 242, 0.45)), transparent);
   transition: width 0.8s ease;
 }
 

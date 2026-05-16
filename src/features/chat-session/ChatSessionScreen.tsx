@@ -3748,6 +3748,7 @@ export function ChatSessionScreen({
           userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
           activeConfig={datingConfig}
           chatHistory={history}
+          masks={masks}
           worldBooks={worldBook || []}
           perception={perception}
           onSaveDate={onSaveDate || (() => {})}

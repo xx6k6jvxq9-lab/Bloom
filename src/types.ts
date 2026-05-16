@@ -1,4 +1,4 @@
-
+﻿
 import type { ForumThreadType } from './features/forum-domain/types';
 import type { ForumChannel } from './features/forum-domain/types';
 import type { CharacterSharedContextSnapshot } from './services/relationship-context/types';
@@ -830,6 +830,283 @@ export type GroupTaskCard = {
   entries: GroupTaskEntry[];
 };
 
+export type GroupOfflineMode = 'daily' | 'scenario' | 'random';
+export type GroupOfflineGenerationMode = 'blocks' | 'ensemble' | 'single' | 'pair' | 'group';
+export type GroupOfflineRoundDispatchMode = 'recommend' | 'random' | 'manual' | 'continue';
+export type GroupOfflineStylePresetId = 'jjwxc' | 'haitang' | 'yanyan' | 'fanqie' | 'qidian';
+
+export type GroupOfflineParticipantPresence =
+  | 'arrived'
+  | 'en_route'
+  | 'late'
+  | 'left'
+  | 'added_midway'
+  | 'pending';
+
+export type GroupOfflineParticipant = {
+  characterId: string;
+  joinedAt: number;
+  presence: GroupOfflineParticipantPresence;
+  isTemporary?: boolean;
+  note?: string;
+};
+
+export type GroupOfflineTargetRef = {
+  type: 'user' | 'character' | 'group' | 'scene';
+  label: string;
+  characterId?: string;
+};
+
+export type GroupOfflineStatusField = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type GroupOfflineSoundtrack = {
+  title: string;
+  artist: string;
+  note: string;
+};
+
+export type GroupOfflineParticipantSoundtrack = {
+  characterId: string;
+  characterName: string;
+  title: string;
+  artist: string;
+  note: string;
+};
+
+export type GroupOfflineAftereffectItem = {
+  sourceLabel: string;
+  actionText: string;
+  residueText: string;
+};
+
+export type GroupOfflineAftereffects = {
+  searches: string[];
+  items: GroupOfflineAftereffectItem[];
+};
+
+export type GroupOfflineMemoryPanel = {
+  shortTerm: string[];
+  longTerm: string[];
+};
+
+export type GroupOfflineSceneLine = {
+  id: string;
+  speakerId?: string;
+  speakerLabel?: string;
+  target?: GroupOfflineTargetRef;
+  text: string;
+  highlightText?: string;
+};
+
+export type GroupOfflineCharacterBlock = {
+  characterId: string;
+  summary: string;
+  target?: GroupOfflineTargetRef;
+  statusFields: GroupOfflineStatusField[];
+};
+
+export type GroupOfflineRoundCharacterEntry = {
+  characterId: string;
+  speakerLabel: string;
+  target?: GroupOfflineTargetRef;
+  text: string;
+  highlightText?: string;
+  recommendedSong?: GroupOfflineSoundtrack;
+  statusFields: GroupOfflineStatusField[];
+  notebook?: string;
+  aftereffects?: GroupOfflineAftereffects;
+  memoryPanel?: GroupOfflineMemoryPanel;
+  lastOperation?: 'generated' | 'retried' | 'polished' | 'edited';
+};
+
+export type GroupOfflineRoundRuntimeProjectionSnapshot = {
+  userName: string;
+  groupName: string;
+  groupSummary: {
+    groupShortTermSummary?: string;
+    groupLongTermAtmosphere?: string;
+    groupRecurringDynamics?: string;
+    groupSharedHistory?: string;
+    backgroundSummary?: string;
+    memberRelationshipState?: string;
+    currentScene?: string;
+    publicFacts?: string;
+  };
+  characters: Array<{
+    identity: {
+      characterId: string;
+      name: string;
+      displayName: string;
+      remarkName?: string;
+      avatar?: string;
+      avatarCandidates: string[];
+      signature?: string;
+      openingRemark?: string;
+    };
+    persona: {
+      corePersona?: string;
+      expressionStyle?: string;
+      boundaryPack?: string;
+      extendedLore?: string;
+      sceneHint?: string;
+      worldBookPrompt?: string;
+    };
+    memory: {
+      shortTermSummary?: string;
+      longTermMemoryProfile?: string;
+      sharedCharacterStatePrompt?: string;
+    };
+    userRelation: {
+      relationshipSummary?: string;
+      publicAcquaintanceSummary?: string;
+      sharedRecentRelationshipSummary?: string;
+      relationshipTensionSummary?: string;
+    };
+    peerRelations: Array<{
+      peerCharacterId: string;
+      peerName: string;
+      familiarityLabel?: string;
+      interactionStyleLabel?: string;
+      summary: string;
+    }>;
+    groupState: {
+      groupShortTermSummary?: string;
+      groupMemberPerspectiveSummary?: string;
+      groupLongTermAtmosphere?: string;
+      groupRecurringDynamics?: string;
+      groupSharedHistory?: string;
+      speakerLongTermGroupRole?: string;
+      backgroundSummary?: string;
+      memberRelationshipState?: string;
+      currentScene?: string;
+      publicFacts?: string;
+      topicStatePrompt?: string;
+    };
+    relationshipContextSummary?: string;
+  }>;
+};
+
+export type GroupOfflineRoundPlanSnapshot = {
+  generationMode: 'blocks' | 'ensemble';
+  dispatchMode?: GroupOfflineRoundDispatchMode;
+  selectedCharacterIds: string[];
+  summary: string;
+  characterSteps: Array<{
+    characterId: string;
+    speakerLabel: string;
+    target: GroupOfflineTargetRef;
+  }>;
+};
+
+export type GroupOfflineRound = {
+  id: string;
+  title?: string;
+  sceneText?: string;
+  characterEntries: GroupOfflineRoundCharacterEntry[];
+  generationMode?: GroupOfflineGenerationMode;
+  dispatchMode?: GroupOfflineRoundDispatchMode;
+  selectedCharacterIds?: string[];
+  userMessageText?: string;
+  runtimeProjectionSnapshot?: GroupOfflineRoundRuntimeProjectionSnapshot;
+  plannerSnapshot?: GroupOfflineRoundPlanSnapshot;
+};
+
+export type GroupOfflineEndingVoice = {
+  characterId: string;
+  characterName: string;
+  text: string;
+};
+
+export type GroupOfflineGeneratedContent = {
+  card: {
+    timeLabel: string;
+    locationLabel: string;
+    weatherLabel: string;
+    participantLabels: string[];
+    objectiveLabel?: string;
+    roundLabel?: string;
+  };
+  intro: string;
+  soundtrack?: GroupOfflineSoundtrack;
+  participantSoundtracks?: GroupOfflineParticipantSoundtrack[];
+  lines: GroupOfflineSceneLine[];
+  characterBlocks: GroupOfflineCharacterBlock[];
+  rounds?: GroupOfflineRound[];
+  endingVoices?: GroupOfflineEndingVoice[];
+};
+
+export type GroupOfflineLiveMessage = {
+  id: string;
+  role: 'user' | 'system';
+  text: string;
+  targetLabel?: string;
+  timestamp: number;
+};
+
+export type GroupOfflineCard = {
+  kind: 'offline';
+  sessionId: string;
+  title: string;
+  createdBy: string;
+  createdAt: number;
+  mode: GroupOfflineMode;
+  status: 'active' | 'ended';
+  locationLabel: string;
+  timeLabel: string;
+  weatherLabel?: string;
+  participantLabels: string[];
+  objectiveLabel?: string;
+  roundLabel?: string;
+  summaryLines?: string[];
+  soundtrack?: GroupOfflineSoundtrack;
+};
+
+export type GroupOfflineSession = {
+  id: string;
+  groupId: string;
+  mode: GroupOfflineMode;
+  generationMode?: GroupOfflineGenerationMode;
+  activityType: string;
+  customActivityType?: string;
+  location: string;
+  scenePrompt?: string;
+  timeLabel: string;
+  weatherLabel: string;
+  vibe: string;
+  highlightColor?: string;
+  bodyTextColor?: string;
+  selectedWorldBookIds?: string[];
+  worldBookHint?: string;
+  backgroundImage?: string;
+  backgroundSource?: 'group-background' | 'url' | 'local-upload';
+  narrativePerspective?: DateNarrativePerspective;
+  writingPreset?: DateWritingPreset;
+  writingReference?: DateWritingReference;
+  dialogueFormat?: DateDialogueFormat;
+  descriptionDensity?: DateDescriptionDensity;
+  writingStyleCustom?: string;
+  maxGeneratedChars?: number;
+  participants: GroupOfflineParticipant[];
+  createdAt: number;
+  updatedAt: number;
+  currentRound: number;
+  roundLimit?: number;
+  generatedContent?: GroupOfflineGeneratedContent;
+  messages: GroupOfflineLiveMessage[];
+  isSaved?: boolean;
+  isCollected?: boolean;
+  summaryCard?: {
+    title: string;
+    lines: string[];
+  };
+  status: 'active' | 'ended';
+  endedAt?: number;
+};
+
 export type ChatMessageContentType =
   | 'text'
   | 'game-card'
@@ -900,6 +1177,7 @@ export type ChatMessage = {
   groupPollCard?: GroupPollCard;
   groupRelayCard?: GroupRelayCard;
   groupTaskCard?: GroupTaskCard;
+  groupOfflineCard?: GroupOfflineCard;
   memorySnapshot?: ChatMemorySnapshot;
   lightInteractionMeta?: LightInteractionMessageMeta;
 };
@@ -1407,6 +1685,7 @@ export type ChatGroup = {
   groupLongTermMemory?: GroupLongTermMemory;
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
+  activeOfflineSession?: GroupOfflineSession | null;
 };
 
 export type CallRecord = {
@@ -1418,7 +1697,106 @@ export type CallRecord = {
   tokens?: number;
 };
 
+export type DatingPageEpisodeType = 'wechat_chat' | 'feed_post' | 'document_page' | 'micro_app' | 'custom_html';
+export type DatingPageEpisodeStatusBarMode = 'auto' | 'hidden' | 'custom';
+export type DatingPageEpisodeCanonMode = 'side_story' | 'mainline';
+export type DatingPageEpisodePlatform =
+  | 'wechat'
+  | 'moments'
+  | 'weibo'
+  | 'xiaohongshu'
+  | 'netease'
+  | 'survey'
+  | 'campus'
+  | 'generic';
+
+export type DatingPageEpisodeStatusBar = {
+  mode?: DatingPageEpisodeStatusBarMode;
+  time?: string;
+  carrier?: string;
+  network?: string;
+  battery?: number;
+};
+
+export type DatingPageEpisodeChatMessage = {
+  id?: string;
+  sender: 'user' | 'character' | 'system';
+  kind?: 'text' | 'timestamp' | 'system' | 'transfer';
+  text?: string;
+  timestampLabel?: string;
+  amountLabel?: string;
+  note?: string;
+};
+
+export type DatingPageEpisodeFeedComment = {
+  id?: string;
+  authorName: string;
+  authorRole?: 'character' | 'user' | 'other';
+  text: string;
+  badge?: string;
+};
+
+export type DatingPageEpisodeFeedItem = {
+  id?: string;
+  authorName: string;
+  authorBadge?: string;
+  handle?: string;
+  bio?: string;
+  headline?: string;
+  sourceLabel?: string;
+  timestampLabel?: string;
+  locationLabel?: string;
+  topics?: string[];
+  body: string;
+  followerCountLabel?: string;
+  followingCountLabel?: string;
+  postCountLabel?: string;
+  likeCountLabel?: string;
+  commentCountLabel?: string;
+  repostCountLabel?: string;
+  comments: DatingPageEpisodeFeedComment[];
+};
+
+export type DatingPageEpisodeFeed = DatingPageEpisodeFeedItem & {
+  items?: DatingPageEpisodeFeedItem[];
+};
+
+export type DatingPageEpisodeDocumentSection = {
+  heading?: string;
+  body: string;
+};
+
+export type DatingPageEpisodeDocument = {
+  title: string;
+  subtitle?: string;
+  intro?: string;
+  sections: DatingPageEpisodeDocumentSection[];
+  primaryActionLabel?: string;
+  secondaryActionLabel?: string;
+};
+
+export type DatingPageEpisode = {
+  pageType: DatingPageEpisodeType;
+  platform?: DatingPageEpisodePlatform;
+  title: string;
+  subtitle?: string;
+  caption?: string;
+  canonMode?: DatingPageEpisodeCanonMode;
+  statusBar?: DatingPageEpisodeStatusBar;
+  htmlDocument?: string;
+  chat?: {
+    headerTitle: string;
+    headerSubtitle?: string;
+    inputPlaceholder?: string;
+    messages: DatingPageEpisodeChatMessage[];
+  };
+  feed?: DatingPageEpisodeFeed;
+  document?: DatingPageEpisodeDocument;
+};
+
 export type DatingGeneratedContent = {
+  mode?: 'scene' | 'page_episode';
+  appliedDirectorInstruction?: string;
   background: {
     source: 'character-avatar' | 'url' | 'local-upload';
     image: string;
@@ -1444,6 +1822,7 @@ export type DatingGeneratedContent = {
     artist: string;
     note?: string;
   }[];
+  pageEpisode?: DatingPageEpisode;
 };
 
 export type DateMessage = {
@@ -1454,6 +1833,7 @@ export type DateMessage = {
   kind?: 'user' | 'scene';
   generatedContent?: DatingGeneratedContent;
   pending?: boolean;
+  isEdited?: boolean;
 };
 
 export type DateNarrativePerspective = 'default' | 'first' | 'second' | 'third';
@@ -1481,6 +1861,7 @@ export type DateDialogueFormat = 'default' | 'quoted' | 'plain';
 export type DateDescriptionDensity = 'default' | 'light' | 'medium' | 'heavy';
 
 export type DateAccentColorMode = 'character' | 'random' | 'custom';
+export type DateRelationshipStageOverride = 'auto' | 'careful' | 'growing' | 'intimate';
 
 export type DateSession = {
   id: string;
@@ -1494,6 +1875,11 @@ export type DateSession = {
   dialogueFormat?: DateDialogueFormat;
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;
+  relationshipStageOverride?: DateRelationshipStageOverride;
+  allowAdultIntimacy?: boolean;
+  highlightTextColor?: string;
+  bodyTextColor?: string;
+  directorInstruction?: string;
   accentColorMode?: DateAccentColorMode;
   accentColor?: string;
   backgroundScene: string;

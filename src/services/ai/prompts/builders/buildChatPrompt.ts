@@ -51,7 +51,7 @@ function resolveDirectReplyRange(config?: BuildChatPromptOptions['directReplyCon
   return { minReplies, maxReplies };
 }
 
-function buildDirectChatRhythmPrompt(config?: BuildChatPromptOptions['directReplyConfig']): string {
+export function buildDirectChatRhythmPrompt(config?: BuildChatPromptOptions['directReplyConfig']): string {
   const { minReplies, maxReplies } = resolveDirectReplyRange(config);
   const preferredRangeText = minReplies === maxReplies
     ? `${minReplies} 个短气泡`
@@ -74,7 +74,7 @@ function buildDirectChatRhythmPrompt(config?: BuildChatPromptOptions['directRepl
   ].join('\n');
 }
 
-const buildUserContextSection = (userContext?: BuildChatPromptOptions['userContext']): string => {
+export const buildUserContextSection = (userContext?: BuildChatPromptOptions['userContext']): string => {
   const normalizedUserName = userContext?.userName?.trim();
   if (!normalizedUserName) return '';
 
@@ -103,7 +103,7 @@ function formatTypedResidueLines<T extends { summary: string }>(
   ].join('\n');
 }
 
-const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recentContext']): string => {
+export const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recentContext']): string => {
   const shortTermSummary = recentContext?.shortTermSummary?.trim();
   const publicAcquaintanceSummary = recentContext?.publicAcquaintanceSummary?.trim();
   const typedRelationshipResidue = recentContext?.relationshipResidue || [];

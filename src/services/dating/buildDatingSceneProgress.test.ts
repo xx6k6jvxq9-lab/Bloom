@@ -85,6 +85,6 @@ test('buildDatingSceneProgressSummary compresses current scene progress for shar
   ]);
 
   const summary = buildDatingSceneProgressSummary(buildDatingSceneProgress(session));
-  assert.match(summary, /当前阶段/);
+  assert.match(summary, /本轮推进阶段/);
   assert.match(summary, /最近推进/);
 });

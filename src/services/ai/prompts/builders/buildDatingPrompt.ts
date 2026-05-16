@@ -1,5 +1,7 @@
 import type { DatingSceneInput } from '../../../scene-inputs/buildDatingSceneInput';
 import { DATING_SCENARIO_PROMPT } from '../scenarios/dating';
+import { buildCharacterCoreSection } from '../character/characterCore';
+import { buildPageEpisodePrompt } from './buildPageEpisodePrompt';
 
 type BuildDatingPromptOptions = {
   sceneInput: DatingSceneInput;
@@ -77,17 +79,30 @@ function buildDatingStyleOverridePrompt(sceneInput: DatingSceneInput): string {
 }
 
 export function buildDatingPrompt({ sceneInput }: BuildDatingPromptOptions): string {
-  return [
-    DATING_SCENARIO_PROMPT.trim(),
-    buildDatingStyleOverridePrompt(sceneInput),
+  if (sceneInput.outputMode === 'page_episode') {
+    return buildPageEpisodePrompt({ sceneInput });
+  }
+
+  const characterCoreSection = buildCharacterCoreSection({
+    characterSetting: sceneInput.corePersona || '',
+    signature: sceneInput.signature,
+    openingRemark: sceneInput.openingRemark,
+    personaGuidePrompt: sceneInput.personaGuidePrompt,
+    maskPrompt: sceneInput.maskPrompt,
+    worldBookPrompt: sceneInput.worldBookPrompt,
+    mode: 'narrative_character_speaking',
+  });
+
+  const sharedSections = [
     `角色：${sceneInput.characterName}`,
-    `角色核心人设：${sceneInput.corePersona || '未提供'}`,
-    `角色签名：${sceneInput.signature || '暂无'}`,
+    buildDatingStyleOverridePrompt(sceneInput),
     `用户：${sceneInput.userName}`,
     `本次约会地点：${sceneInput.location || '未提供'}`,
     `本次约会情景：${sceneInput.scenario || '未提供'}`,
     `本次约会氛围：${sceneInput.mood || '未提供'}`,
     sceneInput.backgroundRule,
+    sceneInput.relationshipBaselineBlock,
+    sceneInput.directorInstructionBlock,
     `用户与角色的过往聊天记录（用于延续关系和心理变化）：
 ${sceneInput.pastChatContext || '暂无可用聊天记录。'}`,
     `正式约会内的消息流记录：
@@ -97,6 +112,13 @@ ${sceneInput.datingMessages || '暂无约会内消息。'}`,
     sceneInput.currentGeneratedPlaylist,
     sceneInput.task,
     ...sceneInput.sections,
+  ];
+
+  return [
+    characterCoreSection,
+    DATING_SCENARIO_PROMPT.trim(),
+    sceneInput.pageEpisodeInstructionBlock,
+    ...sharedSections,
   ]
     .filter(Boolean)
     .join('\n\n');

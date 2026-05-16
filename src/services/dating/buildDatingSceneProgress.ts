@@ -375,7 +375,7 @@ export function buildDatingSceneProgress(
 
 export function buildDatingSceneProgressSummary(progress: DatingSceneProgress): string {
   const pieces = [
-    progress.stageLabel ? `当前阶段：${progress.stageLabel}` : '',
+    progress.stageLabel ? `本轮推进阶段：${progress.stageLabel}` : '',
     progress.currentSignature ? `最近推进：${progress.currentSignature}` : '',
     progress.bannedRepeatActions.length > 0
       ? `不要重复：${progress.bannedRepeatActions.join('、')}`
@@ -389,7 +389,8 @@ export function buildDatingSceneProgressSummary(progress: DatingSceneProgress): 
 export function formatDatingSceneProgressForPrompt(progress: DatingSceneProgress): string {
   const lines = [
     '## Scene Progress',
-    progress.stageLabel ? `[当前阶段] ${progress.stageLabel}` : '',
+    '[说明] 这里只描述当前这几轮约会里的动作推进与气氛节奏，不等于你们整体关系被重置或降级。',
+    progress.stageLabel ? `[本轮推进阶段] ${progress.stageLabel}` : '',
     progress.currentBeat ? `[当前推进到] ${progress.currentBeat}` : '',
     progress.currentSignature ? `[本轮推进签名] ${progress.currentSignature}` : '',
     progress.previousSignature ? `[上一轮推进签名] ${progress.previousSignature}` : '',
