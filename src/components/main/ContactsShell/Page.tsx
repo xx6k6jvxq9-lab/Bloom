@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Copy, Heart, MessageSquare, MoreVertical, Pe
 import { useEffect } from 'react';
 import { useMemo } from 'react';
 import { useRef } from 'react';
+import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppData, AppSettings, Character, ChatGroup, ForumData, FriendRequest, MomentComment, MomentItem } from '../../../types';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
@@ -510,12 +511,21 @@ export function ContactsApp({
     }
   };
 
-  const handleMarkFriendRequestPageRead = (pageKey: string) => {
-    setAppData((prev) => ({
-      ...prev,
-      friendRequests: markFriendRequestPageRead(prev.friendRequests || [], pageKey),
-    }));
-  };
+  const handleMarkFriendRequestPageRead = useCallback((pageKey: string) => {
+    setAppData((prev) => {
+      const previousRequests = prev.friendRequests || [];
+      const nextRequests = markFriendRequestPageRead(previousRequests, pageKey);
+
+      if (nextRequests === previousRequests) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        friendRequests: nextRequests,
+      };
+    });
+  }, [setAppData]);
 
   const buildCharacterLookupResult = (character: Character): AddFriendLookupResult => {
     const displayName = character.remarkName?.trim() || character.name;

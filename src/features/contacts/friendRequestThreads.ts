@@ -288,17 +288,22 @@ export function markFriendRequestPageRead(
   readAt = Date.now(),
 ) {
   const requestList = Array.isArray(requests) ? requests : [];
+  let didChange = false;
+  const nextRequests = requestList.map((request) => {
+    if (!matchFriendRequestToPageKey(request, pageKey) || !isFriendRequestUnread(request)) {
+      return request;
+    }
 
-  return requestList.map((request) => (
-    matchFriendRequestToPageKey(request, pageKey) && isFriendRequestUnread(request)
-      ? {
-          ...request,
-          isUnread: false,
-          unreadAt: undefined,
-          lastUpdatedAt: Math.max(request.lastUpdatedAt || 0, readAt),
-        }
-      : request
-  ));
+    didChange = true;
+    return {
+      ...request,
+      isUnread: false,
+      unreadAt: undefined,
+      lastUpdatedAt: Math.max(request.lastUpdatedAt || 0, readAt),
+    };
+  });
+
+  return didChange ? nextRequests : requestList;
 }
 
 export function countUnreadIncomingFriendRequestPages(
