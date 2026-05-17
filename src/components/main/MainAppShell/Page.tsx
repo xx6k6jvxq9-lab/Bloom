@@ -261,9 +261,6 @@ export function MainApp({
       state.lockedAxis = absX > absY ? 'x' : 'y';
     }
 
-    if (state.lockedAxis === 'x') {
-      event.preventDefault();
-    }
   };
 
   const handleTouchEnd = () => {
