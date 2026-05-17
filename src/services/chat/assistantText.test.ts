@@ -14,6 +14,18 @@ test('splitDirectAssistantReplyText keeps bracket-only action as its own bubble'
   assert.deepEqual(parts, ['（轻轻抱住你）']);
 });
 
+test('splitDirectAssistantReplyText separates long nested bracket action from following dialogue', () => {
+  const parts = splitDirectAssistantReplyText('（呼吸乱得厉害，手指都在发抖。（额头抵在你小腹上））那枚金属环被你拨得一直响。', 4);
+
+  assert.deepEqual(parts, ['（呼吸乱得厉害，手指都在发抖。（额头抵在你小腹上））', '那枚金属环被你拨得一直响。']);
+});
+
+test('splitDirectAssistantReplyText drops dangling punctuation after an action boundary', () => {
+  const parts = splitDirectAssistantReplyText('（抬眼看你），别闹。', 4);
+
+  assert.deepEqual(parts, ['（抬眼看你）', '别闹。']);
+});
+
 test('splitDirectAssistantReplyText respects a bubble cap above five when explicit segments are present', () => {
   const parts = splitDirectAssistantReplyText(
     [

@@ -29,6 +29,7 @@ import {
 } from '../../services/chat/messageActions';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
+import { splitBracketActionDisplaySegments } from '../../services/chat/assistantText';
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
@@ -2790,42 +2791,75 @@ export function ChatSessionScreen({
                                       const legacyTranslationParts = getLegacyTranslationParts(cleanText);
                                       const normalizedMainText = sanitizePipeMarkers(legacyTranslationParts.mainText, '\n');
                                       const translationText = msg.translation?.trim() || legacyTranslationParts.translation;
+                                      const bubbleTextStyle = directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle;
+                                      const mainTextSegments = splitBracketActionDisplaySegments(normalizedMainText);
+                                      const resolvedMainTextSegments = mainTextSegments.length > 0
+                                        ? mainTextSegments
+                                        : [{ kind: 'speech' as const, text: normalizedMainText }];
 
                                       if (translationText) {
                                         const normalizedTranslationText = sanitizePipeMarkers(translationText, '\n');
-                                        const bubbleTextStyle = directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle;
+                                        const translationSegments = splitBracketActionDisplaySegments(normalizedTranslationText);
+                                        const resolvedTranslationSegments = translationSegments.length > 0
+                                          ? translationSegments
+                                          : [{ kind: 'speech' as const, text: normalizedTranslationText }];
                                         return (
                                           <div className="flex flex-col gap-2">
-                                            <span
-                                              className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
-                                              style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                                            >
-                                              {normalizedMainText}
-                                            </span>
+                                            <div className="flex flex-col gap-1.5">
+                                              {resolvedMainTextSegments.map((segment, segmentIndex) => (
+                                                <p
+                                                  key={`main-${segment.kind}-${segmentIndex}`}
+                                                  className={`whitespace-pre-wrap break-words text-left ${
+                                                    segment.kind === 'action'
+                                                      ? 'text-[13px] leading-6 opacity-80'
+                                                      : 'text-[14px] leading-6'
+                                                  }`}
+                                                  style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                                >
+                                                  {segment.text}
+                                                </p>
+                                              ))}
+                                            </div>
                                             <div className="h-[1px] bg-black/5 w-full" />
-                                            <p
-                                              className="text-[13px] leading-6 whitespace-pre-wrap break-words text-zinc-500"
-                                              style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                                            >
-                                              {normalizedTranslationText}
-                                            </p>
+                                            <div className="flex flex-col gap-1">
+                                              {resolvedTranslationSegments.map((segment, segmentIndex) => (
+                                                <p
+                                                  key={`translation-${segment.kind}-${segmentIndex}`}
+                                                  className={`whitespace-pre-wrap break-words text-zinc-500 ${
+                                                    segment.kind === 'action'
+                                                      ? 'text-[12px] leading-5 opacity-80'
+                                                      : 'text-[13px] leading-6'
+                                                  }`}
+                                                  style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                                >
+                                                  {segment.text}
+                                                </p>
+                                              ))}
+                                            </div>
                                           </div>
                                         );
                                       }
 
                                       return (
                                         <div className="flex flex-col gap-2">
-                                            <span
-                                              className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
+                                          {resolvedMainTextSegments.map((segment, segmentIndex) => (
+                                            <p
+                                              key={`plain-${segment.kind}-${segmentIndex}`}
+                                              className={`whitespace-pre-wrap break-words text-left ${
+                                                segment.kind === 'action'
+                                                  ? 'text-[13px] leading-6 opacity-80'
+                                                  : 'text-[14px] leading-6'
+                                              }`}
                                               style={{
                                                 ...chatTextStyle,
-                                                ...directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle,
+                                                ...bubbleTextStyle,
                                                 overflowWrap: 'anywhere',
                                                 wordBreak: 'break-word',
                                               }}
                                             >
-                                              {normalizedMainText}
-                                            </span>
+                                              {segment.text}
+                                            </p>
+                                          ))}
                                         </div>
                                       );
                                     })()}
@@ -3197,7 +3231,7 @@ export function ChatSessionScreen({
           <div className={`chat-footer-action-input-shell flex items-start gap-2 rounded-2xl border px-3 py-2 ${
             footerControlTone.inputShell
           }`}>
-            <span className="mt-0.5 shrink-0 text-[13px] font-medium text-zinc-500">（）</span>
+            <span className="mt-0.5 shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">（）</span>
             <textarea
               value={actionInput}
               onChange={e => setActionInput(e.target.value)}
@@ -3313,13 +3347,14 @@ export function ChatSessionScreen({
                 <button
                   type="button"
                   onClick={() => setShowActionInput(prev => !prev)}
+                  aria-pressed={showActionInput}
                   disabled={shouldPauseDirectChatComposer}
-                  className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[12px] font-medium transition-colors ${
+                  className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1.5 text-[12px] font-medium transition-colors ${
                     shouldPauseDirectChatComposer
-                      ? 'text-zinc-300 cursor-not-allowed'
+                      ? 'border border-zinc-200/70 text-zinc-300 cursor-not-allowed'
                       : showActionInput
-                        ? 'bg-zinc-100 text-zinc-700 shadow-inner'
-                        : 'text-zinc-500 hover:bg-zinc-100'
+                        ? 'border border-zinc-200 bg-zinc-100 text-zinc-700 shadow-inner'
+                        : 'border border-transparent text-zinc-500 hover:border-zinc-200 hover:bg-zinc-100'
                   }`}
                   title="场景动作描述"
                   aria-label="场景动作描述"

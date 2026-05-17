@@ -63,11 +63,11 @@ const DIRECT_DEFAULT_MAX_BUBBLES = 5;
 const DIRECT_HARD_MAX_BUBBLES = 10;
 const DIRECT_ENDING_PUNCTUATION = /[\u3002\uFF01\uFF1F!?]+$/u;
 const DIRECT_SENTENCE_REGEX = /[^\u3002\uFF01\uFF1F!?\n]+(?:[\u3002\uFF01\uFF1F!?]+)?/gu;
-const DIRECT_BRACKET_ACTION_REGEX = /[\(\uFF08]([^\(\)\uFF08\uFF09\n]{1,80})[\)\uFF09]/gu;
 const DIRECT_SHORT_REACTION = /^(?:嗯|啊|哦|好|好吧|行|行吧|知道了|在呢|来了|收到|别闹|没事|可以)$/u;
 const DIRECT_BREAK_STARTERS = /^(?:然后|而且|不过|所以|那|那就|还有|顺便|提前|另外|其实|反正|我先|我再|我就|你先|你就|要么|不然|别|现在)/u;
 const DISPLAYABLE_EFFECTIVE_CHAR_REGEX = /[\p{L}\p{N}]/u;
 const DISPLAYABLE_PROTOCOL_ONLY_REGEX = /^\[(?:game_card|game_card_error|transfer|sticker|image|audio|notice|system)\b/i;
+const ACTION_BOUNDARY_LEADING_PUNCTUATION = /^[\s,，。！？?!、；;：:…]+/u;
 
 function resolveDirectBubbleCap(maxBubbles?: number): number {
   if (!Number.isFinite(maxBubbles)) {
@@ -77,8 +77,60 @@ function resolveDirectBubbleCap(maxBubbles?: number): number {
   return Math.max(1, Math.min(Math.floor(maxBubbles as number), DIRECT_HARD_MAX_BUBBLES));
 }
 
+function isOpeningBracketActionChar(char: string): boolean {
+  return char === '(' || char === '（';
+}
+
+function isClosingBracketActionChar(char: string): boolean {
+  return char === ')' || char === '）';
+}
+
+function findBalancedBracketActionEnd(text: string, startIndex: number): number {
+  if (!isOpeningBracketActionChar(text[startIndex] || '')) {
+    return -1;
+  }
+
+  let depth = 0;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (isOpeningBracketActionChar(char)) {
+      depth += 1;
+      continue;
+    }
+
+    if (isClosingBracketActionChar(char)) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+
+      if (depth < 0) {
+        return -1;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function trimLeadingActionBoundaryPunctuation(text: string): string {
+  return text.replace(ACTION_BOUNDARY_LEADING_PUNCTUATION, '').trim();
+}
+
 function isBracketActionOnlyText(text: string): boolean {
-  return /^[\s]*[\(\uFF08][^\(\)\uFF08\uFF09\n]{1,80}[\)\uFF09][\s]*$/u.test(text);
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    !isOpeningBracketActionChar(normalized[0])
+    || !isClosingBracketActionChar(normalized[normalized.length - 1])
+  ) {
+    return false;
+  }
+
+  return findBalancedBracketActionEnd(normalized, 0) === normalized.length - 1;
 }
 
 function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
@@ -107,37 +159,45 @@ function splitByBracketActionBlocks(text: string): string[] {
   const normalized = text.trim();
   if (!normalized) return [];
 
-  const matches = Array.from(normalized.matchAll(DIRECT_BRACKET_ACTION_REGEX));
-  if (matches.length === 0) {
-    return [normalized];
-  }
-
   const parts: string[] = [];
   let cursor = 0;
+  let previousPartWasAction = false;
 
-  for (const match of matches) {
-    const matchText = match[0]?.trim() || '';
-    const matchIndex = match.index ?? -1;
-    if (matchIndex < 0) {
+  const pushSpeechPart = (rawText: string) => {
+    const nextValue = previousPartWasAction
+      ? trimLeadingActionBoundaryPunctuation(rawText)
+      : rawText.trim();
+    if (!nextValue) {
+      return;
+    }
+
+    parts.push(nextValue);
+    previousPartWasAction = false;
+  };
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    if (!isOpeningBracketActionChar(normalized[index])) {
       continue;
     }
 
-    const leadingText = normalized.slice(cursor, matchIndex).trim();
-    if (leadingText) {
-      parts.push(leadingText);
+    const matchEnd = findBalancedBracketActionEnd(normalized, index);
+    if (matchEnd < 0) {
+      continue;
     }
 
-    if (matchText) {
-      parts.push(matchText);
+    pushSpeechPart(normalized.slice(cursor, index));
+
+    const bracketText = normalized.slice(index, matchEnd + 1).trim();
+    if (bracketText) {
+      parts.push(bracketText);
+      previousPartWasAction = true;
     }
 
-    cursor = matchIndex + match[0].length;
+    cursor = matchEnd + 1;
+    index = matchEnd;
   }
 
-  const trailingText = normalized.slice(cursor).trim();
-  if (trailingText) {
-    parts.push(trailingText);
-  }
+  pushSpeechPart(normalized.slice(cursor));
 
   return parts.length > 0 ? parts : [normalized];
 }
@@ -300,6 +360,24 @@ export function isDisplayableAssistantBubbleText(text: string): boolean {
   }
 
   return true;
+}
+
+export function splitBracketActionDisplaySegments(text: string): Array<{
+  kind: 'action' | 'speech';
+  text: string;
+}> {
+  const normalized = text.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  return splitByBracketActionBlocks(normalized)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => ({
+      kind: isBracketActionOnlyText(part) ? 'action' : 'speech',
+      text: part,
+    }));
 }
 
 export function splitDirectAssistantReplyText(text: string, maxBubbles?: number): string[] {
