@@ -30,7 +30,7 @@ function scorePeerRelation(summary: string, familiarityLabel?: string, interacti
   else if (familiarityLabel?.includes('知道')) score += 2;
   if (interactionStyleLabel?.includes('热') || interactionStyleLabel?.includes('打趣')) score += 2;
   else if (interactionStyleLabel?.includes('中性')) score += 1;
-  if (/最近|同场|来回|接话/.test(summary)) score += 1;
+  if (/最近|来回|接话/.test(summary)) score += 1;
   return score;
 }
 
@@ -116,23 +116,13 @@ function resolveTarget(input: {
   };
 }
 
-function normalizeGenerationMode(mode: GroupOfflineSession['generationMode']): 'blocks' | 'ensemble' {
-  return mode === 'ensemble' || mode === 'group' ? 'ensemble' : 'blocks';
-}
-
 function resolvePlanSummary(input: {
   dispatchMode?: GroupOfflineRoundDispatchMode;
-  generationMode: 'blocks' | 'ensemble';
   selectedCharacters: GroupOfflineCharacterRuntimeProjection[];
 }): string {
   const orderedNames = input.selectedCharacters.map((character) => character.identity.displayName).join(' -> ');
   if (!orderedNames) {
-    return input.generationMode === 'ensemble'
-      ? '本轮继续同场，但暂时还没有明确的在场角色顺序。'
-      : '本轮暂时还没有可用的出场顺序。';
-  }
-  if (input.generationMode === 'ensemble') {
-    return `本轮继续同场，当前在场角色是：${input.selectedCharacters.map((character) => character.identity.displayName).join('、')}。`;
+    return '本轮暂时还没有可用的出场顺序。';
   }
   if (input.dispatchMode === 'manual') {
     return `本轮按手动顺序出场：${orderedNames}。`;
@@ -140,13 +130,15 @@ function resolvePlanSummary(input: {
   if (input.dispatchMode === 'random') {
     return `本轮按随机结果出场：${orderedNames}。`;
   }
+  if (input.dispatchMode === 'continue') {
+    return `本轮继续推进：${orderedNames}。`;
+  }
   return `本轮按系统调度出场：${orderedNames}。`;
 }
 
 export function buildGroupOfflineRoundPlan(
   input: BuildGroupOfflineRoundPlanInput,
 ): GroupOfflineRoundPlan {
-  const generationMode = normalizeGenerationMode(input.session.generationMode);
   const selectedCharacterIds = (input.selectedCharacterIds?.length
     ? input.selectedCharacterIds
     : input.projection.characters.map((character) => character.identity.characterId))
@@ -155,29 +147,26 @@ export function buildGroupOfflineRoundPlan(
     .map((characterId) => input.projection.characters.find((character) => character.identity.characterId === characterId))
     .filter((character): character is GroupOfflineCharacterRuntimeProjection => !!character);
 
-  const characterSteps: GroupOfflineRoundPlanCharacterStep[] = selectedCharacters.map((character, index) => {
-    return {
-      characterId: character.identity.characterId,
-      speakerLabel: character.identity.displayName,
-      target: resolveTarget({
-        index,
-        selectedCharacterIds,
-        character,
-        userName: input.projection.userName,
-        latestUserMessage: input.latestUserMessage,
-        userMessageText: input.userMessageText,
-        projection: input.projection,
-      }),
-    };
-  });
+  const characterSteps: GroupOfflineRoundPlanCharacterStep[] = selectedCharacters.map((character, index) => ({
+    characterId: character.identity.characterId,
+    speakerLabel: character.identity.displayName,
+    target: resolveTarget({
+      index,
+      selectedCharacterIds,
+      character,
+      userName: input.projection.userName,
+      latestUserMessage: input.latestUserMessage,
+      userMessageText: input.userMessageText,
+      projection: input.projection,
+    }),
+  }));
 
   return {
-    generationMode,
+    generationMode: 'blocks',
     dispatchMode: input.dispatchMode,
     selectedCharacterIds,
     summary: resolvePlanSummary({
       dispatchMode: input.dispatchMode,
-      generationMode,
       selectedCharacters,
     }),
     characterSteps,

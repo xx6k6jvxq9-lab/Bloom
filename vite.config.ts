@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
     ],
     build: {
       cssTarget: 'chrome88',
+      terserOptions: {
+        maxWorkers: 1,
+      },
       rollupOptions: {
         output: {
           manualChunks(id) {

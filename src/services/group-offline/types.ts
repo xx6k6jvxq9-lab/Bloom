@@ -33,7 +33,7 @@ export type GroupOfflineRuntimeProjection =
       id: string;
       groupId: string;
       mode: 'daily' | 'scenario' | 'random';
-      generationMode?: 'blocks' | 'ensemble' | 'single' | 'pair' | 'group';
+      generationMode?: 'blocks';
       activityType: string;
       customActivityType?: string;
       location: string;

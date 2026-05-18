@@ -24,6 +24,7 @@ import { sanitizePreviewText } from '../../features/app-shell/formatMessagePrevi
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 import { RelationshipGraphPage } from './RelationshipGraphPage';
+import { UserAvatarLibraryPage } from './UserAvatarLibraryPage';
 
 type MePageProps = {
   userProfile: UserProfileExtended;
@@ -48,7 +49,7 @@ type MePageProps = {
   setAppData?: React.Dispatch<React.SetStateAction<any>>;
   settings?: any;
   setSettings?: (s: any) => void;
-  onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters' | 'relationships') => void;
+  onSectionChange?: (section: 'main' | 'avatar-library' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters' | 'relationships') => void;
 };
 
 type DateRecordEntry = DateSession & {
@@ -81,12 +82,14 @@ export function MePage({
   setSettings,
   onSectionChange,
 }: MePageProps) {
-  const [activeSection, setActiveSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters' | 'relationships'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'avatar-library' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters' | 'relationships'>('main');
   const [editingProfile, setEditingProfile] = useState(false);
 
   const { globalBackground } = visualSettings;
   const { resolvedUrl: resolvedGlobalBackgroundUrl } = useResolvedPersistentValue(globalBackground);
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userProfile.avatar);
+  const userAvatarLibraryCount = appData?.userAvatarLibrary?.entries?.length || 0;
+  const relationshipAvatarBindingCount = appData?.relationshipAvatarBindings?.length || 0;
   const bgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, 0.85)` } : { backgroundColor: 'white' };
   const containerBgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: 'transparent' } : { backgroundColor: '#fafafa' };
 
@@ -135,6 +138,19 @@ export function MePage({
 
             {/* Menu Sections */}
             <div className="px-4 mt-6 space-y-4">
+              <div className="rounded-3xl p-1 shadow-sm border border-zinc-100 backdrop-blur-sm" style={bgStyle}>
+                <MenuButton
+                  icon={<ImageIcon className="text-zinc-900" size={20} />}
+                  label="我的头像库"
+                  subLabel={
+                    userAvatarLibraryCount > 0
+                      ? `已收藏 ${userAvatarLibraryCount} 张，已绑定 ${relationshipAvatarBindingCount} 个聊天关系`
+                      : '给不同角色绑定不同的聊天头像'
+                  }
+                  onClick={() => setActiveSection('avatar-library')}
+                />
+              </div>
+
               {/* Core: Masks */}
               <div className="rounded-3xl p-1 shadow-sm border border-zinc-100 backdrop-blur-sm" style={bgStyle}>
                 <MenuButton 
@@ -188,6 +204,30 @@ export function MePage({
         )}
 
 
+
+        {activeSection === 'avatar-library' && (
+          <UserAvatarLibraryPage
+            userProfile={userProfile}
+            onUpdateUserProfile={setUserProfile}
+            characters={characters as Character[]}
+            userAvatarLibrary={appData?.userAvatarLibrary}
+            relationshipAvatarBindings={appData?.relationshipAvatarBindings}
+            onUpdateUserAvatarLibrary={(userAvatarLibrary) => {
+              setAppData?.((prev: any) => ({
+                ...prev,
+                userAvatarLibrary,
+              }));
+            }}
+            onUpdateRelationshipAvatarBindings={(relationshipAvatarBindings) => {
+              setAppData?.((prev: any) => ({
+                ...prev,
+                relationshipAvatarBindings,
+              }));
+            }}
+            onBack={() => setActiveSection('main')}
+            globalBackground={globalBackground}
+          />
+        )}
 
         {activeSection === 'characters' && (
           <CharacterManager 

@@ -31,7 +31,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupOfflineSession, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupOfflineRecruitDraft, GroupOfflineSession, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
@@ -53,6 +53,8 @@ import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../s
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { persistSceneSettlementBatch } from '../../services/memory/sceneSettlement';
 import { buildGroupOfflineSharedSettlement } from '../../services/group-offline/buildGroupOfflineSharedSettlement';
+import { deriveGroupLongTermMemoryFromHistory } from '../../services/group-chat/groupLongTermMemory';
+import { buildGroupOfflineRecruitCard } from '../group-offline/sessionUtils';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { splitGroupReplyIntoMessages, useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
@@ -1011,6 +1013,8 @@ export function GroupChatSessionScreen({
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [offlineModalDraft, setOfflineModalDraft] = useState<GroupOfflineRecruitDraft | null>(null);
+  const [offlineModalDraftMessageTimestamp, setOfflineModalDraftMessageTimestamp] = useState<number | null>(null);
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
@@ -3103,8 +3107,10 @@ export function GroupChatSessionScreen({
     }
   }, [activeConfig, hasUsableConfig, members, setHistory]);
 
-  const handleOpenGroupOffline = () => {
+  const handleOpenGroupOffline = (draft?: GroupOfflineRecruitDraft | null, messageTimestamp?: number | null) => {
     setActiveGroupFeatureComposer(null);
+    setOfflineModalDraft(draft || null);
+    setOfflineModalDraftMessageTimestamp(typeof messageTimestamp === 'number' ? messageTimestamp : null);
     setShowOfflineModal(true);
     setShowFunPanel(false);
   };
@@ -5353,7 +5359,39 @@ export function GroupChatSessionScreen({
 
           if (visualKind === 'offline' && msg.groupOfflineCard) {
             const offlineCard = msg.groupOfflineCard;
-            const offlineStatus = offlineCard.status === 'ended' ? '已结束' : '进行中';
+            const isRecruitingCard = offlineCard.status === 'recruiting';
+            const recruitDraft = msg.groupOfflineDraft;
+            const signupCount = Array.isArray(recruitDraft?.signedUpParticipantIds)
+              ? recruitDraft!.signedUpParticipantIds!.length
+              : (offlineCard.signupCount || 0);
+            const confirmedCount = Array.isArray(recruitDraft?.confirmedParticipantIds)
+              ? recruitDraft!.confirmedParticipantIds!.length
+              : (offlineCard.confirmedCount || 0);
+            const rosterLockedAt = typeof recruitDraft?.rosterLockedAt === 'number'
+              ? recruitDraft.rosterLockedAt
+              : offlineCard.rosterLockedAt;
+            const confirmedParticipantLabels = Array.isArray(recruitDraft?.confirmedParticipantIds)
+              ? recruitDraft.confirmedParticipantIds
+                  .map((characterId) => (
+                    groupCharacterPool.find((member) => member.id === characterId)?.remarkName?.trim()
+                    || groupCharacterPool.find((member) => member.id === characterId)?.name
+                    || ''
+                  ))
+                  .filter(Boolean)
+              : [];
+            const canResumeRecruitDraft = isRecruitingCard && !!recruitDraft && !group.activeOfflineSession;
+            const offlineStatus = isRecruitingCard
+              ? (rosterLockedAt
+                  ? '名单已锁定'
+                  : confirmedCount > 0
+                    ? '待开局'
+                    : signupCount > 0
+                      ? '待确认'
+                      : '征集中')
+              : offlineCard.status === 'ended'
+                ? '已结束'
+                : '进行中';
+            const compactTaskLabel = offlineCard.taskLabel || (!offlineCard.taskLabel ? offlineCard.objectiveLabel : '');
 
             return (
               <div key={messageKey}>
@@ -5389,10 +5427,23 @@ export function GroupChatSessionScreen({
                     <div className="mt-3 space-y-2 text-[13px] leading-6 text-zinc-800/88">
                       <div><span className="mr-2 text-zinc-500/86">时间</span>{offlineCard.timeLabel}</div>
                       <div><span className="mr-2 text-zinc-500/86">地点</span>{offlineCard.locationLabel}</div>
-                      {offlineCard.weatherLabel ? <div><span className="mr-2 text-zinc-500/86">天气</span>{offlineCard.weatherLabel}</div> : null}
-                      <div><span className="mr-2 text-zinc-500/86">在场</span>{offlineCard.participantLabels.join('、')}</div>
-                      {offlineCard.roundLabel ? <div><span className="mr-2 text-zinc-500/86">进度</span>{offlineCard.roundLabel}</div> : null}
-                      {offlineCard.objectiveLabel ? <div><span className="mr-2 text-zinc-500/86">备注</span>{offlineCard.objectiveLabel}</div> : null}
+                      <div>
+                        <span className="mr-2 text-zinc-500/86">{isRecruitingCard ? '拟邀' : '在场'}</span>
+                        {offlineCard.participantLabels.length > 0 ? offlineCard.participantLabels.join('、') : '待征集'}
+                      </div>
+                      {isRecruitingCard ? (
+                        <div>
+                          <span className="mr-2 text-zinc-500/86">征集</span>
+                          已报名 {signupCount} 人 · 已确认 {confirmedCount} 人
+                        </div>
+                      ) : null}
+                      {isRecruitingCard && confirmedParticipantLabels.length > 0 ? (
+                        <div>
+                          <span className="mr-2 text-zinc-500/86">确认名单</span>
+                          {confirmedParticipantLabels.join('、')}
+                        </div>
+                      ) : null}
+                      {compactTaskLabel ? <div><span className="mr-2 text-zinc-500/86">任务</span>{compactTaskLabel}</div> : null}
                     </div>
                     {offlineCard.summaryLines && offlineCard.summaryLines.length > 0 ? (
                       <div className="mt-4 rounded-[22px] border border-white/26 bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0.08))] px-3 py-3 text-[13px] leading-6 text-zinc-800/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-[18px]">
@@ -5401,11 +5452,15 @@ export function GroupChatSessionScreen({
                         ))}
                       </div>
                     ) : null}
-                    {offlineCard.soundtrack ? (
-                      <div className="mt-4 rounded-[22px] border border-white/26 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.07))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[18px]">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500/82">场景歌曲</div>
-                        <div className="mt-1 text-[14px] font-semibold text-zinc-950/92">{offlineCard.soundtrack.title}</div>
-                        <div className="mt-0.5 text-[12px] text-zinc-600/88">{offlineCard.soundtrack.artist}</div>
+                    {canResumeRecruitDraft ? (
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGroupOffline(msg.groupOfflineDraft || null, msg.timestamp)}
+                          className="rounded-full border border-white/30 bg-white/35 px-3 py-1.5 text-[12px] font-medium text-zinc-800 transition hover:bg-white/55"
+                        >
+                          {rosterLockedAt && confirmedCount > 0 ? '按名单开局' : '管理征集'}
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -6269,20 +6324,154 @@ export function GroupChatSessionScreen({
         directChatHistory={directChatHistory}
         perception={perception}
         initialSession={group.activeOfflineSession || null}
-        onClose={() => setShowOfflineModal(false)}
+        initialDraft={offlineModalDraft}
+        onClose={() => {
+          setShowOfflineModal(false);
+          setOfflineModalDraft(null);
+          setOfflineModalDraftMessageTimestamp(null);
+        }}
+        onRecruitDraftUpdate={(draft) => {
+          setOfflineModalDraft(draft);
+          if (offlineModalDraftMessageTimestamp === null) {
+            return;
+          }
+
+          setHistory((prev) => prev.map((message) => {
+            if (message.timestamp !== offlineModalDraftMessageTimestamp) {
+              return message;
+            }
+
+            const createdBy = message.groupOfflineCard?.createdBy || groupUserDisplayName;
+            return {
+              ...message,
+              groupOfflineDraft: draft,
+              groupOfflineCard: buildGroupOfflineRecruitCard({
+                draft,
+                createdBy,
+                timestamp: message.timestamp,
+                status: 'recruiting',
+              }),
+            };
+          }));
+        }}
         onSessionStart={(session, startMessage) => {
+          if (offlineModalDraftMessageTimestamp !== null) {
+            const launchedParticipantIds = session.participants.map((participant) => participant.characterId);
+            const launchedParticipantLabels = groupCharacterPool
+              .filter((member) => launchedParticipantIds.includes(member.id))
+              .map((member) => member.remarkName?.trim() || member.name);
+            setHistory((prev) => prev.map((message) => {
+              if (message.timestamp !== offlineModalDraftMessageTimestamp) {
+                return message;
+              }
+
+              const existingDraft = message.groupOfflineDraft || offlineModalDraft;
+              const nextDraft = existingDraft
+                ? {
+                    ...existingDraft,
+                    selectedParticipantIds: launchedParticipantIds,
+                    participantLabels: launchedParticipantLabels,
+                    signedUpParticipantIds: launchedParticipantIds,
+                    confirmedParticipantIds: launchedParticipantIds,
+                    rosterLockedAt: existingDraft.rosterLockedAt || session.createdAt,
+                    launchedAt: session.createdAt,
+                    recruitCardSessionId: existingDraft.recruitCardSessionId || message.groupOfflineCard?.sessionId,
+                  }
+                : undefined;
+              return {
+                ...message,
+                groupOfflineDraft: nextDraft,
+                groupOfflineCard: nextDraft
+                  ? buildGroupOfflineRecruitCard({
+                      draft: nextDraft,
+                      createdBy: message.groupOfflineCard?.createdBy || groupUserDisplayName,
+                      timestamp: message.timestamp,
+                      status: 'active',
+                      participantLabelsOverride: launchedParticipantLabels,
+                      summaryLinesOverride: ['已按锁定名单发起群线下。'],
+                    })
+                  : message.groupOfflineCard
+                    ? {
+                        ...message.groupOfflineCard,
+                        status: 'active' as const,
+                        participantLabels: launchedParticipantLabels,
+                        statusLabel: '已开局',
+                        summaryLines: ['已发起群线下。'],
+                      }
+                    : message.groupOfflineCard,
+              };
+            }));
+          }
           onUpdateGroup({ activeOfflineSession: session });
           setHistory((prev) => [...prev, startMessage]);
+          setOfflineModalDraft(null);
+          setOfflineModalDraftMessageTimestamp(null);
         }}
         onSessionUpdate={(nextSession) => {
           onUpdateGroup({ activeOfflineSession: nextSession });
         }}
+        onPublishRecruitCard={(draft, cardMessage) => {
+          setHistory((prev) => [...prev, cardMessage]);
+          setOfflineModalDraft(draft);
+          setOfflineModalDraftMessageTimestamp(null);
+          setShowOfflineModal(false);
+        }}
         onSessionComplete={({ archivedSession, endMessage, followupMessages }) => {
+          const settledParticipantIds = archivedSession.participants.map((participant) => participant.characterId);
+          const settledParticipantLabels = groupCharacterPool
+            .filter((member) => settledParticipantIds.includes(member.id))
+            .map((member) => member.remarkName?.trim() || member.name);
+          const historyWithRecruitCardState = archivedSession.sourceRecruitCardSessionId
+            ? history.map((message) => {
+                if (message.groupOfflineCard?.sessionId !== archivedSession.sourceRecruitCardSessionId) {
+                  return message;
+                }
+
+                const existingDraft = message.groupOfflineDraft;
+                const nextDraft = existingDraft
+                  ? {
+                      ...existingDraft,
+                      selectedParticipantIds: settledParticipantIds,
+                      participantLabels: settledParticipantLabels,
+                      signedUpParticipantIds: settledParticipantIds,
+                      confirmedParticipantIds: settledParticipantIds,
+                      launchedAt: archivedSession.endedAt || Date.now(),
+                    }
+                  : undefined;
+
+                return {
+                  ...message,
+                  groupOfflineDraft: nextDraft,
+                  groupOfflineCard: nextDraft
+                    ? buildGroupOfflineRecruitCard({
+                        draft: nextDraft,
+                        createdBy: message.groupOfflineCard?.createdBy || groupUserDisplayName,
+                        timestamp: message.timestamp,
+                        status: 'ended',
+                        participantLabelsOverride: settledParticipantLabels,
+                        summaryLinesOverride: [
+                          '这张征集卡对应的群线下已结束。',
+                          ...(archivedSession.summaryCard?.lines?.slice(0, 1) || []),
+                        ],
+                      })
+                    : message.groupOfflineCard
+                      ? {
+                          ...message.groupOfflineCard,
+                          status: 'ended' as const,
+                          participantLabels: settledParticipantLabels,
+                          statusLabel: '已结束',
+                          summaryLines: ['这张征集卡对应的群线下已结束。'],
+                        }
+                      : message.groupOfflineCard,
+                };
+              })
+            : history;
+          const nextHistory = [...historyWithRecruitCardState, endMessage, ...followupMessages];
           onUpdateGroup({
             activeOfflineSession: null,
             currentScene: archivedSession.location,
           });
-          setHistory((prev) => [...prev, endMessage, ...followupMessages]);
+          setHistory(nextHistory);
           void (async () => {
             const participantMembers = groupCharacterPool.filter((member) => (
               archivedSession.participants.some((participant) => participant.characterId === member.id)
@@ -6320,12 +6509,29 @@ export function GroupChatSessionScreen({
                 })
                   .filter((entry) => entry[1].trim().length > 0),
               );
+              const memberNames = Object.fromEntries(
+                groupCharacterPool.map((member) => [member.id, member.remarkName?.trim() || member.name] as const),
+              );
+              const nextGroupLongTermMemory = deriveGroupLongTermMemoryFromHistory({
+                history: nextHistory,
+                memberIds: group.memberIds,
+                memberNames,
+                previous: group.groupLongTermMemory,
+                backgroundSummary: group.backgroundSummary,
+                publicFacts: group.publicFacts,
+              });
 
               onUpdateGroup({
                 ...(groupShortTermSummary ? { groupShortTermSummary } : {}),
                 ...(Object.keys(groupMemberPerspectiveSummaries).length > 0
-                  ? { groupMemberPerspectiveSummaries }
+                  ? {
+                      groupMemberPerspectiveSummaries: {
+                        ...(group.groupMemberPerspectiveSummaries || {}),
+                        ...groupMemberPerspectiveSummaries,
+                      },
+                    }
                   : {}),
+                ...(nextGroupLongTermMemory ? { groupLongTermMemory: nextGroupLongTermMemory } : {}),
               });
             } catch (error) {
               console.error('[group-chat] Failed to persist group offline settlement memory snapshots', error);

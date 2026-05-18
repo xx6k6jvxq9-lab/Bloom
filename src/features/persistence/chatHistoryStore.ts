@@ -13,6 +13,7 @@ import { loadJson, remove as removeStoredJson } from './localConfigStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
 import { areMemoryRecordDataEqual, loadPreferredMemoryRecordData, resetMemoryRecordData, saveMemoryRecordData } from './memoryRecordStore';
 import { STORAGE_KEYS } from './storageKeys';
+import { sanitizeChatMessageArrayForOfflineFields } from '../../services/group-offline/persistenceSanitizers';
 
 const CHAT_HISTORY_SHARD_INDEX_FORMAT = 'chat-history-shard-index';
 const CHAT_HISTORY_SHARD_VERSION = 1;
@@ -132,7 +133,7 @@ function buildShardIndex(
 function sanitizeDirectSession(value: unknown): PersistedDirectSession | null {
   if (isChatMessageArray(value)) {
     return {
-      history: value,
+      history: sanitizeChatMessageArrayForOfflineFields(value),
     };
   }
 
@@ -142,7 +143,7 @@ function sanitizeDirectSession(value: unknown): PersistedDirectSession | null {
         ? value.lastViewedMessageTimestamp
         : undefined;
     return {
-      history: value.history,
+      history: sanitizeChatMessageArrayForOfflineFields(value.history),
       ...(typeof lastViewedMessageTimestamp === 'number' ? { lastViewedMessageTimestamp } : {}),
     };
   }
@@ -321,7 +322,7 @@ function sanitizeGroupSessions(
   const result: Record<string, PersistedGroupSession> = {};
   for (const [key, session] of Object.entries(value as Record<string, unknown>)) {
     if (isChatMessageArray(session)) {
-      const history = session;
+      const history = sanitizeChatMessageArrayForOfflineFields(session);
       const latestPreviewableMessage = findLatestPreviewableMessage(history);
       result[key] = {
         history,
@@ -334,9 +335,10 @@ function sanitizeGroupSessions(
     }
 
     if (isPersistedGroupSession(session)) {
-      const latestPreviewableMessage = findLatestPreviewableMessage(session.history);
+      const sanitizedHistory = sanitizeChatMessageArrayForOfflineFields(session.history);
+      const latestPreviewableMessage = findLatestPreviewableMessage(sanitizedHistory);
       result[key] = {
-        history: session.history,
+        history: sanitizedHistory,
         lastMessage: typeof session.lastMessage === 'string'
           ? session.lastMessage
           : latestPreviewableMessage

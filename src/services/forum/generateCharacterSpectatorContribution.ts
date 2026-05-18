@@ -103,7 +103,7 @@ export async function generateCharacterSpectatorPost(input: GenerateCharacterSpe
     : currentUserName;
 
   const prompt = [
-    sharedCharacterState.groupPrompt ? `瑙掕壊褰撳墠鍏变韩鐘舵€侊細\n${sharedCharacterState.groupPrompt}` : '',
+    sharedCharacterState.groupPrompt ? `角色当前共享状态：\n${sharedCharacterState.groupPrompt}` : '',
     '你要生成一条角色本人会发在镜间里的公开帖子。',
     '镜间不是朋友圈，不是私聊，也不是系统说明，而是公共楼里角色本人偶尔留下的一条痕迹。',
     `角色名：${character.name}`,
@@ -193,7 +193,7 @@ export async function generateCharacterSpectatorReply(input: GenerateCharacterSp
     character,
   });
   const prompt = [
-    sharedCharacterState.groupPrompt ? `瑙掕壊褰撳墠鍏变韩鐘舵€侊細\n${sharedCharacterState.groupPrompt}` : '',
+    sharedCharacterState.groupPrompt ? `角色当前共享状态：\n${sharedCharacterState.groupPrompt}` : '',
     '你要写一条镜间楼里的回帖。',
     `角色：${character.name}`,
     `角色论坛习惯：${forumHabit.persona}`,

@@ -32,6 +32,11 @@ type CommentReplySequenceOptions = {
   appendComment: AppendComment;
 };
 
+export type MomentAuthorReplyPolicy = 'author' | 'normal' | 'skip';
+
+const LOW_SIGNAL_MOMENT_COMMENT_REGEX = /^(?:[1-9]+|哈+|呵+|嘿+|hhh+|hh+|测试|试试|在吗|嗯+|哦+|诶+|欸+|ok+|kk+|lol+|hi+|hello+|收到|\?+|？+|!+|！+|~+|～+|\.{2,})$/i;
+const PURE_EMOJI_OR_PUNCTUATION_REGEX = /^[\p{Extended_Pictographic}\s!！?？~～,，.。]+$/u;
+
 function createCommentId(suffix: string) {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${suffix}`;
 }
@@ -62,6 +67,113 @@ function createReplyComment(options: {
 function getCommentAuthorName(authorId: string, characters: Character[], userName: string) {
   if (authorId === 'user') return userName;
   return characters.find((character) => character.id === authorId)?.name || '未知角色';
+}
+
+function isLowSignalMomentComment(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return true;
+  if (normalized.length <= 2) return true;
+  if (LOW_SIGNAL_MOMENT_COMMENT_REGEX.test(normalized)) return true;
+  if (PURE_EMOJI_OR_PUNCTUATION_REGEX.test(normalized) && normalized.length <= 8) return true;
+  return false;
+}
+
+function getMomentCommentThreadRootId(moment: MomentItem, targetComment: MomentComment) {
+  const commentsById = new Map((moment.comments || []).map((comment) => [comment.id, comment]));
+  let current = targetComment;
+  const visited = new Set<string>();
+
+  while (current.replyToCommentId && !visited.has(current.replyToCommentId)) {
+    visited.add(current.replyToCommentId);
+    const parent = commentsById.get(current.replyToCommentId);
+    if (!parent) {
+      break;
+    }
+    current = parent;
+  }
+
+  return current.id;
+}
+
+function hasMomentAuthorAlreadyRepliedInThread(moment: MomentItem, triggerComment: MomentComment) {
+  if (moment.authorId === 'user') {
+    return false;
+  }
+
+  const rootId = getMomentCommentThreadRootId(moment, triggerComment);
+  return (moment.comments || []).some((comment) => (
+    comment.id !== triggerComment.id
+    && comment.authorId === moment.authorId
+    && getMomentCommentThreadRootId(moment, comment) === rootId
+  ));
+}
+
+export function resolveMomentAuthorReplyPolicy(options: {
+  moment: MomentItem;
+  characters: Character[];
+  triggerComment: MomentComment;
+  chatGroups?: ChatGroup[];
+}): MomentAuthorReplyPolicy {
+  const { moment, characters, triggerComment, chatGroups } = options;
+
+  if (triggerComment.authorId !== 'user' || moment.authorId === 'user') {
+    return 'normal';
+  }
+
+  const momentAuthor = characters.find((character) => character.id === moment.authorId) || null;
+  if (!momentAuthor) {
+    return 'normal';
+  }
+
+  const loopContext = buildCommentLoopContext(moment, characters, chatGroups);
+  if (loopContext.timeMode === 'days_later' || loopContext.timeMode === 'stale') {
+    return 'skip';
+  }
+
+  if (isLowSignalMomentComment(triggerComment.content)) {
+    return 'skip';
+  }
+
+  if (hasMomentAuthorAlreadyRepliedInThread(moment, triggerComment)) {
+    return 'normal';
+  }
+
+  return 'author';
+}
+
+export function pickPrimaryMomentReplyResponder(options: {
+  moment: MomentItem;
+  characters: Character[];
+  triggerComment: MomentComment;
+  chatGroups?: ChatGroup[];
+}) {
+  const { moment, characters, triggerComment, chatGroups } = options;
+  const authorReplyPolicy = resolveMomentAuthorReplyPolicy({
+    moment,
+    characters,
+    triggerComment,
+    chatGroups,
+  });
+
+  if (authorReplyPolicy === 'author') {
+    const momentAuthor = characters.find((character) => character.id === moment.authorId) || null;
+    if (momentAuthor) {
+      return momentAuthor;
+    }
+  }
+
+  if (authorReplyPolicy === 'skip') {
+    return null;
+  }
+
+  return pickNextResponder({
+    moment,
+    characters,
+    triggerComment,
+    recentChain: [triggerComment],
+    usedAuthorIds: [triggerComment.authorId],
+    chatGroups,
+  });
 }
 
 async function generateReplyText(params: {
@@ -249,12 +361,10 @@ export async function runMomentCommentReplySequence(options: CommentReplySequenc
     comments: [...moment.comments, triggerComment],
   };
 
-  const primaryResponder = pickNextResponder({
+  const primaryResponder = pickPrimaryMomentReplyResponder({
     moment: momentWithTrigger,
     characters,
     triggerComment,
-    recentChain: [triggerComment],
-    usedAuthorIds: [triggerComment.authorId],
     chatGroups,
   });
 

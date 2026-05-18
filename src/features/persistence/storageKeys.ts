@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   chatOrganization: 'persistence:chat-organization',
   meData: 'persistence:me-data',
   musicData: 'persistence:music-data',
+  mallData: 'persistence:mall-data',
   walletData: 'persistence:wallet-data',
   friendRequests: 'persistence:friend-requests',
   callHistory: 'persistence:call-history',

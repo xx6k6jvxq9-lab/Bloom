@@ -3471,6 +3471,8 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               masks: normalizedAppData.masks ?? [],
               favorites: normalizedAppData.favorites ?? [],
               worldBooks: normalizedAppData.worldBooks ?? [],
+              userAvatarLibrary: normalizedAppData.userAvatarLibrary ?? { entries: [], updatedAt: 0 },
+              relationshipAvatarBindings: normalizedAppData.relationshipAvatarBindings ?? [],
             }),
             writeImportedRecord(STORAGE_KEYS.moments, normalizedAppData.moments ?? []),
             writeImportedRecord(STORAGE_KEYS.friendRequests, normalizedAppData.friendRequests ?? []),

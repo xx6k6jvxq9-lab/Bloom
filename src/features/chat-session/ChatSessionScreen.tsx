@@ -88,6 +88,16 @@ const CHAT_HISTORY_INITIAL_WINDOW = 90;
 const CHAT_HISTORY_LOAD_STEP = 60;
 const CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
 const DIRECT_POKE_DOUBLE_TAP_WINDOW_MS = 320;
+const MALL_CHAT_CARD_BACKGROUND_MAP: Record<string, string> = {
+  'mist-blue': 'linear-gradient(180deg, #eef5ff 0%, #e6eefb 100%)',
+  'night-blue': 'linear-gradient(180deg, #f1f5ff 0%, #e9edfb 100%)',
+  'warm-amber': 'linear-gradient(180deg, #fff8ef 0%, #f9efdf 100%)',
+  'soft-gold': 'linear-gradient(180deg, #fffbea 0%, #f7f0d8 100%)',
+  'coffee-brown': 'linear-gradient(180deg, #f9f2ec 0%, #efe4d8 100%)',
+  'oak-wood': 'linear-gradient(180deg, #fbf4ee 0%, #f1e6da 100%)',
+  'midnight-indigo': 'linear-gradient(180deg, #f2f4ff 0%, #e6eafd 100%)',
+  'frost-blue': 'linear-gradient(180deg, #f3f8ff 0%, #e8eff9 100%)',
+};
 
 type ParsedGameCardDisplayData = {
   game: 'qna' | 'tod' | 'blocks';
@@ -108,6 +118,11 @@ function formatChatDividerTime(timestamp: number): string {
     minute: '2-digit',
     hour12: false,
   });
+}
+
+function resolveMallChatCardBackground(preset?: string) {
+  return MALL_CHAT_CARD_BACKGROUND_MAP[preset || '']
+    || 'linear-gradient(180deg, #f6f7f8 0%, #efefef 100%)';
 }
 
 function shouldShowChatTimeDivider(
@@ -427,6 +442,7 @@ export function ChatSessionScreen({
   onUpdateSettings,
   onBack,
   userAvatar,
+  datingUserAvatar,
   userName,
   masks,
   favorites,
@@ -473,6 +489,7 @@ export function ChatSessionScreen({
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
   userAvatar: string;
+  datingUserAvatar?: string;
   userName: string;
   masks: Mask[];
   favorites: FavoriteMessage[];
@@ -746,7 +763,9 @@ export function ChatSessionScreen({
   }, [isLoading, onRuntimeBusyChange]);
 
   const latestUserMessageIndex = [...history].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
-    message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
+    message.role === 'user'
+    && !message.isSystem
+    && (message.text || message.imageUrl || message.audioUrl || message.location || message.sharedPost || message.sharedMallItem)
   ))?.index;
   const getLatestDirectModelSegment = useCallback(() => {
     let end = -1;
@@ -775,6 +794,7 @@ export function ChatSessionScreen({
     && !message.location
     && !message.isVoiceCall
     && !message.sharedPost
+    && !message.sharedMallItem
     && !message.text.startsWith('[COUPLE_SPACE_INVITE]')
     && !!message.text.trim()
   ), []);
@@ -793,6 +813,7 @@ export function ChatSessionScreen({
     && !message.audioUrl
     && !message.imageUrl
     && !message.isInnerVoice
+    && !message.sharedMallItem
     && !!character.voiceProfile?.enabled
     && !!message.text.trim()
     && message.contentType !== 'game-card'
@@ -2919,6 +2940,70 @@ export function ChatSessionScreen({
                               </div>
                             )}
 
+                            {msg.sharedMallItem && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div
+                                  onClick={(e) => {
+                                    if (multiSelectMode) {
+                                      handleMessageClick(e, i);
+                                    }
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className={`w-64 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm ${
+                                    multiSelectMode ? 'cursor-pointer hover:bg-zinc-50 transition-colors' : ''
+                                  }`}
+                                >
+                                  <div className="p-3">
+                                    <div
+                                      className="relative overflow-hidden rounded-[18px] border border-zinc-100"
+                                      style={{ backgroundImage: resolveMallChatCardBackground(msg.sharedMallItem.backgroundPreset) }}
+                                    >
+                                      <div className="absolute inset-x-0 top-0 h-10 bg-[linear-gradient(180deg,rgba(255,255,255,.68),rgba(255,255,255,0))]" />
+                                      {msg.sharedMallItem.coverImage ? (
+                                        <PersistentImage
+                                          value={msg.sharedMallItem.coverImage}
+                                          alt={msg.sharedMallItem.title}
+                                          className="h-36 w-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="flex h-36 items-center justify-center text-[56px] leading-none">
+                                          {msg.sharedMallItem.fallbackEmoji || '🛍'}
+                                        </div>
+                                      )}
+                                      <div className="absolute left-3 top-3 rounded-full bg-white/88 px-2.5 py-1 text-[10px] font-medium text-zinc-500 shadow-sm">
+                                        {msg.sharedMallItem.category}
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">Bloom Mall</div>
+                                        <h4 className="mt-1 truncate text-sm font-bold text-zinc-900">{msg.sharedMallItem.title}</h4>
+                                        {msg.sharedMallItem.subtitle ? (
+                                          <p className="mt-1 truncate text-[11px] text-zinc-500">{msg.sharedMallItem.subtitle}</p>
+                                        ) : null}
+                                      </div>
+                                      <div className="shrink-0 text-[13px] font-black text-zinc-900">
+                                        ¥{Number(msg.sharedMallItem.price || 0).toFixed(2)}
+                                      </div>
+                                    </div>
+                                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-600">{msg.sharedMallItem.blurb}</p>
+                                  </div>
+                                  <div className="flex items-center justify-between border-t border-zinc-100 bg-zinc-50 px-3 py-2">
+                                    <span className="text-[10px] text-zinc-400">来自 Bloom 商城</span>
+                                    <ChevronRight size={12} className="text-zinc-400" />
+                                  </div>
+                                </div>
+                                {showChatMessageTime && (
+                                  <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                                    {formatChatMessageTime(msg.timestamp)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
                             {msg.location && (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                 <div 
@@ -3841,7 +3926,7 @@ export function ChatSessionScreen({
             ]);
           }}
           character={character}
-          userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
+          userProfile={{ name: userName, avatar: datingUserAvatar || userAvatar, id: 'user', bio: '', mood: '' }}
           activeConfig={datingConfig}
           chatHistory={history}
           masks={masks}

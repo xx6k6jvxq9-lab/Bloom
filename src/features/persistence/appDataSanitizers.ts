@@ -12,7 +12,7 @@ import { normalizeContactGroupName } from './contactGroupNames';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { resolveMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
-import { hasRemovedGroupOfflineEnsembleContent } from '../group-offline/sessionUtils';
+import { sanitizeGroupOfflineSession } from '../../services/group-offline/persistenceSanitizers';
 
 const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
 const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
@@ -120,9 +120,7 @@ export function sanitizeChatGroupsWithCharacters(
     memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
     currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
     publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
-    activeOfflineSession: hasRemovedGroupOfflineEnsembleContent(group.activeOfflineSession)
-      ? undefined
-      : group.activeOfflineSession,
+    activeOfflineSession: sanitizeGroupOfflineSession(group.activeOfflineSession),
     awarenessMode: getGroupAwarenessMode(group),
     groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
       ? group.groupShortTermSummary.trim() || undefined

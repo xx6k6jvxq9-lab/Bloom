@@ -11,6 +11,9 @@ import type {
   FriendRequest,
   Mask,
   PerceptionSettings,
+  RelationshipAvatarBinding,
+  UserAvatarLibrary,
+  UserProfileExtended,
   VisualSettings,
   WalletData,
   WorldBookEntry,
@@ -21,6 +24,7 @@ import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { getPartnerCoupleSpaceData, isPartnerCoupleSpaceDismissed } from '../persistence/coupleSpaceStore';
 import { buildDirectChatMentionAwarenessForCharacter } from '../group-settings/groupAwarenessPropagation';
+import { resolveUserAvatarForScene } from '../../services/user-avatar/userAvatarState';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
 import { GroupChatSessionContainer } from './GroupChatSessionContainer';
 
@@ -35,8 +39,9 @@ type ChatSessionMountProps = {
   setChatHistory: Dispatch<SetStateAction<ChatHistory>>;
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
-  userAvatar: string;
-  userName: string;
+  userProfile: UserProfileExtended;
+  userAvatarLibrary?: UserAvatarLibrary;
+  relationshipAvatarBindings?: RelationshipAvatarBinding[];
   masks: Mask[];
   favorites: FavoriteMessage[];
   setFavorites: (favorites: FavoriteMessage[]) => void;
@@ -132,8 +137,9 @@ export function ChatSessionMount({
   setChatHistory,
   settings,
   setSettings,
-  userAvatar,
-  userName,
+  userProfile,
+  userAvatarLibrary,
+  relationshipAvatarBindings,
   masks,
   favorites,
   setFavorites,
@@ -317,6 +323,20 @@ export function ChatSessionMount({
           coupleSpace,
           characterId,
         );
+        const resolvedDirectUserAvatar = resolveUserAvatarForScene({
+          userProfile,
+          userAvatarLibrary,
+          relationshipAvatarBindings,
+          characterId,
+          scene: 'direct_chat',
+        }).avatar;
+        const resolvedDatingUserAvatar = resolveUserAvatarForScene({
+          userProfile,
+          userAvatarLibrary,
+          relationshipAvatarBindings,
+          characterId,
+          scene: 'dating',
+        }).avatar;
         const isCoupleSpaceDismissed = isPartnerCoupleSpaceDismissed(
           coupleSpaceState,
           coupleSpace,
@@ -348,8 +368,9 @@ export function ChatSessionMount({
               settings={settings}
               setSettings={setSettings}
               onBack={onBackToChat}
-              userAvatar={userAvatar}
-              userName={userName}
+              userAvatar={resolvedDirectUserAvatar}
+              datingUserAvatar={resolvedDatingUserAvatar}
+              userName={userProfile.name}
               masks={masks}
               favorites={favorites}
               setFavorites={setFavorites}
@@ -404,8 +425,8 @@ export function ChatSessionMount({
               favorites={favorites}
               setFavorites={setFavorites}
               onBack={onBackToChat}
-              userAvatar={userAvatar}
-              userName={userName}
+              userAvatar={userProfile.avatar}
+              userName={userProfile.name}
               settings={settings}
               worldBooks={worldBook}
               perception={perception}

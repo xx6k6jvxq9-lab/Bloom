@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
+﻿import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useRef } from 'react';
 import {
   Calendar,
   ChevronDown,
@@ -25,6 +26,7 @@ import type {
   DateWritingPreset,
   DateWritingReference,
   GroupOfflineMode,
+  GroupOfflineRecruitDraft,
   GroupOfflineSession,
   PerceptionSettings,
   WorldBookEntry,
@@ -32,11 +34,25 @@ import type {
 import { GroupOfflineScene } from './GroupOfflineScene';
 import { ResolvedOfflineAvatar } from './ResolvedOfflineAvatar';
 import {
+  DEFAULT_GROUP_OFFLINE_BODY_TEXT_COLOR,
+  DEFAULT_GROUP_OFFLINE_HIGHLIGHT_COLOR,
+  GROUP_OFFLINE_BODY_TEXT_COLOR_OPTIONS,
+  GROUP_OFFLINE_HIGHLIGHT_COLOR_OPTIONS,
+} from './colorOptions';
+import {
   createGroupOfflineSessionId,
+  createGroupOfflineRecruitMessage,
   createGroupOfflineStartMessage,
-  hasRemovedGroupOfflineEnsembleContent,
-  normalizeGroupOfflineGenerationMode,
 } from './sessionUtils';
+import {
+  buildGroupOfflineScenarioState,
+  getGroupOfflineScenarioBlueprint,
+  isGroupOfflineScenarioType,
+} from '../../services/group-offline/scenarioTasks';
+import {
+  buildGroupOfflineWorldBookSnapshot,
+  resolveGroupOfflineWorldBookSnapshot,
+} from '../../services/group-offline/worldBookSnapshot';
 
 type GroupOfflineModalProps = {
   isOpen: boolean;
@@ -50,9 +66,12 @@ type GroupOfflineModalProps = {
   directChatHistory?: ChatHistory;
   perception?: PerceptionSettings;
   initialSession?: GroupOfflineSession | null;
+  initialDraft?: GroupOfflineRecruitDraft | null;
   onClose: () => void;
   onSessionStart: (session: GroupOfflineSession, startMessage: ChatMessage) => void;
   onSessionUpdate: (session: GroupOfflineSession | null) => void;
+  onPublishRecruitCard: (draft: GroupOfflineRecruitDraft, cardMessage: ChatMessage) => void;
+  onRecruitDraftUpdate: (draft: GroupOfflineRecruitDraft) => void;
   onSessionComplete: (payload: {
     archivedSession: GroupOfflineSession;
     endMessage: ChatMessage;
@@ -63,9 +82,18 @@ type GroupOfflineModalProps = {
 type ExpandableFieldKey =
   | 'custom_activity'
   | 'scene_prompt'
+  | 'scenario_story_source'
+  | 'scenario_user_hook'
+  | 'scenario_mission_object'
+  | 'scenario_identity_pair'
+  | 'scenario_rescue_target'
+  | 'scenario_handoff_or_exit'
+  | 'scenario_failure_condition'
+  | 'scenario_task'
   | 'location'
   | 'time'
   | 'weather'
+  | 'vibe'
   | 'writing_style'
   | 'max_chars';
 
@@ -118,8 +146,30 @@ const VIBE_OPTIONS = [
   '一触即燃',
 ];
 
-const HIGHLIGHT_COLOR_OPTIONS = ['#92EBF2', '#FFE27A', '#FBB6CE', '#C4B5FD', '#9AE6B4', '#FDBA74'];
-const BODY_TEXT_COLOR_OPTIONS = ['#FFFFFF', '#F8FBFF', '#F6F7FB', '#FFF7ED', '#F3FAFF', '#F6FFF8'];
+const SCENE_DETAIL_FIELD_KEYS: ExpandableFieldKey[] = [
+  'custom_activity',
+  'scene_prompt',
+  'scenario_story_source',
+  'scenario_user_hook',
+  'scenario_mission_object',
+  'scenario_identity_pair',
+  'scenario_rescue_target',
+  'scenario_handoff_or_exit',
+  'scenario_failure_condition',
+  'scenario_task',
+  'location',
+  'time',
+  'weather',
+];
+
+const WRITING_FIELD_KEYS: ExpandableFieldKey[] = [
+  'max_chars',
+  'writing_style',
+];
+
+const PARTICIPANT_FIELD_KEYS: ExpandableFieldKey[] = [
+  'vibe',
+];
 
 const WRITING_PRESET_OPTIONS: Array<{ value: DateWritingPreset; label: string }> = [
   { value: 'default', label: '默认' },
@@ -210,14 +260,14 @@ const RANDOM_POOLS = {
       '看起来像一次随手约出来的见面，实际上谁都没那么随便。',
     ],
     scenario: [
-      '系统提示刚熄下去，场上每个人都在重新判断彼此的位置。',
-      '规则没有说破，但谁都知道这局不只是来坐一下。',
-      '所有人都被丢进同一个现场，谁先站队会改写后面的路。',
-      '倒计时没有响，但每个人都能感觉到时间正被什么东西追着走。',
-      '表面上只是短暂停留，实际上谁都知道下一步会把局势彻底推开。',
-      '这不是能靠装作平静就混过去的场面，迟早有人先把话挑明。',
-      '任务还没落到纸面上，彼此试探却已经先开始了。',
-      '每个人都像带着一半答案进场，剩下那一半要看今晚会不会失控。',
+      '上一层副本刚关门，新的落点就把所有人一起甩进了现场。',
+      '错误身份和旧规则一起落下来，谁先认出这场局的来源，谁就能先活一步。',
+      '这不是普通碰面，而像被临时抽中的支线副本，所有人都被迫带着任务进场。',
+      '倒计时还没亮到台面上，但那种“再慢一步就会出事”的压迫已经贴到后颈。',
+      '像是快穿里被塞进了错误剧本，表面身份还能用，真正的来历却已经对不上了。',
+      '入口已经在身后合上了，现场看似平静，实际每一条规则都像在等人踩错。',
+      '任务不是突然出现的，是有人先把旧记录改了，才把这场局重新推开。',
+      '每个人都像带着半截前情掉进来，剩下那半截要靠今晚把真相一点点掀出来。',
     ],
     random: [
       '空气里像是藏着一条还没被点明的暗线。',
@@ -277,26 +327,81 @@ function pickRandom<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function pickRandomLocation(mode: GroupOfflineMode): string {
-  return pickRandom(RANDOM_POOLS.location[mode]);
+function normalizeGroupOfflineMode(value: unknown): GroupOfflineMode {
+  return value === 'scenario' || value === 'random' || value === 'daily'
+    ? value
+    : 'daily';
 }
 
-function pickRandomScene(mode: GroupOfflineMode): string {
-  return pickRandom(RANDOM_POOLS.scene[mode]);
+function pickRandomLocation(mode: GroupOfflineMode | undefined): string {
+  const normalizedMode = normalizeGroupOfflineMode(mode);
+  return pickRandom(RANDOM_POOLS.location[normalizedMode] || RANDOM_POOLS.location.daily);
 }
 
-function pickRandomWeather(mode: GroupOfflineMode): string {
-  return pickRandom(RANDOM_POOLS.weather[mode]);
+function pickRandomScene(mode: GroupOfflineMode | undefined): string {
+  const normalizedMode = normalizeGroupOfflineMode(mode);
+  return pickRandom(RANDOM_POOLS.scene[normalizedMode] || RANDOM_POOLS.scene.daily);
+}
+
+function pickRandomWeather(mode: GroupOfflineMode | undefined): string {
+  const normalizedMode = normalizeGroupOfflineMode(mode);
+  return pickRandom(RANDOM_POOLS.weather[normalizedMode] || RANDOM_POOLS.weather.daily);
 }
 
 function pickRandomTimeLabel(): string {
   return pickRandom(RANDOM_TIME_OPTIONS);
 }
 
-function activityOptionsByMode(mode: GroupOfflineMode): ActivityOption[] {
-  if (mode === 'scenario') return SCENARIO_ACTIVITY_OPTIONS;
-  if (mode === 'random') return RANDOM_ACTIVITY_OPTIONS;
+function activityOptionsByMode(mode: GroupOfflineMode | undefined): ActivityOption[] {
+  const normalizedMode = normalizeGroupOfflineMode(mode);
+  if (normalizedMode === 'scenario') return SCENARIO_ACTIVITY_OPTIONS;
+  if (normalizedMode === 'random') return RANDOM_ACTIVITY_OPTIONS;
   return DAILY_ACTIVITY_OPTIONS;
+}
+
+function safeText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function dedupeIds(ids: string[] | undefined): string[] {
+  return Array.from(new Set((ids || []).filter((id) => typeof id === 'string' && id.trim().length > 0)));
+}
+
+function sameIds(left: string[] | undefined, right: string[] | undefined): boolean {
+  const normalizedLeft = dedupeIds(left);
+  const normalizedRight = dedupeIds(right);
+  return (
+    normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((id, index) => id === normalizedRight[index])
+  );
+}
+
+function buildRecruitDraftSnapshotKey(draft: GroupOfflineRecruitDraft | null | undefined): string {
+  if (!draft) {
+    return '';
+  }
+
+  return JSON.stringify({
+    createdAt: draft.createdAt,
+    recruitCardSessionId: safeText(draft.recruitCardSessionId),
+    title: draft.title,
+    mode: draft.mode,
+    activityType: draft.activityType,
+    customActivityType: safeText(draft.customActivityType),
+    location: draft.location,
+    scenePrompt: safeText(draft.scenePrompt),
+    timeLabel: draft.timeLabel,
+    weatherLabel: draft.weatherLabel,
+    vibe: draft.vibe,
+    selectedParticipantIds: dedupeIds(draft.selectedParticipantIds),
+    participantLabels: dedupeIds(draft.participantLabels),
+    signedUpParticipantIds: dedupeIds(draft.signedUpParticipantIds),
+    confirmedParticipantIds: dedupeIds(draft.confirmedParticipantIds),
+    rosterLockedAt: draft.rosterLockedAt ?? null,
+    maxGeneratedChars: draft.maxGeneratedChars ?? null,
+    roundLimit: draft.roundLimit ?? null,
+    directorInstruction: safeText(draft.directorInstruction),
+  });
 }
 
 function FieldShell(props: {
@@ -306,13 +411,13 @@ function FieldShell(props: {
   className?: string;
 }) {
   return (
-    <label className={`block ${props.className || ''}`}>
+    <div className={`block ${props.className || ''}`}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-[12px] font-medium text-zinc-500">{props.label}</div>
         {props.action}
       </div>
       {props.children}
-    </label>
+    </div>
   );
 }
 
@@ -320,7 +425,10 @@ function RandomMiniButton(props: { onClick: () => void; label?: string }) {
   return (
     <button
       type="button"
-      onClick={props.onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        props.onClick();
+      }}
       className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] text-zinc-600"
     >
       <Dices size={11} />
@@ -371,8 +479,8 @@ function ExpandableField(props: {
             onClick={props.onToggle}
             className="w-full px-4 py-3 text-left text-[14px] leading-7 text-zinc-900 transition hover:bg-zinc-50"
           >
-            <span className={props.value.trim() ? 'text-zinc-900' : 'text-zinc-400'}>
-              {props.value.trim() || props.placeholder}
+            <span className={safeText(props.value).trim() ? 'text-zinc-900' : 'text-zinc-400'}>
+              {safeText(props.value).trim() || props.placeholder}
             </span>
           </button>
         ) : (
@@ -380,7 +488,7 @@ function ExpandableField(props: {
             {props.multiline ? (
               <textarea
                 autoFocus
-                value={props.value}
+                value={safeText(props.value)}
                 onChange={(event) => props.onChange(event.target.value)}
                 rows={props.rows || 6}
                 placeholder={props.placeholder}
@@ -389,7 +497,7 @@ function ExpandableField(props: {
             ) : (
               <input
                 autoFocus
-                value={props.value}
+                value={safeText(props.value)}
                 onChange={(event) => props.onChange(event.target.value)}
                 placeholder={props.placeholder}
                 className="h-14 w-full rounded-[16px] border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] leading-7 text-zinc-900 outline-none focus:border-zinc-400"
@@ -456,22 +564,36 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
   directChatHistory,
   perception,
   initialSession,
+  initialDraft,
   onClose,
   onSessionStart,
   onSessionUpdate,
+  onPublishRecruitCard,
+  onRecruitDraftUpdate,
   onSessionComplete,
 }) => {
+  const initializationKeyRef = useRef('closed');
   const [mode, setMode] = useState<GroupOfflineMode>('daily');
-  const [generationMode, setGenerationMode] = useState<'blocks'>('blocks');
   const [activityType, setActivityType] = useState(activityOptionsByMode('daily')[0]?.value || '');
   const [customActivityType, setCustomActivityType] = useState('');
   const [scenePrompt, setScenePrompt] = useState('');
+  const [scenarioStorySourcePrompt, setScenarioStorySourcePrompt] = useState('');
+  const [scenarioUserHookPrompt, setScenarioUserHookPrompt] = useState('');
+  const [scenarioMissionObjectPrompt, setScenarioMissionObjectPrompt] = useState('');
+  const [scenarioIdentityPairPrompt, setScenarioIdentityPairPrompt] = useState('');
+  const [scenarioRescueTargetPrompt, setScenarioRescueTargetPrompt] = useState('');
+  const [scenarioHandoffOrExitPrompt, setScenarioHandoffOrExitPrompt] = useState('');
+  const [scenarioFailureConditionPrompt, setScenarioFailureConditionPrompt] = useState('');
+  const [scenarioTaskPrompt, setScenarioTaskPrompt] = useState('');
+  const [signedUpParticipantIds, setSignedUpParticipantIds] = useState<string[]>([]);
+  const [confirmedParticipantIds, setConfirmedParticipantIds] = useState<string[]>([]);
+  const [rosterLockedAt, setRosterLockedAt] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [timeLabel, setTimeLabel] = useState('');
   const [weatherLabel, setWeatherLabel] = useState('');
   const [vibe, setVibe] = useState(VIBE_OPTIONS[0]);
-  const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLOR_OPTIONS[0]);
-  const [bodyTextColor, setBodyTextColor] = useState(BODY_TEXT_COLOR_OPTIONS[0]);
+  const [highlightColor, setHighlightColor] = useState(DEFAULT_GROUP_OFFLINE_HIGHLIGHT_COLOR);
+  const [bodyTextColor, setBodyTextColor] = useState(DEFAULT_GROUP_OFFLINE_BODY_TEXT_COLOR);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [sceneDetailsOpen, setSceneDetailsOpen] = useState(false);
   const [participantSettingsOpen, setParticipantSettingsOpen] = useState(false);
@@ -486,8 +608,16 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
   const [maxGeneratedChars, setMaxGeneratedChars] = useState('800');
   const [showScene, setShowScene] = useState(false);
   const [currentSession, setCurrentSession] = useState<GroupOfflineSession | null>(null);
+  const [directorLaunchToken, setDirectorLaunchToken] = useState(0);
+  const [initialDirectorSection, setInitialDirectorSection] = useState<'instruction' | undefined>(undefined);
+  const lastRecruitDraftSnapshotRef = useRef('');
 
   const activityOptions = useMemo(() => activityOptionsByMode(mode), [mode]);
+  const selectedScenarioBlueprint = useMemo(() => (
+    mode === 'scenario' && isGroupOfflineScenarioType(activityType)
+      ? getGroupOfflineScenarioBlueprint(activityType)
+      : null
+  ), [activityType, mode]);
   const sceneMemberPool = useMemo(() => {
     const map = new Map<string, Character>();
     [...members, ...inviteableCharacters].forEach((character) => {
@@ -495,41 +625,165 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     });
     return Array.from(map.values());
   }, [inviteableCharacters, members]);
+  const isRecruitDraftFlow = Boolean(initialDraft && !initialSession);
+  const recruitCandidateIds = useMemo(() => (
+    selectedParticipantIds.length > 0
+      ? selectedParticipantIds
+      : sceneMemberPool.map((member) => member.id)
+  ), [sceneMemberPool, selectedParticipantIds]);
+  const recruitCandidateMembers = useMemo(() => (
+    sceneMemberPool.filter((member) => recruitCandidateIds.includes(member.id))
+  ), [recruitCandidateIds, sceneMemberPool]);
+  const recruitSignedUpIds = useMemo(
+    () => dedupeIds(signedUpParticipantIds).filter((id) => recruitCandidateIds.includes(id)),
+    [recruitCandidateIds, signedUpParticipantIds],
+  );
+  const recruitConfirmedIds = useMemo(
+    () => dedupeIds(confirmedParticipantIds).filter((id) => recruitSignedUpIds.includes(id)),
+    [confirmedParticipantIds, recruitSignedUpIds],
+  );
+  const recruitLockActive = typeof rosterLockedAt === 'number' && Number.isFinite(rosterLockedAt);
 
   useEffect(() => {
+    const initializationKey = isOpen
+      ? `${group.id}:${initialSession?.id || 'none'}:${initialDraft?.createdAt || 'none'}`
+      : 'closed';
+
     if (!isOpen) {
+      initializationKeyRef.current = initializationKey;
       setShowScene(false);
       setCurrentSession(null);
+      setDirectorLaunchToken(0);
+      setInitialDirectorSection(undefined);
+      setSignedUpParticipantIds([]);
+      setConfirmedParticipantIds([]);
+      setRosterLockedAt(null);
+      lastRecruitDraftSnapshotRef.current = '';
       setExpandedField(null);
       setSceneDetailsOpen(false);
       setParticipantSettingsOpen(false);
+      setAdvancedOpen(false);
       return;
     }
 
-    if (initialSession && !hasRemovedGroupOfflineEnsembleContent(initialSession)) {
+    if (initializationKeyRef.current === initializationKey) {
+      return;
+    }
+    initializationKeyRef.current = initializationKey;
+
+    if (initialSession) {
+      const resumedParticipantNames = initialSession.participants
+        .map((participant) => sceneMemberPool.find((member) => member.id === participant.characterId))
+        .filter((member): member is Character => !!member)
+        .map((member) => member.remarkName?.trim() || member.name);
+      const resumedScenarioState = (
+        initialSession.mode === 'scenario'
+        && !initialSession.scenarioState
+        && isGroupOfflineScenarioType(initialSession.activityType)
+      )
+        ? buildGroupOfflineScenarioState({
+            type: initialSession.activityType,
+            scenePrompt: initialSession.scenePrompt,
+            userName,
+            location: initialSession.location,
+            weatherLabel: initialSession.weatherLabel,
+            vibe: initialSession.vibe,
+            participantNames: resumedParticipantNames,
+            seed: initialSession.createdAt,
+          })
+        : initialSession.scenarioState;
       setCurrentSession({
         ...initialSession,
-        generationMode: normalizeGroupOfflineGenerationMode(initialSession.generationMode),
+        generationMode: 'blocks',
+        worldBookSnapshot: resolveGroupOfflineWorldBookSnapshot(initialSession, activeWorldBooks),
+        ...(resumedScenarioState ? { scenarioState: resumedScenarioState } : {}),
+        ...(initialSession.mode === 'scenario'
+          && isGroupOfflineScenarioType(initialSession.activityType)
+          && !initialSession.roundLimit
+          ? { roundLimit: getGroupOfflineScenarioBlueprint(initialSession.activityType).roundLimit }
+          : {}),
       });
+      setDirectorLaunchToken(initialSession.awaitingDirectorInstruction ? Date.now() : 0);
+      setInitialDirectorSection(initialSession.awaitingDirectorInstruction ? 'instruction' : undefined);
       setShowScene(true);
       return;
     }
 
-    if (initialSession && hasRemovedGroupOfflineEnsembleContent(initialSession)) {
-      onSessionUpdate(null);
+    if (initialDraft && !initialSession) {
+      const draftMode = normalizeGroupOfflineMode(initialDraft.mode);
+      const draftParticipantIds = Array.isArray(initialDraft.selectedParticipantIds)
+        ? initialDraft.selectedParticipantIds
+        : Array.isArray(initialDraft.participantLabels) && initialDraft.participantLabels.length > 0
+          ? sceneMemberPool
+              .filter((member) => initialDraft.participantLabels.includes(member.remarkName?.trim() || member.name) || initialDraft.participantLabels.includes(member.name))
+              .map((member) => member.id)
+          : [];
+      setMode(draftMode);
+      setActivityType(safeText(initialDraft.activityType) || activityOptionsByMode(draftMode)[0]?.value || '');
+      setCustomActivityType(safeText(initialDraft.customActivityType));
+      setScenePrompt(safeText(initialDraft.scenePrompt));
+      setScenarioStorySourcePrompt(safeText(initialDraft.scenarioState?.storySourceLabel));
+      setScenarioUserHookPrompt(safeText(initialDraft.scenarioState?.userInvolvementLabel));
+      setScenarioMissionObjectPrompt(safeText(initialDraft.scenarioState?.missionObjectLabel));
+      setScenarioIdentityPairPrompt(safeText(initialDraft.scenarioState?.identityPairLabel));
+      setScenarioRescueTargetPrompt(safeText(initialDraft.scenarioState?.rescueTargetLabel));
+      setScenarioHandoffOrExitPrompt(
+        safeText(initialDraft.scenarioState?.handoffPointLabel)
+        || safeText(initialDraft.scenarioState?.exitMethodLabel),
+      );
+      setScenarioFailureConditionPrompt(safeText(initialDraft.scenarioState?.failureCondition));
+      setScenarioTaskPrompt(safeText(initialDraft.scenarioState?.currentTask));
+      setSignedUpParticipantIds(Array.isArray(initialDraft.signedUpParticipantIds) ? initialDraft.signedUpParticipantIds : []);
+      setConfirmedParticipantIds(Array.isArray(initialDraft.confirmedParticipantIds) ? initialDraft.confirmedParticipantIds : []);
+      setRosterLockedAt(typeof initialDraft.rosterLockedAt === 'number' ? initialDraft.rosterLockedAt : null);
+      lastRecruitDraftSnapshotRef.current = buildRecruitDraftSnapshotKey(initialDraft);
+      setLocation(safeText(initialDraft.location));
+      setTimeLabel(safeText(initialDraft.timeLabel));
+      setWeatherLabel(safeText(initialDraft.weatherLabel));
+      setVibe(safeText(initialDraft.vibe) || VIBE_OPTIONS[0]);
+      setHighlightColor(initialDraft.highlightColor || DEFAULT_GROUP_OFFLINE_HIGHLIGHT_COLOR);
+      setBodyTextColor(initialDraft.bodyTextColor || DEFAULT_GROUP_OFFLINE_BODY_TEXT_COLOR);
+      setSelectedParticipantIds(draftParticipantIds);
+      setSceneDetailsOpen(false);
+      setParticipantSettingsOpen(false);
+      setAdvancedOpen(false);
+      setExpandedField(null);
+      setNarrativePerspective(initialDraft.narrativePerspective || 'default');
+      setWritingPreset(initialDraft.writingPreset || 'default');
+      setWritingReference(initialDraft.writingReference || 'none');
+      setDialogueFormat(initialDraft.dialogueFormat || 'default');
+      setDescriptionDensity(initialDraft.descriptionDensity || 'default');
+      setWritingStyleCustom(safeText(initialDraft.writingStyleCustom));
+      setMaxGeneratedChars(String(initialDraft.maxGeneratedChars || '800'));
+      setDirectorLaunchToken(0);
+      setInitialDirectorSection(undefined);
+      setShowScene(false);
+      setCurrentSession(null);
+      return;
     }
 
     setMode('daily');
-    setGenerationMode('blocks');
     setActivityType(activityOptionsByMode('daily')[0]?.value || '');
     setCustomActivityType('');
     setScenePrompt('');
+    setScenarioStorySourcePrompt('');
+    setScenarioUserHookPrompt('');
+    setScenarioMissionObjectPrompt('');
+    setScenarioIdentityPairPrompt('');
+    setScenarioRescueTargetPrompt('');
+    setScenarioHandoffOrExitPrompt('');
+    setScenarioFailureConditionPrompt('');
+    setScenarioTaskPrompt('');
+    setSignedUpParticipantIds([]);
+    setConfirmedParticipantIds([]);
+    setRosterLockedAt(null);
+    lastRecruitDraftSnapshotRef.current = '';
     setLocation('');
     setTimeLabel('');
     setWeatherLabel('');
     setVibe(VIBE_OPTIONS[0]);
-    setHighlightColor(HIGHLIGHT_COLOR_OPTIONS[0]);
-    setBodyTextColor(BODY_TEXT_COLOR_OPTIONS[0]);
+    setHighlightColor(DEFAULT_GROUP_OFFLINE_HIGHLIGHT_COLOR);
+    setBodyTextColor(DEFAULT_GROUP_OFFLINE_BODY_TEXT_COLOR);
     setSelectedParticipantIds(members.map((member) => member.id));
     setSceneDetailsOpen(false);
     setParticipantSettingsOpen(false);
@@ -542,9 +796,22 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     setDescriptionDensity('default');
     setWritingStyleCustom('');
     setMaxGeneratedChars('800');
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
     setShowScene(false);
     setCurrentSession(null);
-  }, [initialSession, isOpen, members]);
+  }, [activeWorldBooks, group.id, initialDraft, initialSession, isOpen, members, onSessionUpdate, sceneMemberPool]);
+
+  useEffect(() => {
+    setSignedUpParticipantIds((previous) => {
+      const next = dedupeIds(previous).filter((id) => recruitCandidateIds.includes(id));
+      return sameIds(previous, next) ? previous : next;
+    });
+    setConfirmedParticipantIds((previous) => {
+      const next = dedupeIds(previous).filter((id) => recruitCandidateIds.includes(id));
+      return sameIds(previous, next) ? previous : next;
+    });
+  }, [recruitCandidateIds]);
 
   useEffect(() => {
     setActivityType((previous) => (
@@ -558,6 +825,40 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     setExpandedField((prev) => (prev === key ? null : key));
   };
 
+  const collapseExpandedFieldGroup = (keys: ExpandableFieldKey[]) => {
+    setExpandedField((previous) => (previous && keys.includes(previous) ? null : previous));
+  };
+
+  const handleToggleSceneDetails = () => {
+    setSceneDetailsOpen((previous) => {
+      const next = !previous;
+      if (!next) {
+        collapseExpandedFieldGroup(SCENE_DETAIL_FIELD_KEYS);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAdvanced = () => {
+    setAdvancedOpen((previous) => {
+      const next = !previous;
+      if (!next) {
+        collapseExpandedFieldGroup(WRITING_FIELD_KEYS);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleParticipantSettings = () => {
+    setParticipantSettingsOpen((previous) => {
+      const next = !previous;
+      if (!next) {
+        collapseExpandedFieldGroup(PARTICIPANT_FIELD_KEYS);
+      }
+      return next;
+    });
+  };
+
   const toggleParticipant = (characterId: string) => {
     setSelectedParticipantIds((prev) => (
       prev.includes(characterId)
@@ -566,32 +867,100 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     ));
   };
 
-  const sceneDetailsSummary = [
-    customActivityType.trim() || activityType || '沿用开局标签',
-    location.trim() || '地点随机',
-    timeLabel.trim() || '时间随机',
-    weatherLabel.trim() || '天气随机',
-  ].join(' · ');
-  const participantSettingsSummary = `${selectedParticipantIds.length} 人参与 · ${vibe}`;
+  const toggleRecruitSignup = (characterId: string) => {
+    if (recruitLockActive) return;
+    setSignedUpParticipantIds((previous) => (
+      previous.includes(characterId)
+        ? previous.filter((id) => id !== characterId)
+        : [...previous, characterId]
+    ));
+    setConfirmedParticipantIds((previous) => previous.filter((id) => id !== characterId));
+  };
 
-  const handleStart = () => {
-    if (selectedParticipantIds.length === 0) {
-      return;
+  const toggleRecruitConfirm = (characterId: string) => {
+    if (recruitLockActive) return;
+    setSignedUpParticipantIds((previous) => (
+      previous.includes(characterId) ? previous : [...previous, characterId]
+    ));
+    setConfirmedParticipantIds((previous) => (
+      previous.includes(characterId)
+        ? previous.filter((id) => id !== characterId)
+        : [...previous, characterId]
+    ));
+  };
+
+  const handleLockRecruitRoster = () => {
+    if (recruitConfirmedIds.length === 0) return;
+    setRosterLockedAt(Date.now());
+  };
+
+  const handleUnlockRecruitRoster = () => {
+    setRosterLockedAt(null);
+  };
+
+  const sceneDetailsSummary = [
+    safeText(customActivityType).trim() || activityType || '沿用开局标签',
+    safeText(location).trim() || '地点随机',
+    safeText(timeLabel).trim() || '时间随机',
+    safeText(weatherLabel).trim() || '天气随机',
+    selectedScenarioBlueprint ? `${selectedScenarioBlueprint.roundLimit} 轮任务局` : '',
+  ].filter(Boolean).join(' · ');
+  const participantSettingsSummary = isRecruitDraftFlow
+    ? `${selectedParticipantIds.length > 0 ? `${selectedParticipantIds.length} 人候选` : '开放报名'} · 已报名 ${recruitSignedUpIds.length} · 已确认 ${recruitConfirmedIds.length}`
+    : `${selectedParticipantIds.length > 0 ? `${selectedParticipantIds.length} 人参与` : '待征集'} · ${vibe}`;
+
+  const buildPreparedDraft = (createdAt = Date.now(), options?: { allowEmptyParticipants?: boolean }): GroupOfflineRecruitDraft | null => {
+    if (!options?.allowEmptyParticipants && selectedParticipantIds.length === 0) {
+      return null;
     }
 
-    const createdAt = Date.now();
-    const resolvedLocation = location.trim() || pickRandomLocation(mode);
-    const resolvedScene = scenePrompt.trim() || pickRandomScene(mode);
-    const resolvedTime = timeLabel.trim() || pickRandomTimeLabel();
-    const resolvedWeather = weatherLabel.trim() || pickRandomWeather(mode);
+    const resolvedLocation = safeText(location).trim() || pickRandomLocation(mode);
+    const resolvedScene = safeText(scenePrompt).trim() || pickRandomScene(mode);
+    const resolvedStorySource = safeText(scenarioStorySourcePrompt).trim();
+    const resolvedUserHook = safeText(scenarioUserHookPrompt).trim();
+    const resolvedMissionObject = safeText(scenarioMissionObjectPrompt).trim();
+    const resolvedIdentityPair = safeText(scenarioIdentityPairPrompt).trim();
+    const resolvedRescueTarget = safeText(scenarioRescueTargetPrompt).trim();
+    const resolvedHandoffOrExit = safeText(scenarioHandoffOrExitPrompt).trim();
+    const resolvedFailureCondition = safeText(scenarioFailureConditionPrompt).trim();
+    const resolvedScenarioTask = safeText(scenarioTaskPrompt).trim();
+    const resolvedTime = safeText(timeLabel).trim() || pickRandomTimeLabel();
+    const resolvedWeather = safeText(weatherLabel).trim() || pickRandomWeather(mode);
+    const participantSourceIds = selectedParticipantIds.length > 0
+      ? selectedParticipantIds
+      : (isRecruitDraftFlow ? recruitConfirmedIds : []);
+    const participantMembers = sceneMemberPool.filter((member) => participantSourceIds.includes(member.id));
+    const scenarioState = mode === 'scenario' && isGroupOfflineScenarioType(activityType)
+      ? buildGroupOfflineScenarioState({
+          type: activityType,
+          scenePrompt: resolvedScene,
+          storySourceHint: resolvedStorySource || undefined,
+          userInvolvementHint: resolvedUserHook || undefined,
+          missionObjectHint: resolvedMissionObject || undefined,
+          identityPairHint: resolvedIdentityPair || undefined,
+          rescueTargetHint: resolvedRescueTarget || undefined,
+          handoffOrExitHint: resolvedHandoffOrExit || undefined,
+          failureConditionHint: resolvedFailureCondition || undefined,
+          currentTaskHint: resolvedScenarioTask || undefined,
+          userName,
+          location: resolvedLocation,
+          weatherLabel: resolvedWeather,
+          vibe,
+          participantNames: participantMembers.map((member) => member.remarkName?.trim() || member.name),
+          seed: createdAt,
+        })
+      : undefined;
+    const scenarioRoundLimit = scenarioState && isGroupOfflineScenarioType(activityType)
+      ? getGroupOfflineScenarioBlueprint(activityType).roundLimit
+      : undefined;
+    const worldBookSnapshot = buildGroupOfflineWorldBookSnapshot(activeWorldBooks);
 
-    const nextSession: GroupOfflineSession = {
-      id: createGroupOfflineSessionId(createdAt),
-      groupId: group.id,
+    return {
+      createdAt,
+      title: safeText(customActivityType).trim() || activityType,
       mode,
-      generationMode: 'blocks',
       activityType,
-      customActivityType: customActivityType.trim() || undefined,
+      customActivityType: safeText(customActivityType).trim() || undefined,
       location: resolvedLocation,
       scenePrompt: resolvedScene,
       timeLabel: resolvedTime,
@@ -599,7 +968,10 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       vibe,
       highlightColor,
       bodyTextColor,
-      selectedWorldBookIds: activeWorldBooks.map((entry) => entry.id),
+      selectedParticipantIds: [...selectedParticipantIds],
+      participantLabels: participantMembers.map((member) => member.remarkName?.trim() || member.name),
+      selectedWorldBookIds: worldBookSnapshot.map((entry) => entry.id),
+      worldBookSnapshot,
       backgroundImage: group.groupBackground,
       backgroundSource: group.groupBackground ? 'group-background' : undefined,
       narrativePerspective,
@@ -607,9 +979,131 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       writingReference,
       dialogueFormat,
       descriptionDensity,
-      writingStyleCustom: writingStyleCustom.trim() || undefined,
+      writingStyleCustom: safeText(writingStyleCustom).trim() || undefined,
+      ...(safeText(initialDraft?.recruitCardSessionId).trim() ? { recruitCardSessionId: safeText(initialDraft?.recruitCardSessionId).trim() } : {}),
+      ...(safeText(initialDraft?.directorInstruction).trim() ? { directorInstruction: safeText(initialDraft?.directorInstruction).trim() } : {}),
+      ...(initialDraft?.awaitingDirectorInstruction ? { awaitingDirectorInstruction: true } : {}),
+      ...(recruitSignedUpIds.length > 0 ? { signedUpParticipantIds: recruitSignedUpIds } : {}),
+      ...(recruitConfirmedIds.length > 0 ? { confirmedParticipantIds: recruitConfirmedIds } : {}),
+      ...(recruitLockActive && rosterLockedAt ? { rosterLockedAt } : {}),
+      ...(typeof initialDraft?.launchedAt === 'number' && Number.isFinite(initialDraft.launchedAt)
+        ? { launchedAt: initialDraft.launchedAt }
+        : {}),
       maxGeneratedChars: Math.max(300, Math.min(2200, Number.parseInt(maxGeneratedChars || '800', 10) || 800)),
-      participants: selectedParticipantIds.map((characterId) => ({
+      roundLimit: scenarioRoundLimit,
+      scenarioState,
+    };
+  };
+
+  const buildRecruitDraftSnapshot = (): GroupOfflineRecruitDraft | null => {
+    if (!initialDraft || initialSession) {
+      return null;
+    }
+
+    const preparedDraft = buildPreparedDraft(initialDraft.createdAt, { allowEmptyParticipants: true });
+    if (!preparedDraft) {
+      return null;
+    }
+
+    return preparedDraft;
+  };
+
+  useEffect(() => {
+    if (!isOpen || !isRecruitDraftFlow || !!initialSession) {
+      return;
+    }
+
+    const nextDraft = buildRecruitDraftSnapshot();
+    if (!nextDraft) {
+      return;
+    }
+
+    const snapshot = buildRecruitDraftSnapshotKey(nextDraft);
+    if (lastRecruitDraftSnapshotRef.current === snapshot) {
+      return;
+    }
+
+    lastRecruitDraftSnapshotRef.current = snapshot;
+    onRecruitDraftUpdate(nextDraft);
+  }, [
+    activityType,
+    bodyTextColor,
+    confirmedParticipantIds,
+    customActivityType,
+    descriptionDensity,
+    dialogueFormat,
+    group.id,
+    highlightColor,
+    initialDraft,
+    initialSession,
+    isOpen,
+    isRecruitDraftFlow,
+    location,
+    maxGeneratedChars,
+    mode,
+    narrativePerspective,
+    onRecruitDraftUpdate,
+    rosterLockedAt,
+    scenarioFailureConditionPrompt,
+    scenarioHandoffOrExitPrompt,
+    scenarioIdentityPairPrompt,
+    scenarioMissionObjectPrompt,
+    scenarioRescueTargetPrompt,
+    scenarioStorySourcePrompt,
+    scenarioTaskPrompt,
+    scenarioUserHookPrompt,
+    scenePrompt,
+    selectedParticipantIds,
+    signedUpParticipantIds,
+    timeLabel,
+    vibe,
+    weatherLabel,
+    writingPreset,
+    writingReference,
+    writingStyleCustom,
+  ]);
+
+  const buildSessionFromPreparedDraft = (
+    preparedDraft: GroupOfflineRecruitDraft,
+    createdAt: number,
+    options?: {
+      awaitingDirectorInstruction?: boolean;
+    },
+  ): GroupOfflineSession => {
+    const lockedConfirmedIds = dedupeIds(preparedDraft.confirmedParticipantIds || []);
+    const launchParticipantIds = lockedConfirmedIds.length > 0
+      ? lockedConfirmedIds
+      : preparedDraft.selectedParticipantIds;
+
+    return {
+      id: createGroupOfflineSessionId(createdAt),
+      groupId: group.id,
+      mode: preparedDraft.mode,
+      generationMode: 'blocks',
+      activityType: preparedDraft.activityType,
+      customActivityType: preparedDraft.customActivityType,
+      location: preparedDraft.location,
+      scenePrompt: preparedDraft.scenePrompt,
+      timeLabel: preparedDraft.timeLabel,
+      weatherLabel: preparedDraft.weatherLabel,
+      vibe: preparedDraft.vibe,
+      highlightColor: preparedDraft.highlightColor,
+      bodyTextColor: preparedDraft.bodyTextColor,
+      selectedWorldBookIds: preparedDraft.selectedWorldBookIds,
+      worldBookSnapshot: preparedDraft.worldBookSnapshot,
+      backgroundImage: preparedDraft.backgroundImage,
+      backgroundSource: preparedDraft.backgroundSource,
+      narrativePerspective: preparedDraft.narrativePerspective,
+      writingPreset: preparedDraft.writingPreset,
+      writingReference: preparedDraft.writingReference,
+      dialogueFormat: preparedDraft.dialogueFormat,
+      descriptionDensity: preparedDraft.descriptionDensity,
+      writingStyleCustom: preparedDraft.writingStyleCustom,
+      directorInstruction: preparedDraft.directorInstruction,
+      awaitingDirectorInstruction: options?.awaitingDirectorInstruction ? true : undefined,
+      sourceRecruitCardSessionId: preparedDraft.recruitCardSessionId,
+      maxGeneratedChars: preparedDraft.maxGeneratedChars,
+      participants: launchParticipantIds.map((characterId) => ({
         characterId,
         joinedAt: createdAt,
         presence: 'arrived' as const,
@@ -617,12 +1111,53 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       createdAt,
       updatedAt: createdAt,
       currentRound: 0,
-      roundLimit: mode === 'scenario' ? 6 : undefined,
+      roundLimit: preparedDraft.roundLimit,
+      scenarioState: preparedDraft.scenarioState,
       messages: [],
       status: 'active',
     };
+  };
 
-    const participantMembers = sceneMemberPool.filter((member) => selectedParticipantIds.includes(member.id));
+  const canLaunchRecruitDraft = !isRecruitDraftFlow
+    || (recruitLockActive && recruitConfirmedIds.length > 0);
+  const launchParticipantCount = isRecruitDraftFlow
+    ? recruitConfirmedIds.length
+    : selectedParticipantIds.length;
+
+  const handleStart = () => {
+    const createdAt = Date.now();
+    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: isRecruitDraftFlow });
+    if (!preparedDraft) return;
+    if (!canLaunchRecruitDraft) return;
+
+    const nextSession = buildSessionFromPreparedDraft(preparedDraft, createdAt);
+
+    const launchParticipantIds = nextSession.participants.map((participant) => participant.characterId);
+    const participantMembers = sceneMemberPool.filter((member) => launchParticipantIds.includes(member.id));
+    const startMessage = createGroupOfflineStartMessage({
+      session: nextSession,
+      members: participantMembers,
+    });
+
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
+    setCurrentSession(nextSession);
+    setShowScene(true);
+    onSessionStart(nextSession, startMessage);
+    onSessionUpdate(nextSession);
+  };
+
+  const handleOpenSpecialInstructionEntry = () => {
+    const createdAt = Date.now();
+    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: isRecruitDraftFlow });
+    if (!preparedDraft) return;
+    if (!canLaunchRecruitDraft) return;
+
+    const nextSession = buildSessionFromPreparedDraft(preparedDraft, createdAt, {
+      awaitingDirectorInstruction: true,
+    });
+    const launchParticipantIds = nextSession.participants.map((participant) => participant.characterId);
+    const participantMembers = sceneMemberPool.filter((member) => launchParticipantIds.includes(member.id));
     const startMessage = createGroupOfflineStartMessage({
       session: nextSession,
       members: participantMembers,
@@ -630,8 +1165,30 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
 
     setCurrentSession(nextSession);
     setShowScene(true);
+    setInitialDirectorSection('instruction');
+    setDirectorLaunchToken(Date.now());
     onSessionStart(nextSession, startMessage);
     onSessionUpdate(nextSession);
+  };
+
+  const handlePublishRecruitCard = () => {
+    const createdAt = Date.now();
+    const recruitCardSessionId = `group-offline-recruit-${createdAt}`;
+    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: true });
+    if (!preparedDraft) return;
+    const nextDraft: GroupOfflineRecruitDraft = {
+      ...preparedDraft,
+      recruitCardSessionId,
+      signedUpParticipantIds: [],
+      confirmedParticipantIds: [],
+    };
+    const cardMessage = createGroupOfflineRecruitMessage({
+      draft: nextDraft,
+      createdBy: userName,
+      timestamp: createdAt,
+    });
+    onPublishRecruitCard(nextDraft, cardMessage);
+    onClose();
   };
 
   if (!isOpen) {
@@ -644,6 +1201,8 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
         {showScene && currentSession ? (
           <GroupOfflineScene
             session={currentSession}
+            directorLaunchToken={directorLaunchToken}
+            initialDirectorSection={initialDirectorSection}
             group={group}
             members={sceneMemberPool}
             inviteableCharacters={inviteableCharacters}
@@ -759,11 +1318,30 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                   </div>
                 </FieldShell>
 
+                {selectedScenarioBlueprint ? (
+                  <section className="rounded-[24px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
+                        默认 {selectedScenarioBlueprint.roundLimit} 轮
+                      </div>
+                      <div className="rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
+                        任务型设定局
+                      </div>
+                    </div>
+                    <div className="mt-3 text-[13px] leading-6 text-zinc-800">
+                      {selectedScenarioBlueprint.playStyle}
+                    </div>
+                    <div className="mt-2 text-[12px] leading-5 text-zinc-500">
+                      {selectedScenarioBlueprint.pressureRule}
+                    </div>
+                  </section>
+                ) : null}
+
                 <CollapsibleSection
                   title="场景细节"
                   summary={sceneDetailsSummary}
                   open={sceneDetailsOpen}
-                  onToggle={() => setSceneDetailsOpen((prev) => !prev)}
+                  onToggle={handleToggleSceneDetails}
                 >
                   <ExpandableField
                     label="自定义局名"
@@ -775,16 +1353,122 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                   />
 
                   <ExpandableField
-                    label="情景"
+                    label={mode === 'scenario' ? '背景' : '情景'}
                     action={<RandomMiniButton onClick={() => setScenePrompt(pickRandomScene(mode))} />}
                     value={scenePrompt}
-                    placeholder="留空随机，例如：刚下过雨，店里只剩靠窗的位置。"
+                    placeholder={mode === 'scenario'
+                      ? '留空随机，例如：昨晚有人把你们的临时身份牌调包了，守夜人正在按错误名单点人。'
+                      : '留空随机，例如：刚下过雨，店里只剩靠窗的位置。'}
                     expanded={expandedField === 'scene_prompt'}
                     onToggle={() => toggleExpandedField('scene_prompt')}
                     onChange={setScenePrompt}
                     multiline
                     rows={6}
                   />
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="故事来源"
+                      value={scenarioStorySourcePrompt}
+                      placeholder="例如：昨晚有人把你们的临时身份牌调包了，今天清场前这件事被重新翻出来。"
+                      expanded={expandedField === 'scenario_story_source'}
+                      onToggle={() => toggleExpandedField('scenario_story_source')}
+                      onChange={setScenarioStorySourcePrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="你的切入口"
+                      value={scenarioUserHookPrompt}
+                      placeholder="例如：你得先确认谁拿错了身份牌，因为第一句判断会先落到你这里。"
+                      expanded={expandedField === 'scenario_user_hook'}
+                      onToggle={() => toggleExpandedField('scenario_user_hook')}
+                      onChange={setScenarioUserHookPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="关键目标物"
+                      value={scenarioMissionObjectPrompt}
+                      placeholder="例如：真正能生效的授权卡 / 被调包的硬盘 / 只有一份的临时通行证。"
+                      expanded={expandedField === 'scenario_mission_object'}
+                      onToggle={() => toggleExpandedField('scenario_mission_object')}
+                      onChange={setScenarioMissionObjectPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="错位身份"
+                      value={scenarioIdentityPairPrompt}
+                      placeholder="例如：夜班放映员 / 临时审片人。留空则按局内模板随机。"
+                      expanded={expandedField === 'scenario_identity_pair'}
+                      onToggle={() => toggleExpandedField('scenario_identity_pair')}
+                      onChange={setScenarioIdentityPairPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="营救对象"
+                      value={scenarioRescueTargetPrompt}
+                      placeholder="例如：被困在后场的临时证人。也可以写成“对象 / 为什么非救不可”。"
+                      expanded={expandedField === 'scenario_rescue_target'}
+                      onToggle={() => toggleExpandedField('scenario_rescue_target')}
+                      onChange={setScenarioRescueTargetPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="交接点 / 出口"
+                      value={scenarioHandoffOrExitPrompt}
+                      placeholder="例如：后场备用门 / 港口外栏交接点 / 只在断电后开启的后门线路。"
+                      expanded={expandedField === 'scenario_handoff_or_exit'}
+                      onToggle={() => toggleExpandedField('scenario_handoff_or_exit')}
+                      onChange={setScenarioHandoffOrExitPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="失败后果"
+                      value={scenarioFailureConditionPrompt}
+                      placeholder="例如：倒计时归零时目标物还没送到交接点，整场就会直接转成收残局。"
+                      expanded={expandedField === 'scenario_failure_condition'}
+                      onToggle={() => toggleExpandedField('scenario_failure_condition')}
+                      onChange={setScenarioFailureConditionPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
+
+                  {selectedScenarioBlueprint ? (
+                    <ExpandableField
+                      label="自定义任务"
+                      value={scenarioTaskPrompt}
+                      placeholder="例如：在剩余 8 轮内认出谁拿错了身份牌，并把真正的授权卡带到外场交接点。"
+                      expanded={expandedField === 'scenario_task'}
+                      onToggle={() => toggleExpandedField('scenario_task')}
+                      onChange={setScenarioTaskPrompt}
+                      multiline
+                      rows={4}
+                    />
+                  ) : null}
 
                   <div className="grid gap-4 md:grid-cols-3">
                     <ExpandableField
@@ -823,7 +1507,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                   title="参与设置"
                   summary={participantSettingsSummary}
                   open={participantSettingsOpen}
-                  onToggle={() => setParticipantSettingsOpen((prev) => !prev)}
+                  onToggle={handleToggleParticipantSettings}
                 >
                   <FieldShell label="氛围倾向">
                     <div className="flex flex-wrap gap-2">
@@ -847,6 +1531,17 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                     </div>
                   </FieldShell>
 
+                  <ExpandableField
+                    label="自定义氛围"
+                    value={vibe}
+                    placeholder="例如：表面在起哄，实际每个人都在试探谁先松口。"
+                    expanded={expandedField === 'vibe'}
+                    onToggle={() => toggleExpandedField('vibe')}
+                    onChange={setVibe}
+                    multiline
+                    rows={4}
+                  />
+
                   <FieldShell label={<span className="inline-flex items-center gap-2"><Users size={12} />参与角色</span>}>
                     <div className="space-y-2">
                       {members.map((member) => {
@@ -856,11 +1551,12 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                             key={member.id}
                             type="button"
                             onClick={() => toggleParticipant(member.id)}
+                            disabled={isRecruitDraftFlow && recruitLockActive}
                             className={`flex w-full items-center gap-3 rounded-[20px] border px-3 py-3 text-left transition ${
                               selected
                                 ? 'border-zinc-300 bg-zinc-100'
                                 : 'border-zinc-200 bg-white hover:bg-zinc-50'
-                            }`}
+                            } disabled:cursor-not-allowed disabled:opacity-45`}
                           >
                             <ResolvedOfflineAvatar
                               value={member.avatar}
@@ -877,12 +1573,91 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                       })}
                     </div>
                   </FieldShell>
+
+                  {isRecruitDraftFlow ? (
+                    <FieldShell label="征集流程">
+                      <div className="space-y-3">
+                        <div className="rounded-[18px] border border-zinc-200 bg-zinc-50/80 px-3 py-3 text-[12px] leading-6 text-zinc-600">
+                          <div>{selectedParticipantIds.length > 0 ? `当前候选 ${selectedParticipantIds.length} 人` : '当前为开放报名'}</div>
+                          <div>已报名 {recruitSignedUpIds.length} 人 · 已确认 {recruitConfirmedIds.length} 人</div>
+                          <div>{recruitLockActive ? '名单已锁定，开局会按确认名单发起。' : '先报名，再确认，最后锁定名单。'}</div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleLockRecruitRoster}
+                            disabled={recruitLockActive || recruitConfirmedIds.length === 0}
+                            className="rounded-full border border-zinc-300 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-800 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            锁定名单
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUnlockRecruitRoster}
+                            disabled={!recruitLockActive}
+                            className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            解除锁定
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {recruitCandidateMembers.map((member) => {
+                            const isSignedUp = recruitSignedUpIds.includes(member.id);
+                            const isConfirmed = recruitConfirmedIds.includes(member.id);
+                            return (
+                              <div
+                                key={`recruit-${member.id}`}
+                                className="flex items-center gap-3 rounded-[18px] border border-zinc-200 bg-white px-3 py-3"
+                              >
+                                <ResolvedOfflineAvatar
+                                  value={member.avatar}
+                                  alt={member.name}
+                                  containerClassName="h-10 w-10 overflow-hidden rounded-full border border-zinc-200 bg-zinc-100"
+                                  fallbackClassName="text-[13px] text-zinc-700"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-[13px] font-medium text-zinc-900">{member.remarkName?.trim() || member.name}</div>
+                                  <div className="truncate text-[11px] text-zinc-500">
+                                    {isConfirmed ? '已确认参与' : isSignedUp ? '已报名待确认' : '尚未报名'}
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRecruitSignup(member.id)}
+                                    disabled={recruitLockActive}
+                                    className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                  >
+                                    {isSignedUp ? '取消报名' : '报名'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRecruitConfirm(member.id)}
+                                    disabled={recruitLockActive}
+                                    className={`rounded-full border px-3 py-1.5 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                                      isConfirmed
+                                        ? 'border-zinc-300 bg-zinc-100 text-zinc-800'
+                                        : 'border-zinc-900 bg-zinc-900 text-white hover:bg-black'
+                                    }`}
+                                  >
+                                    {isConfirmed ? '取消确认' : '确认参与'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </FieldShell>
+                  ) : null}
                 </CollapsibleSection>
 
                 <section className="border-t border-zinc-200 pt-5">
                   <button
                     type="button"
-                    onClick={() => setAdvancedOpen((prev) => !prev)}
+                    onClick={handleToggleAdvanced}
                     className="flex w-full items-center justify-between text-left"
                   >
                     <div>
@@ -964,7 +1739,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                             className="md:col-span-2"
                           >
                             <div className="flex flex-wrap gap-3">
-                              {HIGHLIGHT_COLOR_OPTIONS.map((color) => {
+                              {GROUP_OFFLINE_HIGHLIGHT_COLOR_OPTIONS.map((color) => {
                                 const active = highlightColor === color;
                                 return (
                                   <button
@@ -988,7 +1763,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                             className="md:col-span-2"
                           >
                             <div className="flex flex-wrap gap-3">
-                              {BODY_TEXT_COLOR_OPTIONS.map((color) => {
+                              {GROUP_OFFLINE_BODY_TEXT_COLOR_OPTIONS.map((color) => {
                                 const active = bodyTextColor === color;
                                 return (
                                   <button
@@ -1035,29 +1810,56 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                     )}
                   </AnimatePresence>
                 </section>
+
+                <section className="rounded-[24px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[14px] font-semibold text-zinc-900">特殊指令入口</div>
+                      <div className="mt-1 text-[12px] leading-5 text-zinc-500">
+                        先进入群聊线下页，不立即生成。会直接打开大鹅导演的“特殊指令”分区，等你写完要求后再开始。
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenSpecialInstructionEntry}
+                      disabled={launchParticipantCount === 0 || !canLaunchRecruitDraft}
+                      className="shrink-0 rounded-[14px] border border-zinc-200 bg-zinc-100 px-3.5 py-2 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      进入
+                    </button>
+                  </div>
+                </section>
               </div>
 
               <div className="mt-6 flex flex-col gap-3 md:flex-row">
                 <button
                   type="button"
-                  disabled={selectedParticipantIds.length === 0}
+                  disabled={launchParticipantCount === 0 || !canLaunchRecruitDraft}
                   onClick={handleStart}
                   className="flex-1 rounded-[22px] border border-zinc-300 bg-zinc-100 px-4 py-3 text-[15px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
                 >
-                  直接开始
+                  {isRecruitDraftFlow ? '按锁定名单开局' : '直接开始'}
                 </button>
-                <button
-                  type="button"
-                  disabled
-                  className="flex-1 rounded-[22px] border border-zinc-300 bg-zinc-100 px-4 py-3 text-[15px] font-medium text-zinc-400 transition disabled:cursor-not-allowed disabled:opacity-80"
-                >
-                  发征集卡
-                </button>
+                {!isRecruitDraftFlow ? (
+                  <button
+                    type="button"
+                    onClick={handlePublishRecruitCard}
+                    className="flex-1 rounded-[22px] border border-zinc-300 bg-white px-4 py-3 text-[15px] font-medium text-zinc-800 transition hover:bg-zinc-50"
+                  >
+                    发征集卡
+                  </button>
+                ) : null}
               </div>
+
+              {isRecruitDraftFlow && !canLaunchRecruitDraft ? (
+                <div className="mt-4 text-[12px] leading-6 text-zinc-500">
+                  先让人报名并确认，再锁定名单；锁定后才能按这张征集卡开局。
+                </div>
+              ) : null}
 
               {activeWorldBooks.length > 0 ? (
                 <div className="mt-4 text-[12px] leading-6 text-zinc-500">
-                  本次会自动读取当前群启用的世界书：{activeWorldBooks.map((entry) => entry.title).join('、')}
+                  本次会在开局时锁定当前群启用的世界书快照：{activeWorldBooks.map((entry) => entry.title).join('、')}
                 </div>
               ) : null}
             </div>

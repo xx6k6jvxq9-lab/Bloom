@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ChevronDown,
@@ -17,17 +17,17 @@ import type {
   ChatGroup,
   ChatHistory,
   ChatMessage,
+  DatingPageEpisode,
   GroupOfflineAftereffectItem,
   GroupOfflineAftereffects,
   GroupOfflineEndingVoice,
   GroupOfflineGeneratedContent,
   GroupOfflineMemoryPanel,
   GroupOfflineParticipantSoundtrack,
-  GroupOfflineRoundArticleHighlight,
-  GroupOfflineRoundArticleParagraph,
   GroupOfflineRound,
   GroupOfflineRoundCharacterEntry,
   GroupOfflineRoundDispatchMode,
+  GroupOfflineScenarioTaskStepUpdate,
   GroupOfflineSession,
   GroupOfflineSoundtrack,
   GroupOfflineStatusField,
@@ -39,6 +39,7 @@ import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeCli
 import { buildGroupOfflinePrompt } from '../../services/ai/prompts/builders/buildGroupOfflinePrompt';
 import { buildGroupOfflineEntryRewritePrompt } from '../../services/ai/prompts/builders/buildGroupOfflineEntryRewritePrompt';
 import { buildGroupOfflineRoundRewritePrompt } from '../../services/ai/prompts/builders/buildGroupOfflineRoundRewritePrompt';
+import { buildCustomPageEpisodeSrcDoc, normalizePageEpisodeHtmlDocument } from '../../services/dating/pageEpisodeHtml';
 import {
   buildGroupOfflineStylePresetInstruction,
   GROUP_OFFLINE_STYLE_PRESET_OPTIONS,
@@ -50,13 +51,26 @@ import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { buildGroupOfflineRoundPlan } from '../../services/group-offline/buildGroupOfflineRoundPlan';
 import { buildGroupOfflineRuntimeProjection } from '../../services/group-offline/buildGroupOfflineRuntimeProjection';
 import {
+  applyGroupOfflineScenarioRoundResult,
+  buildGroupOfflineScenarioCardFields,
+  getGroupOfflineScenarioLockReason,
+  getGroupOfflineScenarioRemainingRounds,
+  getGroupOfflineScenarioStatusLabel,
+  replayGroupOfflineScenarioState,
+} from '../../services/group-offline/scenarioTasks';
+import { resolveGroupOfflineWorldBookSnapshot } from '../../services/group-offline/worldBookSnapshot';
+import {
   buildGroupOfflineRoundPlanSnapshot,
   buildGroupOfflineRoundRuntimeProjectionSnapshot,
   resolveRoundPlannerSnapshot,
   resolveRoundRuntimeProjection,
 } from '../../services/group-offline/roundSnapshots';
 import { ResolvedOfflineAvatar } from './ResolvedOfflineAvatar';
-import { GooseDirectorOrb } from './GooseDirectorOrb';
+import {
+  GooseDirectorOrb,
+  type GooseDirectorInstructionMode,
+  type GooseDirectorSection,
+} from './GooseDirectorOrb';
 import { GroupOfflineSongBoard, type SongBoardItem } from './GroupOfflineSongBoard';
 import {
   GroupOfflineRoundInspector,
@@ -71,7 +85,6 @@ import {
   createGroupOfflineRoundId,
   MAX_GROUP_OFFLINE_BLOCK_SELECTION,
   mergeGroupOfflineGeneratedContent,
-  normalizeGroupOfflineGenerationMode,
   pickRandomGroupOfflineParticipantIds,
   pickRecommendedGroupOfflineParticipantIds,
   syncGroupOfflineDerivedContent,
@@ -81,6 +94,8 @@ import './GroupOfflineScene.css';
 
 type GroupOfflineSceneProps = {
   session: GroupOfflineSession;
+  directorLaunchToken?: number;
+  initialDirectorSection?: GooseDirectorSection;
   group: ChatGroup;
   members: Character[];
   inviteableCharacters: Character[];
@@ -105,7 +120,8 @@ type EndingPayload = {
 };
 
 type EntryActionKind = 'retry' | 'polish';
-type RoundRewriteMode = 'style_preset' | 'custom_style' | 'retry_round';
+type GroupOfflineDirectorMode = GooseDirectorInstructionMode;
+type RoundRewriteMode = 'style_preset' | 'custom_style' | 'retry_round' | 'director_instruction';
 
 type GenerateContentOptions = {
   phase: GroupOfflineContentPhase;
@@ -115,6 +131,8 @@ type GenerateContentOptions = {
   selectedCharacterIds?: string[];
   dispatchMode?: GroupOfflineRoundDispatchMode;
   nextRoundNumber?: number;
+  directorInstructionOverride?: string;
+  directorMode?: GroupOfflineDirectorMode;
 };
 
 type DisplayBlock = { type: 'body' | 'highlight'; text: string };
@@ -503,29 +521,72 @@ function normalizeMemoryPanelForDisplayRich(
 function normalizeGeneratedContentForDisplay(content: GroupOfflineGeneratedContent): GroupOfflineGeneratedContent {
   return syncGroupOfflineDerivedContent({
     ...content,
-    rounds: (content.rounds || []).map((round) => {
-      const characterEntries = round.characterEntries.map((entry) => ({
+    rounds: (content.rounds || []).map((round) => ({
+      ...round,
+      characterEntries: round.characterEntries.map((entry) => ({
         ...entry,
         highlightText: resolveValidHighlightText(entry.text, entry.highlightText),
         statusFields: normalizeStatusFields(entry.statusFields),
         notebook: normalizeNotebookText(normalizeString(entry.notebook), entry.speakerLabel) || undefined,
         aftereffects: normalizeAftereffectsForDisplay(entry.aftereffects),
         memoryPanel: normalizeMemoryPanelForStorage(entry.memoryPanel),
-      }));
-      const normalizedRound: GroupOfflineRound = {
-        ...round,
-        characterEntries,
-      };
-
-      return {
-        ...normalizedRound,
-        articleParagraphs: coerceRoundArticleParagraphs({
-          value: round.articleParagraphs,
-          round: normalizedRound,
-        }),
-      };
-    }),
+      })),
+    })),
   });
+}
+
+type GroupOfflineHtmlPageEpisode = Pick<DatingPageEpisode, 'title' | 'subtitle' | 'caption' | 'htmlDocument'> & {
+  pageType: 'micro_app' | 'custom_html';
+};
+
+function normalizeGroupOfflinePageEpisode(
+  value: unknown,
+  fallbackTitle: string,
+): GroupOfflineHtmlPageEpisode | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const payload = value as Partial<DatingPageEpisode>;
+  const pageType = payload.pageType === 'micro_app' || payload.pageType === 'custom_html'
+    ? payload.pageType
+    : undefined;
+  if (!pageType) {
+    return undefined;
+  }
+
+  return {
+    pageType,
+    title: normalizeString(payload.title) || fallbackTitle,
+    subtitle: normalizeString(payload.subtitle) || undefined,
+    caption: normalizeString(payload.caption) || undefined,
+    htmlDocument: normalizePageEpisodeHtmlDocument(payload.htmlDocument) || undefined,
+  };
+}
+
+function isGroupOfflineHtmlPageEpisode(
+  pageEpisode: DatingPageEpisode | undefined,
+): pageEpisode is GroupOfflineHtmlPageEpisode {
+  return Boolean(pageEpisode && (pageEpisode.pageType === 'micro_app' || pageEpisode.pageType === 'custom_html'));
+}
+
+function buildGroupOfflinePageEpisodeSrcDoc(pageEpisode: GroupOfflineHtmlPageEpisode | undefined): string {
+  if (!pageEpisode) {
+    return '';
+  }
+
+  return buildCustomPageEpisodeSrcDoc({
+    pageType: pageEpisode.pageType,
+    title: pageEpisode.title,
+    subtitle: pageEpisode.subtitle,
+    caption: pageEpisode.caption,
+    htmlDocument: pageEpisode.htmlDocument,
+  });
+}
+
+function resolveGroupOfflinePageEpisodeSandbox(pageEpisode: GroupOfflineHtmlPageEpisode | undefined): string {
+  if (!pageEpisode) {
+    return 'allow-same-origin';
+  }
+
+  return 'allow-scripts';
 }
 
 function normalizeTarget(value: unknown): GroupOfflineRoundCharacterEntry['target'] | undefined {
@@ -543,273 +604,6 @@ function normalizeTarget(value: unknown): GroupOfflineRoundCharacterEntry['targe
 
 function normalizeDialogueCore(value: string | undefined): string {
   return normalizeString(value).replace(/^["'“”《》「」『』\s]+|["'“”《》「」『』\s]+$/gu, '').trim();
-}
-
-function resolveValidArticleQuote(paragraphText: string, preferred: string | undefined): string | undefined {
-  const normalized = normalizeDialogueCore(preferred);
-  if (!normalized) return undefined;
-  if (paragraphText.includes(normalized)) return normalized;
-
-  const wrappedCandidates = [
-    `“${normalized}”`,
-    `"${normalized}"`,
-    `「${normalized}」`,
-    `『${normalized}』`,
-  ];
-  return wrappedCandidates.some((candidate) => paragraphText.includes(candidate)) ? normalized : undefined;
-}
-
-function entrySpeakerLabelMatches(label: string | undefined, entry: Pick<GroupOfflineRoundCharacterEntry, 'speakerLabel'>): boolean {
-  const normalizedLabel = normalizeString(label).toLowerCase();
-  return !!normalizedLabel && normalizeString(entry.speakerLabel).toLowerCase() === normalizedLabel;
-}
-
-function buildDerivedEnsembleArticleParagraphsFromRound(round: GroupOfflineRound): GroupOfflineRoundArticleParagraph[] {
-  if (round.generationMode !== 'ensemble') return [];
-
-  return round.characterEntries.flatMap((entry, entryIndex) => {
-    const presentCharacterIds = Array.from(new Set([
-      entry.characterId,
-      ...(entry.target?.type === 'character' && entry.target.characterId ? [entry.target.characterId] : []),
-    ]));
-
-    return splitNarrativeParagraphs(entry.text).map((paragraph, paragraphIndex) => {
-      const quote = resolveValidArticleQuote(paragraph, entry.highlightText);
-      const highlights: GroupOfflineRoundArticleHighlight[] = quote
-        ? [{
-            characterId: entry.characterId,
-            speakerLabel: entry.speakerLabel,
-            quote,
-            ...(entry.target ? { target: entry.target } : {}),
-          }]
-        : [];
-
-      return {
-        id: `${round.id}:derived-article-${entryIndex + 1}-${paragraphIndex + 1}`,
-        text: paragraph,
-        highlights,
-        presentCharacterIds,
-        focusCharacterIds: [entry.characterId],
-        speakerCharacterIds: highlights.length > 0 ? [entry.characterId] : [],
-      } satisfies GroupOfflineRoundArticleParagraph;
-    });
-  });
-}
-
-function splitArticleParagraphText(text: string): string[] {
-  const normalized = normalizeString(text);
-  if (!normalized) return [];
-
-  const explicitParagraphs = normalized
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
-  if (explicitParagraphs.length > 1) {
-    return explicitParagraphs;
-  }
-
-  const sentences: string[] = [];
-  let current = '';
-  let inQuote = false;
-  let activeQuote: string | null = null;
-
-  for (const char of Array.from(normalized)) {
-    current += char;
-
-    if (!inQuote && (char === '“' || char === '「' || char === '『' || char === '"')) {
-      inQuote = true;
-      activeQuote = char;
-      continue;
-    }
-
-    if (inQuote) {
-      const closesCurrentQuote = (
-        (activeQuote === '“' && char === '”')
-        || (activeQuote === '「' && char === '」')
-        || (activeQuote === '『' && char === '』')
-        || (activeQuote === '"' && char === '"')
-      );
-      if (closesCurrentQuote) {
-        inQuote = false;
-        activeQuote = null;
-      }
-      continue;
-    }
-
-    if (char === '。' || char === '！' || char === '？') {
-      const trimmed = current.trim();
-      if (trimmed) {
-        sentences.push(trimmed);
-      }
-      current = '';
-    }
-  }
-
-  const tail = current.trim();
-  if (tail) {
-    sentences.push(tail);
-  }
-
-  if (sentences.length <= 2 && normalized.length <= 110) {
-    return [normalized];
-  }
-
-  const paragraphs: string[] = [];
-  let currentParagraph = '';
-  sentences.forEach((sentence) => {
-    const candidate = `${currentParagraph}${sentence}`.trim();
-    if (!currentParagraph) {
-      currentParagraph = sentence;
-      return;
-    }
-    if (candidate.length <= 92 && currentParagraph.split(/(?<=[。！？])/u).filter(Boolean).length < 2) {
-      currentParagraph = candidate;
-      return;
-    }
-    paragraphs.push(currentParagraph.trim());
-    currentParagraph = sentence;
-  });
-  if (currentParagraph.trim()) {
-    paragraphs.push(currentParagraph.trim());
-  }
-
-  return paragraphs.length > 0 ? paragraphs : [normalized];
-}
-
-function finalizeArticleParagraph(paragraph: GroupOfflineRoundArticleParagraph): GroupOfflineRoundArticleParagraph {
-  const speakerCharacterIds = Array.from(new Set([
-    ...(paragraph.speakerCharacterIds || []),
-    ...paragraph.highlights.map((highlight) => highlight.characterId),
-  ]));
-  const focusCharacterIds = Array.from(new Set([
-    ...(paragraph.focusCharacterIds || []),
-    ...(speakerCharacterIds.length > 0 ? speakerCharacterIds : []),
-    ...((paragraph.presentCharacterIds || []).slice(0, speakerCharacterIds.length > 0 ? 0 : 1)),
-  ]));
-
-  return {
-    ...paragraph,
-    ...(speakerCharacterIds.length > 0 ? { speakerCharacterIds } : {}),
-    ...(focusCharacterIds.length > 0 ? { focusCharacterIds } : {}),
-  };
-}
-
-function expandArticleParagraph(paragraph: GroupOfflineRoundArticleParagraph): GroupOfflineRoundArticleParagraph[] {
-  const normalizedParagraph = finalizeArticleParagraph(paragraph);
-  const chunks = splitArticleParagraphText(normalizedParagraph.text);
-  if (chunks.length <= 1) {
-    return [normalizedParagraph];
-  }
-
-  return chunks.map((text, index) => {
-    const highlights = normalizedParagraph.highlights.filter((highlight) => (
-      normalizeDialogueCore(resolveValidArticleQuote(text, highlight.quote))
-      === normalizeDialogueCore(highlight.quote)
-    ));
-    const speakerCharacterIds = Array.from(new Set(highlights.map((highlight) => highlight.characterId)));
-
-    return finalizeArticleParagraph({
-      ...normalizedParagraph,
-      id: `${normalizedParagraph.id}:part-${index + 1}`,
-      text,
-      highlights,
-      ...(speakerCharacterIds.length > 0 ? { speakerCharacterIds } : {}),
-      focusCharacterIds: normalizedParagraph.focusCharacterIds,
-    });
-  });
-}
-
-function coerceRoundArticleParagraphs(input: {
-  value: unknown;
-  round: GroupOfflineRound;
-  offstageAliases?: string[];
-}): GroupOfflineRoundArticleParagraph[] {
-  const validEntries = input.round.characterEntries || [];
-  const validCharacterIds = new Set(validEntries.map((entry) => entry.characterId));
-  const resolveEntry = (characterId: string | undefined, speakerLabel: string | undefined) => (
-    validEntries.find((entry) => characterId && entry.characterId === characterId)
-    || validEntries.find((entry) => entrySpeakerLabelMatches(speakerLabel, entry))
-  );
-
-  const rawParagraphs = typeof input.value === 'string'
-    ? splitNarrativeParagraphs(input.value).map((text, index) => ({ id: `paragraph-${index + 1}`, text }))
-    : Array.isArray(input.value)
-      ? input.value
-      : [];
-
-  const paragraphs = rawParagraphs
-    .map((item, index) => {
-      const text = typeof item === 'string'
-        ? normalizeString(item)
-        : normalizeString((item as { text?: unknown })?.text);
-      if (!text) return null;
-      if (textMentionsOffstageAliases(text, input.offstageAliases || [])) return null;
-
-      const highlightSource = typeof item === 'object' && item
-        ? (item as { highlights?: unknown[] }).highlights
-        : undefined;
-      const highlights = Array.isArray(highlightSource)
-        ? highlightSource
-            .map((highlight) => {
-              if (!highlight || typeof highlight !== 'object') return null;
-              const rawCharacterId = normalizeString((highlight as { characterId?: unknown }).characterId);
-              const rawSpeakerLabel = normalizeString((highlight as { speakerLabel?: unknown }).speakerLabel);
-              const matchedEntry = resolveEntry(rawCharacterId, rawSpeakerLabel);
-              const characterId = matchedEntry?.characterId || rawCharacterId;
-              const speakerLabel = rawSpeakerLabel || matchedEntry?.speakerLabel || '';
-              const quote = resolveValidArticleQuote(text, normalizeString((highlight as { quote?: unknown }).quote));
-              if (!characterId || !speakerLabel || !quote || !validCharacterIds.has(characterId)) return null;
-              return {
-                characterId,
-                speakerLabel,
-                quote,
-                ...(normalizeTarget((highlight as { target?: unknown }).target)
-                  ? { target: normalizeTarget((highlight as { target?: unknown }).target) }
-                  : {}),
-              } satisfies GroupOfflineRoundArticleHighlight;
-            })
-            .filter((highlight): highlight is GroupOfflineRoundArticleHighlight => !!highlight)
-        : [];
-
-      const presentCharacterIds = typeof item === 'object' && item && Array.isArray((item as { presentCharacterIds?: unknown[] }).presentCharacterIds)
-        ? ((item as { presentCharacterIds?: unknown[] }).presentCharacterIds || [])
-            .map((value) => normalizeString(value))
-            .map((value) => resolveEntry(value, value)?.characterId || value)
-            .filter((value, itemIndex, array) => !!value && validCharacterIds.has(value) && array.indexOf(value) === itemIndex)
-        : [];
-      const focusCharacterIds = typeof item === 'object' && item && Array.isArray((item as { focusCharacterIds?: unknown[] }).focusCharacterIds)
-        ? ((item as { focusCharacterIds?: unknown[] }).focusCharacterIds || [])
-            .map((value) => normalizeString(value))
-            .map((value) => resolveEntry(value, value)?.characterId || value)
-            .filter((value, itemIndex, array) => !!value && validCharacterIds.has(value) && array.indexOf(value) === itemIndex)
-        : [];
-      const speakerCharacterIds = typeof item === 'object' && item && Array.isArray((item as { speakerCharacterIds?: unknown[] }).speakerCharacterIds)
-        ? ((item as { speakerCharacterIds?: unknown[] }).speakerCharacterIds || [])
-            .map((value) => normalizeString(value))
-            .map((value) => resolveEntry(value, value)?.characterId || value)
-            .filter((value, itemIndex, array) => !!value && validCharacterIds.has(value) && array.indexOf(value) === itemIndex)
-        : [];
-
-      return finalizeArticleParagraph({
-        id: (typeof item === 'object' && item ? normalizeString((item as { id?: unknown }).id) : '') || `${input.round.id}:article-${index + 1}`,
-        text,
-        highlights,
-        ...(presentCharacterIds.length > 0
-          ? { presentCharacterIds }
-          : highlights.length > 0
-            ? { presentCharacterIds: Array.from(new Set(highlights.map((highlight) => highlight.characterId))) }
-            : {}),
-        ...(focusCharacterIds.length > 0 ? { focusCharacterIds } : {}),
-        ...(speakerCharacterIds.length > 0 ? { speakerCharacterIds } : {}),
-      } satisfies GroupOfflineRoundArticleParagraph);
-    })
-    .filter((paragraph): paragraph is GroupOfflineRoundArticleParagraph => !!paragraph);
-
-  if (paragraphs.length > 0) {
-    return paragraphs.flatMap((paragraph) => expandArticleParagraph(paragraph));
-  }
-
-  return buildDerivedEnsembleArticleParagraphsFromRound(input.round).flatMap((paragraph) => expandArticleParagraph(paragraph));
 }
 
 function extractCandidateJsonObjects(text: string): string[] {
@@ -928,124 +722,6 @@ function splitDialogueSegments(paragraph: string) {
   return segments.filter((segment) => segment.text);
 }
 
-type EnsembleDisplayBlock =
-  | { type: 'body'; text: string }
-  | { type: 'highlight'; text: string; highlight?: GroupOfflineRoundArticleHighlight };
-
-function splitEnsembleParagraphBlocks(paragraph: GroupOfflineRoundArticleParagraph): EnsembleDisplayBlock[] {
-  const matches = Array.from(paragraph.text.matchAll(/(“[^”\n]+”|"[^"\n]+"|「[^」\n]+」|『[^』\n]+』)/gu));
-  if (matches.length === 0) {
-    return [{ type: 'body', text: paragraph.text }];
-  }
-
-  const usedHighlightIndexes = new Set<number>();
-  const blocks: EnsembleDisplayBlock[] = [];
-  let cursor = 0;
-
-  matches.forEach((match) => {
-    const matchedText = match[0];
-    const start = match.index || 0;
-    const end = start + matchedText.length;
-    const matchedHighlightIndex = paragraph.highlights.findIndex((highlight, index) => (
-      !usedHighlightIndexes.has(index)
-      && normalizeDialogueCore(highlight.quote) === normalizeDialogueCore(matchedText)
-    ));
-    const matchedHighlight = matchedHighlightIndex >= 0
-      ? paragraph.highlights[matchedHighlightIndex]
-      : undefined;
-
-    const before = paragraph.text.slice(cursor, start).trim();
-    if (before && !/^[“”"'「」『』]+$/u.test(before)) {
-      blocks.push({ type: 'body', text: before });
-    }
-
-    blocks.push({
-      type: 'highlight',
-      text: matchedText,
-      highlight: matchedHighlight,
-    });
-    if (matchedHighlightIndex >= 0) {
-      usedHighlightIndexes.add(matchedHighlightIndex);
-    }
-    cursor = end;
-  });
-
-  const after = paragraph.text.slice(cursor).trim();
-  if (after && !/^[“”"'「」『』]+$/u.test(after)) {
-    blocks.push({ type: 'body', text: after });
-  }
-
-  return blocks.length > 0 ? blocks : [{ type: 'body', text: paragraph.text }];
-}
-
-function resolveQuoteContinuationState(text: string): { inQuote: boolean; activeQuote: string | null } {
-  let inQuote = false;
-  let activeQuote: string | null = null;
-
-  for (const char of Array.from(text)) {
-    if (!inQuote && (char === '“' || char === '「' || char === '『' || char === '"')) {
-      inQuote = true;
-      activeQuote = char;
-      continue;
-    }
-
-    if (!inQuote) continue;
-
-    const closesCurrentQuote = (
-      (activeQuote === '“' && char === '”')
-      || (activeQuote === '「' && char === '」')
-      || (activeQuote === '『' && char === '』')
-      || (activeQuote === '"' && char === '"')
-    );
-    if (closesCurrentQuote) {
-      inQuote = false;
-      activeQuote = null;
-    }
-  }
-
-  return { inQuote, activeQuote };
-}
-
-function mergeDisplayEnsembleParagraphs(paragraphs: GroupOfflineRoundArticleParagraph[]): GroupOfflineRoundArticleParagraph[] {
-  if (paragraphs.length <= 1) return paragraphs;
-
-  const merged: GroupOfflineRoundArticleParagraph[] = [];
-  let pending: GroupOfflineRoundArticleParagraph | null = null;
-
-  const flushPending = () => {
-    if (!pending) return;
-    merged.push(pending);
-    pending = null;
-  };
-
-  paragraphs.forEach((paragraph, index) => {
-    if (!pending) {
-      pending = paragraph;
-      return;
-    }
-
-    const quoteState = resolveQuoteContinuationState(pending.text);
-    if (quoteState.inQuote) {
-      pending = {
-        ...pending,
-        id: `${pending.id}:merged-${index + 1}`,
-        text: `${pending.text}${pending.text.endsWith('”') || pending.text.endsWith('」') ? '' : ' '}${paragraph.text}`.trim(),
-        highlights: [...pending.highlights, ...paragraph.highlights],
-        presentCharacterIds: Array.from(new Set([...(pending.presentCharacterIds || []), ...(paragraph.presentCharacterIds || [])])),
-        focusCharacterIds: Array.from(new Set([...(pending.focusCharacterIds || []), ...(paragraph.focusCharacterIds || [])])),
-        speakerCharacterIds: Array.from(new Set([...(pending.speakerCharacterIds || []), ...(paragraph.speakerCharacterIds || [])])),
-      };
-      return;
-    }
-
-    flushPending();
-    pending = paragraph;
-  });
-
-  flushPending();
-  return merged;
-}
-
 function updateRoundEntryInContent(
   content: GroupOfflineGeneratedContent,
   roundId: string,
@@ -1069,11 +745,78 @@ function updateRoundInContent(
   return normalizeGeneratedContentForDisplay({ ...content, rounds });
 }
 
+function normalizeScenarioUpdate(value: unknown): GroupOfflineRound['scenarioUpdate'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as {
+    status?: unknown;
+    progressSummary?: unknown;
+    currentTask?: unknown;
+    taskStepUpdates?: unknown[];
+  };
+  const status = normalizeString(candidate.status);
+  const progressSummary = normalizeString(candidate.progressSummary);
+  const currentTask = normalizeString(candidate.currentTask);
+  const taskStepUpdates = Array.isArray(candidate.taskStepUpdates)
+    ? candidate.taskStepUpdates
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const slot = Number.parseInt(normalizeString((item as { slot?: unknown }).slot), 10);
+          const stepStatus = normalizeString((item as { status?: unknown }).status);
+          const note = normalizeString((item as { note?: unknown }).note);
+          if (!Number.isFinite(slot)) return null;
+          if (stepStatus !== 'pending' && stepStatus !== 'completed' && stepStatus !== 'failed') return null;
+          return {
+            slot,
+            status: stepStatus,
+            ...(note ? { note } : {}),
+          };
+        })
+        .filter((item): item is GroupOfflineScenarioTaskStepUpdate => !!item)
+    : [];
+  const normalizedStatus = status === 'active' || status === 'completed' || status === 'failed'
+    ? status
+    : undefined;
+  if (!normalizedStatus && !progressSummary && !currentTask && taskStepUpdates.length === 0) {
+    return undefined;
+  }
+  return {
+    ...(normalizedStatus ? { status: normalizedStatus } : {}),
+    ...(progressSummary ? { progressSummary } : {}),
+    ...(currentTask ? { currentTask } : {}),
+    ...(taskStepUpdates.length > 0 ? { taskStepUpdates } : {}),
+  };
+}
+
 function buildCurrentRoundLabel(session: GroupOfflineSession): string {
-  if (session.currentRound <= 0) return '共景';
-  return session.roundLimit
-    ? `第 ${session.currentRound}/${session.roundLimit} 轮`
-    : `第 ${session.currentRound} 轮`;
+  if (session.currentRound <= 0) {
+    const remainingRounds = getGroupOfflineScenarioRemainingRounds(session);
+    return typeof remainingRounds === 'number'
+      ? `共景 · 剩余 ${remainingRounds} 轮`
+      : '共景';
+  }
+  const remainingRounds = getGroupOfflineScenarioRemainingRounds(session);
+  if (session.roundLimit) {
+    return typeof remainingRounds === 'number'
+      ? `第 ${session.currentRound}/${session.roundLimit} 轮 · 剩余 ${remainingRounds} 轮`
+      : `第 ${session.currentRound}/${session.roundLimit} 轮`;
+  }
+  return `第 ${session.currentRound} 轮`;
+}
+
+function syncGeneratedContentCardWithSession(
+  session: GroupOfflineSession,
+  content: GroupOfflineGeneratedContent | undefined,
+): GroupOfflineGeneratedContent | undefined {
+  if (!content) return content;
+  const scenarioCardFields = buildGroupOfflineScenarioCardFields(session);
+  return normalizeGeneratedContentForDisplay({
+    ...content,
+    card: {
+      ...content.card,
+      objectiveLabel: scenarioCardFields.objectiveLabel || content.card.objectiveLabel,
+      roundLabel: scenarioCardFields.roundLabel || buildCurrentRoundLabel(session),
+    },
+  });
 }
 
 function hasMeaningfulGeneratedContent(content: GroupOfflineGeneratedContent, phase: GroupOfflineContentPhase): boolean {
@@ -1089,7 +832,7 @@ function hasMeaningfulGeneratedContent(content: GroupOfflineGeneratedContent, ph
   if (!latestRound) return false;
   return Boolean(
     normalizeString(latestRound.sceneText)
-    || latestRound.articleParagraphs?.some((paragraph) => normalizeString(paragraph.text))
+    || isGroupOfflineHtmlPageEpisode(latestRound.pageEpisode)
     || latestRound.characterEntries.some((entry) => normalizeString(entry.text)),
   );
 }
@@ -1116,6 +859,11 @@ function coerceGeneratedContent(
         .map((round, roundIndex) => {
           if (!round || typeof round !== 'object') return null;
           const fallbackRound = fallbackRounds[roundIndex];
+          const title = normalizeString((round as { title?: unknown }).title) || fallbackRound?.title || `第 ${roundIndex + 1} 轮`;
+          const pageEpisode = normalizeGroupOfflinePageEpisode(
+            (round as { pageEpisode?: unknown }).pageEpisode,
+            title,
+          );
           const rawEntries = Array.isArray((round as { characterEntries?: unknown[] }).characterEntries)
             ? ((round as { characterEntries?: unknown[] }).characterEntries || [])
             : [];
@@ -1160,29 +908,24 @@ function coerceGeneratedContent(
               } satisfies GroupOfflineRoundCharacterEntry;
             })
             .filter(Boolean) as GroupOfflineRoundCharacterEntry[];
-          const nextCharacterEntries = characterEntries.length > 0 ? characterEntries : (fallbackRound?.characterEntries || []);
+          const nextCharacterEntries = pageEpisode
+            ? characterEntries
+            : (characterEntries.length > 0 ? characterEntries : (fallbackRound?.characterEntries || []));
           const sceneText = normalizeString((round as { sceneText?: unknown }).sceneText) || undefined;
           if (textMentionsOffstageAliases(sceneText, offstageAliases)) {
             return null;
           }
           const nextRound: GroupOfflineRound = {
             id: normalizeString((round as { id?: unknown }).id) || createGroupOfflineRoundId(session.updatedAt + roundIndex),
-            title: normalizeString((round as { title?: unknown }).title) || undefined,
+            title: title || undefined,
             sceneText,
+            mode: pageEpisode ? 'page_episode' : 'scene',
+            pageEpisode,
+            scenarioUpdate: normalizeScenarioUpdate((round as { scenarioUpdate?: unknown }).scenarioUpdate),
             characterEntries: nextCharacterEntries,
           };
-          const articleParagraphs = coerceRoundArticleParagraphs({
-            value: Array.isArray((round as { articleParagraphs?: unknown[] }).articleParagraphs)
-              ? (round as { articleParagraphs?: unknown[] }).articleParagraphs
-              : normalizeString((round as { articleText?: unknown }).articleText),
-            round: nextRound,
-            offstageAliases,
-          });
-          if (nextRound.characterEntries.length === 0 && articleParagraphs.length === 0) return null;
-          return {
-            ...nextRound,
-            ...(articleParagraphs.length > 0 ? { articleParagraphs } : {}),
-          } satisfies GroupOfflineRound;
+          if (nextRound.characterEntries.length === 0 && !normalizeString(nextRound.sceneText) && !pageEpisode) return null;
+          return nextRound satisfies GroupOfflineRound;
         })
         .filter(Boolean) as GroupOfflineRound[]
     : [];
@@ -1273,12 +1016,11 @@ function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): G
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate) as {
-        round?: { title?: unknown; sceneText?: unknown; characterEntries?: unknown[]; articleParagraphs?: unknown[]; articleText?: unknown };
+        round?: { title?: unknown; sceneText?: unknown; characterEntries?: unknown[]; scenarioUpdate?: unknown };
         title?: unknown;
         sceneText?: unknown;
         characterEntries?: unknown[];
-        articleParagraphs?: unknown[];
-        articleText?: unknown;
+        scenarioUpdate?: unknown;
       };
       const roundCandidate = parsed.round || parsed;
       const nextEntriesById = new Map<string, GroupOfflineRoundCharacterEntry>();
@@ -1291,21 +1033,26 @@ function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): G
           nextEntriesById.set(characterId, coerceSingleEntry(entry, fallbackEntry));
         });
       }
+      const pageEpisode = normalizeGroupOfflinePageEpisode(
+        (roundCandidate as { pageEpisode?: unknown }).pageEpisode,
+        normalizeString(roundCandidate.title) || fallbackRound.title || '当前轮',
+      );
       const nextRound: GroupOfflineRound = {
         ...fallbackRound,
         title: normalizeString(roundCandidate.title) || fallbackRound.title,
         sceneText: normalizeString(roundCandidate.sceneText) || fallbackRound.sceneText,
-        characterEntries: fallbackRound.characterEntries.map((entry) => nextEntriesById.get(entry.characterId) || entry),
+        mode: pageEpisode ? 'page_episode' : fallbackRound.mode,
+        pageEpisode: pageEpisode || fallbackRound.pageEpisode,
+        scenarioUpdate: normalizeScenarioUpdate((roundCandidate as { scenarioUpdate?: unknown }).scenarioUpdate) || fallbackRound.scenarioUpdate,
+        characterEntries: pageEpisode
+          ? (Array.isArray(roundCandidate.characterEntries)
+            ? fallbackRound.characterEntries
+                .map((entry) => nextEntriesById.get(entry.characterId))
+                .filter((entry): entry is GroupOfflineRoundCharacterEntry => !!entry)
+            : [])
+          : fallbackRound.characterEntries.map((entry) => nextEntriesById.get(entry.characterId) || entry),
       };
-      return {
-        ...nextRound,
-        articleParagraphs: coerceRoundArticleParagraphs({
-          value: Array.isArray(roundCandidate.articleParagraphs)
-            ? roundCandidate.articleParagraphs
-            : normalizeString(roundCandidate.articleText),
-          round: nextRound,
-        }),
-      };
+      return nextRound;
     } catch {
       continue;
     }
@@ -1445,6 +1192,8 @@ function dispatchLabel(dispatchMode: GroupOfflineRoundDispatchMode | undefined) 
 
 export function GroupOfflineScene({
   session,
+  directorLaunchToken = 0,
+  initialDirectorSection,
   group,
   members,
   inviteableCharacters: _inviteableCharacters,
@@ -1463,7 +1212,10 @@ export function GroupOfflineScene({
   const [currentSession, setCurrentSession] = useState<GroupOfflineSession>({
     ...session,
     generationMode: 'blocks',
-    generatedContent: session.generatedContent ? normalizeGeneratedContentForDisplay(session.generatedContent) : session.generatedContent,
+    generatedContent: syncGeneratedContentCardWithSession(
+      session,
+      session.generatedContent ? normalizeGeneratedContentForDisplay(session.generatedContent) : session.generatedContent,
+    ),
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1489,7 +1241,10 @@ export function GroupOfflineScene({
     setCurrentSession({
       ...session,
       generationMode: 'blocks',
-      generatedContent: session.generatedContent ? normalizeGeneratedContentForDisplay(session.generatedContent) : session.generatedContent,
+      generatedContent: syncGeneratedContentCardWithSession(
+        session,
+        session.generatedContent ? normalizeGeneratedContentForDisplay(session.generatedContent) : session.generatedContent,
+      ),
     });
   }, [session]);
 
@@ -1500,6 +1255,10 @@ export function GroupOfflineScene({
   }, [session.writingStyleCustom, showCustomStyleSheet]);
 
   const memberMap = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const sessionWorldBooks = useMemo(
+    () => resolveGroupOfflineWorldBookSnapshot(currentSession, activeWorldBooks),
+    [activeWorldBooks, currentSession],
+  );
   const resolveMemberForEntry = (entry: Pick<GroupOfflineRoundCharacterEntry, 'characterId' | 'speakerLabel'>) => (
     memberMap.get(entry.characterId)
     || members.find((member) => memberAliasMatches(entry.speakerLabel, member))
@@ -1511,12 +1270,12 @@ export function GroupOfflineScene({
     userName,
     history,
     directChatHistory,
-    activeWorldBooks,
+    activeWorldBooks: sessionWorldBooks,
     perception,
   });
   const runtimeProjection = useMemo(
     () => buildRuntimeProjectionForSession(currentSession),
-    [activeWorldBooks, currentSession, directChatHistory, group, history, members, perception, userName],
+    [currentSession, directChatHistory, group, history, members, perception, sessionWorldBooks, userName],
   );
   const participantMembers = useMemo(
     () => currentSession.participants
@@ -1531,7 +1290,6 @@ export function GroupOfflineScene({
     )),
     [currentSession.participants, group.memberIds, members],
   );
-  const normalizedGenerationMode = 'blocks' as const;
   const highlightStyle = useMemo<React.CSSProperties | undefined>(
     () => ({ color: currentSession.highlightColor || '#92EBF2' }),
     [currentSession.highlightColor],
@@ -1557,6 +1315,53 @@ export function GroupOfflineScene({
     const rounds = currentSession.generatedContent?.rounds || [];
     return rounds.length > 0 ? rounds[rounds.length - 1] : null;
   }, [currentSession.generatedContent]);
+  const awaitingDirectorInstruction = Boolean(currentSession.awaitingDirectorInstruction);
+  const scenarioCardFields = useMemo(
+    () => buildGroupOfflineScenarioCardFields(currentSession),
+    [currentSession],
+  );
+  const scenarioLockReason = useMemo(
+    () => getGroupOfflineScenarioLockReason(currentSession),
+    [currentSession],
+  );
+  const dispatchDisabledReason = awaitingDirectorInstruction
+    ? '先在大鹅导演里写特殊指令，再点击“开始这场”。'
+    : scenarioLockReason;
+  const progressPanel = useMemo(() => {
+    const rounds = currentSession.generatedContent?.rounds || [];
+    const lastRoundId = rounds[rounds.length - 1]?.id;
+    const memoryRows = participantMembers.map((member) => {
+      const memoryPanel = buildAccumulatedMemoryPanel({
+        memoryPanel: undefined,
+        rounds,
+        characterId: member.id,
+        roundId: lastRoundId,
+      });
+      return {
+        characterName: member.remarkName?.trim() || member.name,
+        shortTermCount: memoryPanel.shortTerm.length,
+        longTermCount: memoryPanel.longTerm.length,
+      };
+    });
+
+    return {
+      roundLabel: scenarioCardFields.roundLabel || buildCurrentRoundLabel(currentSession),
+      backgroundLabel: currentSession.scenarioState?.backgroundLabel || currentSession.scenePrompt?.trim() || undefined,
+      taskLabel: currentSession.scenarioState?.currentTask || undefined,
+      statusLabel: currentSession.scenarioState
+        ? getGroupOfflineScenarioStatusLabel(currentSession.scenarioState.status)
+        : '现场进行中',
+      progressSummary: currentSession.scenarioState?.progressSummary
+        || normalizeString(latestRound?.sceneText)
+        || '共景已经铺开，下一轮会继续往前推。',
+      successCondition: currentSession.scenarioState?.successCondition,
+      failureCondition: currentSession.scenarioState?.failureCondition,
+      pressureLine: currentSession.scenarioState?.pressureLine,
+      taskSteps: currentSession.scenarioState?.taskSteps || [],
+      memoryRows,
+      lockReason: dispatchDisabledReason,
+    };
+  }, [currentSession, dispatchDisabledReason, latestRound, participantMembers, scenarioCardFields.roundLabel]);
   const pendingUserMessages = useMemo(() => {
     const sentMessages = currentSession.messages.filter((message) => message.role === 'user');
     const attachedCount = (currentSession.generatedContent?.rounds || [])
@@ -1596,29 +1401,42 @@ export function GroupOfflineScene({
   const saveSession = (nextSession: GroupOfflineSession) => {
     const normalizedNextSession = {
       ...nextSession,
-      generatedContent: nextSession.generatedContent ? normalizeGeneratedContentForDisplay(nextSession.generatedContent) : nextSession.generatedContent,
+      generatedContent: syncGeneratedContentCardWithSession(
+        nextSession,
+        nextSession.generatedContent ? normalizeGeneratedContentForDisplay(nextSession.generatedContent) : nextSession.generatedContent,
+      ),
     };
     setCurrentSession(normalizedNextSession);
     onUpdateSession(normalizedNextSession);
   };
 
+  const ensureScenarioCanAdvance = (sessionToCheck: GroupOfflineSession) => {
+    const lockReason = getGroupOfflineScenarioLockReason(sessionToCheck);
+    if (!lockReason) {
+      return true;
+    }
+    setError(lockReason);
+    return false;
+  };
+
   const decorateRoundContent = (
     content: GroupOfflineGeneratedContent,
     meta: {
-      generationMode: GroupOfflineSession['generationMode'];
       dispatchMode?: GroupOfflineRoundDispatchMode;
       selectedCharacterIds?: string[];
       userMessageText?: string;
+      appliedDirectorInstruction?: string;
       runtimeProjectionSnapshot?: ReturnType<typeof buildGroupOfflineRoundRuntimeProjectionSnapshot>;
       plannerSnapshot?: ReturnType<typeof buildGroupOfflineRoundPlanSnapshot>;
     },
   ): GroupOfflineGeneratedContent => {
-    const rounds = (content.rounds || []).map((round) => ({
+    const rounds: GroupOfflineRound[] = (content.rounds || []).map((round) => ({
       ...round,
-      generationMode: normalizeGroupOfflineGenerationMode(meta.generationMode),
+      generationMode: 'blocks',
       dispatchMode: meta.dispatchMode,
       selectedCharacterIds: meta.selectedCharacterIds,
       userMessageText: meta.userMessageText?.trim() || undefined,
+      appliedDirectorInstruction: meta.appliedDirectorInstruction,
       runtimeProjectionSnapshot: meta.runtimeProjectionSnapshot,
       plannerSnapshot: meta.plannerSnapshot,
       characterEntries: round.characterEntries.map((entry) => ({
@@ -1630,11 +1448,12 @@ export function GroupOfflineScene({
     return normalizeGeneratedContentForDisplay({ ...content, rounds });
   };
 
-  const generateContent = async (options: GenerateContentOptions) => {
+  const generateContent = async (options: GenerateContentOptions): Promise<GroupOfflineSession | undefined> => {
     const baseSession = options.baseSession ?? currentSession;
+    const appliedDirectorInstruction = options.directorInstructionOverride?.trim() || undefined;
     const workingSession: GroupOfflineSession = {
       ...baseSession,
-      generationMode: normalizeGroupOfflineGenerationMode(baseSession.generationMode),
+      generationMode: 'blocks',
       currentRound: options.phase === 'round'
         ? (options.nextRoundNumber ?? baseSession.currentRound)
         : baseSession.currentRound,
@@ -1674,11 +1493,11 @@ export function GroupOfflineScene({
           });
         }
         setError('当前没有可用的 AI 配置，暂时不能生成群线下内容。');
-        return;
+        return undefined;
       }
 
       const worldBookPrompt = buildGroupWorldBookPrompt(
-        activeWorldBooks,
+        sessionWorldBooks,
         buildGroupWorldBookRetrievalOptions({
           history,
           supplementalMessages: workingSession.messages,
@@ -1699,6 +1518,8 @@ export function GroupOfflineScene({
             phase: options.phase,
             selectedCharacterIds: options.selectedCharacterIds,
             dispatchMode: options.dispatchMode,
+            directorInstructionOverride: appliedDirectorInstruction,
+            directorMode: options.directorMode,
           }),
         }],
       });
@@ -1709,10 +1530,10 @@ export function GroupOfflineScene({
 
       if (options.phase === 'round') {
         nextContent = decorateRoundContent(nextContent, {
-          generationMode: workingSession.generationMode,
           dispatchMode: options.dispatchMode,
           selectedCharacterIds: options.selectedCharacterIds,
           userMessageText: options.userMessageText,
+          appliedDirectorInstruction,
           runtimeProjectionSnapshot: buildGroupOfflineRoundRuntimeProjectionSnapshot(workingRuntimeProjection),
           plannerSnapshot: workingRoundPlan ? buildGroupOfflineRoundPlanSnapshot(workingRoundPlan) : undefined,
         });
@@ -1728,17 +1549,32 @@ export function GroupOfflineScene({
       const mergedContent = options.phase === 'intro'
         ? normalizeGeneratedContentForDisplay(nextContent)
         : normalizeGeneratedContentForDisplay(mergeGroupOfflineGeneratedContent(baseSession.generatedContent, nextContent));
+      const latestMergedRound = options.phase === 'round'
+        ? (mergedContent.rounds || []).slice(-1)[0]
+        : undefined;
+      const nextSession = options.phase === 'round'
+        ? applyGroupOfflineScenarioRoundResult({
+            ...workingSession,
+            generatedContent: mergedContent,
+            weatherLabel: mergedContent.card.weatherLabel || workingSession.weatherLabel,
+          } as GroupOfflineSession, latestMergedRound)
+        : {
+            ...workingSession,
+            generatedContent: mergedContent,
+            weatherLabel: mergedContent.card.weatherLabel || workingSession.weatherLabel,
+          };
 
-      saveSession({
-        ...workingSession,
-        generatedContent: mergedContent,
-        weatherLabel: mergedContent.card.weatherLabel || workingSession.weatherLabel,
-      });
+      saveSession(nextSession);
+
+      if (options.phase === 'round' && nextSession.mode === 'scenario' && nextSession.scenarioState?.status === 'failed') {
+        setError('设定局已到轮数上限，任务判定失败，请结束这场线下。');
+      }
 
       if (options.phase === 'round') {
         setManualSelectionMode(false);
         setQueuedCharacterIds([]);
       }
+      return nextSession;
     } catch (generationError) {
       console.error('[group-offline] generation failed', generationError);
       if (options.phase === 'intro' && !baseSession.generatedContent) {
@@ -1749,20 +1585,20 @@ export function GroupOfflineScene({
         });
       }
       setError(generationError instanceof Error ? generationError.message : '群线下生成失败，请稍后再试。');
+      return undefined;
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!currentSession.generatedContent && !loading) {
+    if (!currentSession.generatedContent && !loading && !currentSession.awaitingDirectorInstruction) {
       void generateContent({ phase: 'intro' });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSession.id]);
+  }, [currentSession.awaitingDirectorInstruction, currentSession.generatedContent, currentSession.id, loading]);
 
   const queueCharacter = (characterId: string) => {
-    if (!manualSelectionMode || normalizedGenerationMode !== 'blocks') return;
+    if (!manualSelectionMode) return;
     setQueuedCharacterIds((previous) => {
       if (previous.includes(characterId)) return previous.filter((item) => item !== characterId);
       if (previous.length >= MAX_GROUP_OFFLINE_BLOCK_SELECTION) {
@@ -1779,8 +1615,13 @@ export function GroupOfflineScene({
     selectedCharacterIds?: string[];
     latestUserMessage?: string;
     userMessageText?: string;
-  }) => {
+    directorInstructionOverride?: string;
+    directorMode?: GroupOfflineDirectorMode;
+  }): Promise<GroupOfflineSession | undefined> => {
     const baseSession = params.baseSession ?? currentSession;
+    if (!ensureScenarioCanAdvance(baseSession)) {
+      return undefined;
+    }
     const selectedCharacterIds = params.selectedCharacterIds?.length
       ? params.selectedCharacterIds
       : params.dispatchMode === 'random'
@@ -1799,10 +1640,10 @@ export function GroupOfflineScene({
 
     if (selectedCharacterIds.length === 0) {
       setError('这一轮还没有可调度的角色。');
-      return;
+      return undefined;
     }
 
-    await generateContent({
+    return generateContent({
       phase: 'round',
       baseSession,
       latestUserMessage: params.latestUserMessage,
@@ -1810,12 +1651,19 @@ export function GroupOfflineScene({
       selectedCharacterIds,
       dispatchMode: params.dispatchMode,
       nextRoundNumber: baseSession.currentRound + 1,
+      directorInstructionOverride: params.directorInstructionOverride,
+      directorMode: params.directorMode,
     });
   };
 
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
+    if (currentSession.awaitingDirectorInstruction) {
+      setError('先在大鹅导演里写特殊指令，再点击“开始这场”。');
+      return;
+    }
+    if (!ensureScenarioCanAdvance(currentSession)) return;
     const userMessage = {
       id: createGroupOfflineMessageId(),
       role: 'user' as const,
@@ -1842,6 +1690,7 @@ export function GroupOfflineScene({
 
   const handleInviteCharacter = async (character: Character) => {
     if (loading) return;
+    if (!ensureScenarioCanAdvance(currentSession)) return;
     const nextSession: GroupOfflineSession = {
       ...currentSession,
       participants: [
@@ -1858,25 +1707,16 @@ export function GroupOfflineScene({
     saveSession(nextSession);
     setShowInviteSheet(false);
 
-    if (normalizedGenerationMode === 'blocks') {
-      await runBlockRound({
-        baseSession: nextSession,
-        dispatchMode: 'recommend',
-        selectedCharacterIds: [character.id],
-        latestUserMessage: `${character.name}被中途拉进了这一场局。`,
-        userMessageText: `${character.name}被中途拉进了这一场局。`,
-      });
+    if (currentSession.awaitingDirectorInstruction) {
       return;
     }
 
-    await generateContent({
-      phase: 'round',
+    await runBlockRound({
       baseSession: nextSession,
+      dispatchMode: 'recommend',
+      selectedCharacterIds: [character.id],
       latestUserMessage: `${character.name}被中途拉进了这一场局。`,
       userMessageText: `${character.name}被中途拉进了这一场局。`,
-      selectedCharacterIds: nextSession.participants.map((participant) => participant.characterId),
-      dispatchMode: 'continue',
-      nextRoundNumber: nextSession.currentRound + 1,
     });
   };
 
@@ -1955,6 +1795,7 @@ export function GroupOfflineScene({
     mode: RoundRewriteMode;
     stylePresetId?: GroupOfflineStylePresetId;
     customStyleText?: string;
+    directorInstructionText?: string;
   }) => {
     if (loading || !currentSession.generatedContent || !latestRound) return;
     const nextWritingStyleCustom = params.mode === 'style_preset'
@@ -1962,8 +1803,17 @@ export function GroupOfflineScene({
       : params.mode === 'custom_style'
         ? (params.customStyleText?.trim() || currentSession.writingStyleCustom)
         : currentSession.writingStyleCustom;
+    const nextDirectorInstruction = params.mode === 'director_instruction'
+      ? (params.directorInstructionText?.trim() || undefined)
+      : currentSession.directorInstruction;
     if (!activeConfig?.apiKey?.trim()) {
-      setError(params.mode === 'retry_round' ? '当前没有可用的 AI 配置，暂时不能重试本轮。' : '当前没有可用的 AI 配置，暂时不能改文风。');
+      setError(
+        params.mode === 'retry_round'
+          ? '当前没有可用的 AI 配置，暂时不能重试本轮。'
+          : params.mode === 'director_instruction'
+            ? '当前没有可用的 AI 配置，暂时不能按指令重写本轮。'
+            : '当前没有可用的 AI 配置，暂时不能改文风。',
+      );
       return;
     }
 
@@ -1972,6 +1822,7 @@ export function GroupOfflineScene({
     const workingSession: GroupOfflineSession = {
       ...currentSession,
       writingStyleCustom: nextWritingStyleCustom?.trim() || undefined,
+      directorInstruction: nextDirectorInstruction,
       updatedAt: Date.now(),
     };
     const liveWorkingRuntimeProjection = buildRuntimeProjectionForSession(workingSession);
@@ -1991,25 +1842,54 @@ export function GroupOfflineScene({
             previousRounds: currentSession.generatedContent.rounds,
             stylePresetId: params.stylePresetId,
             customStyleText: params.customStyleText,
+            directorInstructionText: params.directorInstructionText,
             roundPlan: workingRoundPlan,
           }),
         }],
       });
       const rewrittenRound = parseRoundRewrite(rawText, latestRound);
-      const nextContent = updateRoundInContent(currentSession.generatedContent, latestRound.id, (round) => ({
-        ...round,
-        title: rewrittenRound.title || round.title,
-        sceneText: rewrittenRound.sceneText || round.sceneText,
-        characterEntries: round.characterEntries.map((entry) => {
-          const nextEntry = rewrittenRound.characterEntries.find((item) => item.characterId === entry.characterId) || entry;
-          return {
-            ...entry,
-            ...nextEntry,
-            highlightText: resolveValidHighlightText(nextEntry.text, nextEntry.highlightText),
-            lastOperation: params.mode === 'retry_round' ? 'retried' : 'polished',
-          };
-        }),
-      }));
+      const nextContent = updateRoundInContent(currentSession.generatedContent, latestRound.id, (round) => {
+        const finalMode = rewrittenRound.mode || round.mode || 'scene';
+        const finalPageEpisode = rewrittenRound.pageEpisode || (
+          finalMode === 'page_episode' ? round.pageEpisode : undefined
+        );
+        const isPageEpisodeRound = finalMode === 'page_episode' && !!finalPageEpisode;
+        const isNewPageEpisodeRound = isPageEpisodeRound && !round.pageEpisode;
+
+        return {
+          ...round,
+          title: rewrittenRound.title || round.title,
+          sceneText: rewrittenRound.sceneText || round.sceneText,
+          mode: finalMode,
+          pageEpisode: finalPageEpisode,
+          appliedDirectorInstruction: params.mode === 'director_instruction'
+            ? nextDirectorInstruction
+            : round.appliedDirectorInstruction,
+          characterEntries: isPageEpisodeRound
+            ? (
+              rewrittenRound.characterEntries.length > 0
+                ? rewrittenRound.characterEntries.map((entry) => ({
+                    ...entry,
+                    highlightText: resolveValidHighlightText(entry.text, entry.highlightText),
+                    lastOperation: params.mode === 'retry_round' || params.mode === 'director_instruction'
+                      ? 'retried'
+                      : 'polished',
+                  }))
+                : (isNewPageEpisodeRound ? [] : round.characterEntries)
+            )
+            : round.characterEntries.map((entry) => {
+                const nextEntry = rewrittenRound.characterEntries.find((item) => item.characterId === entry.characterId) || entry;
+                return {
+                  ...entry,
+                  ...nextEntry,
+                  highlightText: resolveValidHighlightText(nextEntry.text, nextEntry.highlightText),
+                  lastOperation: params.mode === 'retry_round' || params.mode === 'director_instruction'
+                    ? 'retried'
+                    : 'polished',
+                };
+              }),
+        };
+      });
       saveSession({
         ...workingSession,
         generatedContent: nextContent,
@@ -2017,7 +1897,17 @@ export function GroupOfflineScene({
       });
     } catch (rewriteError) {
       console.error('[group-offline] round rewrite failed', rewriteError);
-      setError(rewriteError instanceof Error ? rewriteError.message : (params.mode === 'retry_round' ? '重试本轮失败，请稍后再试。' : '改文风失败，请稍后再试。'));
+      setError(
+        rewriteError instanceof Error
+          ? rewriteError.message
+          : (
+            params.mode === 'retry_round'
+              ? '重试本轮失败，请稍后再试。'
+              : params.mode === 'director_instruction'
+                ? '按指令重写本轮失败，请稍后再试。'
+                : '改文风失败，请稍后再试。'
+          ),
+      );
     } finally {
       setLoading(false);
     }
@@ -2055,6 +1945,69 @@ export function GroupOfflineScene({
     if (!trimmed) return;
     await handleRoundRewrite({ mode: 'custom_style', customStyleText: trimmed });
     setShowCustomStyleSheet(false);
+  };
+
+  const handleApplyDirectorInstruction = async (text: string, mode: GroupOfflineDirectorMode) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+
+    if (mode === 'rewrite') {
+      await handleRoundRewrite({
+        mode: 'director_instruction',
+        directorInstructionText: trimmed,
+      });
+      return;
+    }
+
+    const draftSession: GroupOfflineSession = {
+      ...currentSession,
+      directorInstruction: trimmed,
+      updatedAt: Date.now(),
+    };
+    saveSession(draftSession);
+
+    if (mode === 'start') {
+      const hasGeneratedIntro = Boolean(draftSession.generatedContent);
+      const introSession = hasGeneratedIntro
+        ? draftSession
+        : await generateContent({
+            phase: 'intro',
+            baseSession: draftSession,
+            directorInstructionOverride: trimmed,
+            directorMode: 'start',
+          });
+      if (!introSession) {
+        return;
+      }
+
+      const startedSession = await runBlockRound({
+        baseSession: introSession,
+        dispatchMode: 'recommend',
+        directorInstructionOverride: trimmed,
+        directorMode: 'start',
+      });
+      if (!startedSession) {
+        return;
+      }
+
+      saveSession({
+        ...startedSession,
+        awaitingDirectorInstruction: false,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    if (!ensureScenarioCanAdvance(draftSession)) {
+      return;
+    }
+
+    await runBlockRound({
+      baseSession: draftSession,
+      dispatchMode: 'recommend',
+      directorInstructionOverride: trimmed,
+      directorMode: 'next_round',
+    });
   };
 
   const handleEnd = async () => {
@@ -2205,9 +2158,11 @@ export function GroupOfflineScene({
             <div className="group-offline-scene__identity">
               <div className="group-offline-scene__name">{currentSession.customActivityType?.trim() || currentSession.activityType}</div>
               <div className="group-offline-scene__subtitle">
-                {normalizedGenerationMode === 'blocks' ? '分块推进' : '同场群像'}
+                分块推进
                 <span> 路 </span>
-                {currentSession.generatedContent?.card.roundLabel || '共景'}
+                {awaitingDirectorInstruction
+                  ? '待指令启动'
+                  : (currentSession.generatedContent?.card.roundLabel || '共景')}
               </div>
             </div>
           </div>
@@ -2268,7 +2223,7 @@ export function GroupOfflineScene({
             if (!member) return null;
             const queueIndex = queuedCharacterIds.indexOf(participant.characterId);
             const isQueued = queueIndex >= 0;
-            const selectable = normalizedGenerationMode === 'blocks' && manualSelectionMode;
+            const selectable = manualSelectionMode;
             return (
               <button
                 key={participant.characterId}
@@ -2315,12 +2270,23 @@ export function GroupOfflineScene({
 
         <GooseDirectorOrb
           containerRef={shellRef}
-          mode={normalizedGenerationMode}
+          mode="blocks"
           loading={loading}
+          directorLaunchToken={directorLaunchToken}
+          initialDirectorSection={initialDirectorSection}
+          currentDirectorInstruction={currentSession.directorInstruction}
+          awaitingDirectorInstruction={awaitingDirectorInstruction}
+          hasCurrentRound={!!latestRound}
           manualSelectionMode={manualSelectionMode}
           queuedLabels={queuedMembers.map((member) => member.name)}
           recommendedLabels={recommendedCharacterIds.map((characterId) => memberMap.get(characterId)?.name || '角色')}
-          stylePresetOptions={latestRound ? GROUP_OFFLINE_STYLE_PRESET_OPTIONS : []}
+          highlightColor={currentSession.highlightColor || '#92EBF2'}
+          bodyTextColor={currentSession.bodyTextColor || '#FFFFFF'}
+          highlightColorOptions={['#92EBF2', '#FFE27A', '#FBB6CE', '#C4B5FD', '#9AE6B4', '#FDBA74']}
+          bodyTextColorOptions={['#FFFFFF', '#F8FBFF', '#F6F7FB', '#FFF7ED', '#F3FAFF', '#F6FFF8']}
+          stylePresetOptions={GROUP_OFFLINE_STYLE_PRESET_OPTIONS}
+          progressPanel={progressPanel}
+          dispatchDisabledReason={dispatchDisabledReason}
           onRecommend={() => void runBlockRound({ dispatchMode: 'recommend' })}
           onRandom={() => void runBlockRound({ dispatchMode: 'random' })}
           onToggleManual={() => {
@@ -2329,33 +2295,207 @@ export function GroupOfflineScene({
           }}
           onClearManual={() => setQueuedCharacterIds([])}
           onRunManual={() => void runBlockRound({ dispatchMode: 'manual', selectedCharacterIds: queuedCharacterIds })}
-          onContinueEnsemble={() => void generateContent({
-            phase: 'round',
-            selectedCharacterIds: currentSession.participants.map((participant) => participant.characterId),
-            dispatchMode: 'continue',
-            nextRoundNumber: currentSession.currentRound + 1,
-          })}
-          onApplyStylePreset={latestRound ? (presetId) => void handleRoundRewrite({ mode: 'style_preset', stylePresetId: presetId }) : undefined}
-          onOpenCustomStyle={latestRound ? () => {
+          onApplyStylePreset={(presetId) => {
+            if (!latestRound) {
+              saveSession({
+                ...currentSession,
+                writingStyleCustom: buildGroupOfflineStylePresetInstruction(presetId),
+                updatedAt: Date.now(),
+              });
+              return;
+            }
+            void handleRoundRewrite({ mode: 'style_preset', stylePresetId: presetId });
+          }}
+          onOpenCustomStyle={() => {
             setCustomStyleDraft(currentSession.writingStyleCustom || '');
             setShowCustomStyleSheet(true);
-          } : undefined}
+          }}
+          onApplyDirectorInstruction={(text: string, mode: GooseDirectorInstructionMode) => (
+            void handleApplyDirectorInstruction(text, mode)
+          )}
           onRetryRound={latestRound ? () => void handleRoundRewrite({ mode: 'retry_round' }) : undefined}
           onRewindRound={latestRound ? handleRewindLatestRound : undefined}
+          onHighlightColorChange={(color: string) => {
+            saveSession({
+              ...currentSession,
+              highlightColor: color,
+              updatedAt: Date.now(),
+            });
+          }}
+          onBodyTextColorChange={(color: string) => {
+            saveSession({
+              ...currentSession,
+              bodyTextColor: color,
+              updatedAt: Date.now(),
+            });
+          }}
         />
 
         <div ref={bodyRef} className="group-offline-scene__body">
           <section className="group-offline-scene__hero">
-            <div className="group-offline-scene__meta-card">
-              <div className="group-offline-scene__meta" style={bodyTextStyle}>
-                <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">时间</span><span>{currentSession.generatedContent?.card.timeLabel || currentSession.timeLabel}</span></div>
-                <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">地点</span><span>{currentSession.generatedContent?.card.locationLabel || currentSession.location}</span></div>
-                {currentSession.scenePrompt?.trim() ? <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">情景</span><span>{currentSession.scenePrompt.trim()}</span></div> : null}
-                <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">天气</span><span>{currentSession.generatedContent?.card.weatherLabel || currentSession.weatherLabel}</span></div>
-                <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">在场</span><span>{(currentSession.generatedContent?.card.participantLabels || participantMembers.map((member) => member.name)).join('、')}</span></div>
-                {currentSession.generatedContent?.card.objectiveLabel ? <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">目标</span><span>{currentSession.generatedContent.card.objectiveLabel}</span></div> : null}
+            {currentSession.mode === 'scenario' && currentSession.scenarioState ? (
+              <div className="group-offline-scene__meta-card">
+                <div className="group-offline-scene__briefing" style={bodyTextStyle}>
+                  <div>
+                    <div className="group-offline-scene__briefing-kicker">设定局简报</div>
+                    <div className="group-offline-scene__briefing-title">{currentSession.customActivityType?.trim() || currentSession.activityType}</div>
+                    <div className="group-offline-scene__briefing-subtitle">
+                      这不是普通碰面，而是已经压到眼前的临时副本。每一步都得拿出结果。
+                    </div>
+                  </div>
+
+                  <div className="group-offline-scene__briefing-meta">
+                    <div className="group-offline-scene__briefing-meta-line">
+                      <span><span className="group-offline-scene__briefing-meta-label">时间</span> {currentSession.generatedContent?.card.timeLabel || currentSession.timeLabel}</span>
+                      <span>·</span>
+                      <span><span className="group-offline-scene__briefing-meta-label">地点</span> {currentSession.generatedContent?.card.locationLabel || currentSession.location}</span>
+                      <span>·</span>
+                      <span><span className="group-offline-scene__briefing-meta-label">轮次</span> {scenarioCardFields.roundLabel || buildCurrentRoundLabel(currentSession)}</span>
+                    </div>
+                    <div className="group-offline-scene__briefing-meta-line">
+                      <span><span className="group-offline-scene__briefing-meta-label">状态</span> {getGroupOfflineScenarioStatusLabel(currentSession.scenarioState.status)}</span>
+                      <span>·</span>
+                      <span><span className="group-offline-scene__briefing-meta-label">同场</span> {[`你（${userName}）`, ...(currentSession.generatedContent?.card.participantLabels || participantMembers.map((member) => member.name))].join('、')}</span>
+                    </div>
+                  </div>
+
+                  {currentSession.scenarioState.storySourceLabel ? (
+                    <div className="group-offline-scene__briefing-section">
+                      <div className="group-offline-scene__briefing-section-label">来源</div>
+                      <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.storySourceLabel}</div>
+                    </div>
+                  ) : null}
+
+                  {(currentSession.scenarioState.backgroundLabel || currentSession.scenePrompt?.trim()) ? (
+                    <div className="group-offline-scene__briefing-section">
+                      <div className="group-offline-scene__briefing-section-label">现场背景</div>
+                      <div className="group-offline-scene__briefing-copy group-offline-scene__briefing-copy--hero">
+                        {currentSession.scenarioState.backgroundLabel || currentSession.scenePrompt?.trim()}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {currentSession.scenarioState.userInvolvementLabel ? (
+                    <div className="group-offline-scene__briefing-section">
+                      <div className="group-offline-scene__briefing-section-label">你的切入口</div>
+                      <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.userInvolvementLabel}</div>
+                    </div>
+                  ) : null}
+
+                  {(
+                    currentSession.scenarioState.missionObjectLabel
+                    || currentSession.scenarioState.identityPairLabel
+                    || currentSession.scenarioState.rescueTargetLabel
+                    || currentSession.scenarioState.handoffPointLabel
+                    || currentSession.scenarioState.exitMethodLabel
+                  ) ? (
+                    <div className="group-offline-scene__briefing-section">
+                      <div className="group-offline-scene__briefing-section-label">局内锚点</div>
+                      <div className="group-offline-scene__briefing-rules">
+                        {currentSession.scenarioState.missionObjectLabel ? (
+                          <div className="group-offline-scene__briefing-rule">
+                            <div className="group-offline-scene__briefing-rule-label">目标物</div>
+                            <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.missionObjectLabel}</div>
+                          </div>
+                        ) : null}
+                        {currentSession.scenarioState.identityPairLabel ? (
+                          <div className="group-offline-scene__briefing-rule">
+                            <div className="group-offline-scene__briefing-rule-label">错位身份</div>
+                            <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.identityPairLabel}</div>
+                          </div>
+                        ) : null}
+                        {currentSession.scenarioState.rescueTargetLabel ? (
+                          <div className="group-offline-scene__briefing-rule">
+                            <div className="group-offline-scene__briefing-rule-label">营救对象</div>
+                            <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.rescueTargetLabel}</div>
+                          </div>
+                        ) : null}
+                        {currentSession.scenarioState.handoffPointLabel ? (
+                          <div className="group-offline-scene__briefing-rule">
+                            <div className="group-offline-scene__briefing-rule-label">交接点</div>
+                            <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.handoffPointLabel}</div>
+                          </div>
+                        ) : null}
+                        {currentSession.scenarioState.exitMethodLabel ? (
+                          <div className="group-offline-scene__briefing-rule">
+                            <div className="group-offline-scene__briefing-rule-label">出口</div>
+                            <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.exitMethodLabel}</div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="group-offline-scene__briefing-section group-offline-scene__briefing-section--task">
+                    <div className="group-offline-scene__briefing-section-label">当前任务</div>
+                    <div className="group-offline-scene__briefing-copy group-offline-scene__briefing-copy--hero group-offline-scene__briefing-copy--task">
+                      {currentSession.scenarioState.currentTask}
+                    </div>
+                  </div>
+
+                  <div className="group-offline-scene__briefing-section group-offline-scene__briefing-section--warning">
+                    <div className="group-offline-scene__briefing-section-label">天气 / 世界状态</div>
+                    <div className="group-offline-scene__briefing-copy">{currentSession.generatedContent?.card.weatherLabel || currentSession.weatherLabel}</div>
+                  </div>
+
+                  <div className="group-offline-scene__briefing-section">
+                    <div className="group-offline-scene__briefing-rules">
+                      <div className="group-offline-scene__briefing-rule">
+                        <div className="group-offline-scene__briefing-rule-label">成功条件</div>
+                        <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.successCondition}</div>
+                      </div>
+                      <div className="group-offline-scene__briefing-rule">
+                        <div className="group-offline-scene__briefing-rule-label">失败条件</div>
+                        <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.failureCondition}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="group-offline-scene__briefing-section group-offline-scene__briefing-section--danger">
+                    <div className="group-offline-scene__briefing-section-label">当前推进</div>
+                    <div className="group-offline-scene__briefing-copy">{currentSession.scenarioState.progressSummary}</div>
+                  </div>
+
+                  {currentSession.scenarioState.taskSteps.length > 0 ? (
+                    <div className="group-offline-scene__briefing-section">
+                      <div className="group-offline-scene__briefing-section-label">任务步骤</div>
+                      <div className="group-offline-scene__briefing-step-list">
+                        {currentSession.scenarioState.taskSteps.map((step) => (
+                          <div key={step.slot} className="group-offline-scene__briefing-step">
+                            <div className={`group-offline-scene__briefing-step-dot group-offline-scene__briefing-step-dot--${step.status}`} />
+                            <div className="group-offline-scene__briefing-step-copy">
+                              <div className="group-offline-scene__briefing-step-title">{step.slot}. {step.label}</div>
+                              {step.note ? <div className="group-offline-scene__briefing-step-note">{step.note}</div> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="group-offline-scene__meta-card">
+                <div className="group-offline-scene__meta" style={bodyTextStyle}>
+                  <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">时间</span><span>{currentSession.generatedContent?.card.timeLabel || currentSession.timeLabel}</span></div>
+                  <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">地点</span><span>{currentSession.generatedContent?.card.locationLabel || currentSession.location}</span></div>
+                  {(currentSession.scenarioState?.backgroundLabel || currentSession.scenePrompt?.trim()) ? (
+                    <div className="group-offline-scene__meta-row">
+                      <span className="group-offline-scene__meta-label">{currentSession.mode === 'scenario' ? '背景' : '情景'}</span>
+                      <span>{currentSession.scenarioState?.backgroundLabel || currentSession.scenePrompt?.trim()}</span>
+                    </div>
+                  ) : null}
+                  <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">天气</span><span>{currentSession.generatedContent?.card.weatherLabel || currentSession.weatherLabel}</span></div>
+                  <div className="group-offline-scene__meta-row"><span className="group-offline-scene__meta-label">在场</span><span>{(currentSession.generatedContent?.card.participantLabels || participantMembers.map((member) => member.name)).join('、')}</span></div>
+                  {currentSession.generatedContent?.card.objectiveLabel ? (
+                    <div className="group-offline-scene__meta-row">
+                      <span className="group-offline-scene__meta-label">目标</span>
+                      <span>{currentSession.generatedContent.card.objectiveLabel}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
 
             {sceneSongBoardItem ? <GroupOfflineSongBoard item={sceneSongBoardItem} /> : null}
           </section>
@@ -2370,18 +2510,27 @@ export function GroupOfflineScene({
 
           {(currentSession.generatedContent?.rounds || []).length === 0 ? (
             <div className="group-offline-scene__empty-state">
-              {normalizedGenerationMode === 'blocks'
-                ? '共景已经铺开。下一轮你可以直接让系统推荐、随机出场，或者点顶部头像自己排顺序。'
-                : '共景已经铺开。下一轮你可以直接继续同场，让几个人一起往下走。'}
+              {awaitingDirectorInstruction
+                ? (
+                  currentSession.generatedContent?.intro
+                    ? '导演指令已经挂上了。再点一次“开始这场”，就会按这条要求把第一轮落下来。'
+                    : '这次是从特殊指令入口进来的。先在大鹅导演里写清要求，再点击“开始这场”。'
+                )
+                : currentSession.mode === 'scenario'
+                  ? '共景已经铺开。下一轮开始要围绕当前任务推进，别把轮次花在空转上。'
+                  : '共景已经铺开。下一轮你可以直接让系统推荐、随机出场，或者点顶部头像自己排顺序。'}
             </div>
           ) : null}
 
           <div className="group-offline-scene__rounds">
             {(currentSession.generatedContent?.rounds || []).map((round, roundIndex) => (
               <section key={round.id} className="group-offline-scene__round">
+                <>
                 {(() => {
-                  const isEnsembleRound = round.generationMode === 'ensemble';
-                  const articleParagraphs = round.articleParagraphs || [];
+                  const pageEpisode = isGroupOfflineHtmlPageEpisode(round.pageEpisode) ? round.pageEpisode : undefined;
+                  const isPageEpisodeRound = round.mode === 'page_episode' && !!pageEpisode;
+                  const pageEpisodeSrcDoc = buildGroupOfflinePageEpisodeSrcDoc(pageEpisode);
+                  const pageEpisodeSandbox = resolveGroupOfflinePageEpisodeSandbox(pageEpisode);
 
                   return (
                     <>
@@ -2393,14 +2542,22 @@ export function GroupOfflineScene({
 
                 <div className="group-offline-scene__round-head">
                   <div>
-                    <div className="group-offline-scene__round-title">{round.title || `第 ${roundIndex + 1} 轮`}</div>
+                    <div className="group-offline-scene__round-title">
+                      {pageEpisode?.title || round.title || `第 ${roundIndex + 1} 轮`}
+                    </div>
                     <div className="group-offline-scene__round-mode">
-                      {round.generationMode === 'ensemble' ? '同场群像' : '分块推进'}
-                      <span> 路 </span>
-                      {dispatchLabel(round.dispatchMode)}
+                      {isPageEpisodeRound
+                        ? (pageEpisode?.pageType === 'micro_app' ? '互动页面轮' : 'HTML页面轮')
+                        : (
+                          <>
+                            分块推进
+                            <span> 路 </span>
+                            {dispatchLabel(round.dispatchMode)}
+                          </>
+                        )}
                     </div>
                   </div>
-                  {!isEnsembleRound && round.selectedCharacterIds?.length ? (
+                  {round.selectedCharacterIds?.length ? (
                     <div className="group-offline-scene__round-queue">
                       {round.selectedCharacterIds.map((characterId, index) => (
                         <span key={`${round.id}:${characterId}`} className="group-offline-scene__chip">
@@ -2411,51 +2568,34 @@ export function GroupOfflineScene({
                   ) : null}
                 </div>
 
+                {isPageEpisodeRound ? (
+                  <div className="group-offline-scene__page-episode">
+                    {pageEpisodeSrcDoc ? (
+                      <iframe
+                        title={pageEpisode?.title || round.title || `第 ${roundIndex + 1} 轮页面`}
+                        className="group-offline-scene__page-frame"
+                        srcDoc={pageEpisodeSrcDoc}
+                        sandbox={pageEpisodeSandbox}
+                      />
+                    ) : null}
+                    {pageEpisode?.caption ? (
+                      <div className="group-offline-scene__page-caption">{pageEpisode.caption}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {round.sceneText ? (
                   <div className="group-offline-scene__round-scene" style={bodyTextStyle}>
+                    {isPageEpisodeRound ? (
+                      <div className="group-offline-scene__page-story-title">剧情摘要</div>
+                    ) : null}
                     {splitNarrativeParagraphs(round.sceneText).map((paragraph, index) => (
                       <p key={`${round.id}-scene-${index}`} className="group-offline-scene__entry-paragraph">{paragraph}</p>
                     ))}
                   </div>
                 ) : null}
 
-                {isEnsembleRound ? (
-                  <div className="group-offline-scene__ensemble">
-                    {mergeDisplayEnsembleParagraphs(articleParagraphs).map((paragraph, paragraphIndex) => (
-                      <div key={paragraph.id || `${round.id}:article:${paragraphIndex + 1}`} className="group-offline-scene__ensemble-paragraph">
-                        {splitEnsembleParagraphBlocks(paragraph).map((block, blockIndex) => (
-                          block.type === 'highlight' ? (
-                            <div
-                              key={`${paragraph.id}-highlight-block-${blockIndex}`}
-                              className="group-offline-scene__ensemble-highlight-block"
-                              style={highlightStyle}
-                              title={block.highlight?.target?.label ? `${block.highlight.speakerLabel} · 对 ${block.highlight.target.label}` : block.highlight?.speakerLabel}
-                            >
-                              {block.text}
-                            </div>
-                          ) : (
-                            <p key={`${paragraph.id}-body-block-${blockIndex}`} className="group-offline-scene__ensemble-text" style={bodyTextStyle}>
-                              {splitDialogueSegments(block.text).map((segment, segmentIndex) => (
-                                segment.type === 'dialogue' ? (
-                                  <span
-                                    key={`${paragraph.id}-dialogue-inline-${blockIndex}-${segmentIndex}`}
-                                    className="group-offline-scene__ensemble-dialogue"
-                                  >
-                                    {segment.text}
-                                  </span>
-                                ) : (
-                                  <React.Fragment key={`${paragraph.id}-body-inline-${blockIndex}-${segmentIndex}`}>
-                                    {segment.text}
-                                  </React.Fragment>
-                                )
-                              ))}
-                            </p>
-                          )
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                ) : round.characterEntries.map((entry) => {
+                {!isPageEpisodeRound ? round.characterEntries.map((entry) => {
                   const member = resolveMemberForEntry(entry);
                   const statusKey = `${round.id}:${entry.characterId}`;
                   const isEditing = editingEntryKey === statusKey;
@@ -2509,11 +2649,12 @@ export function GroupOfflineScene({
                       )}
                     />
                   );
-                })}
-                {renderRoundInspector(round)}
+                }) : null}
+                {!isPageEpisodeRound ? renderRoundInspector(round) : null}
                     </>
                   );
                 })()}
+                    </>
               </section>
             ))}
           </div>
@@ -2544,10 +2685,22 @@ export function GroupOfflineScene({
                   void handleSend();
                 }
               }}
-              placeholder={loading ? '这一轮正在推进…' : normalizedGenerationMode === 'blocks' ? '输入你要接的话，默认会按本轮调度继续…' : '输入你要接的话…'}
+              placeholder={loading
+                ? '这一轮正在推进…'
+                : awaitingDirectorInstruction
+                  ? '先在大鹅导演里写特殊指令，再点击“开始这场”…'
+                : scenarioLockReason
+                  ? scenarioLockReason
+                  : '输入你要接的话，默认会按本轮调度继续…'}
               className="group-offline-scene__input"
+              disabled={loading || awaitingDirectorInstruction || !!scenarioLockReason}
             />
-            <button type="button" className="group-offline-scene__send" onClick={() => void handleSend()} disabled={loading || !input.trim()}>
+            <button
+              type="button"
+              className="group-offline-scene__send"
+              onClick={() => void handleSend()}
+              disabled={loading || awaitingDirectorInstruction || !input.trim() || !!scenarioLockReason}
+            >
               <Send size={16} />
             </button>
           </div>

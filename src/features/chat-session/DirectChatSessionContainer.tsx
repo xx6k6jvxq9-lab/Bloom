@@ -39,6 +39,7 @@ type DirectChatSessionContainerProps = {
   setSettings: (settings: AppSettings) => void;
   onBack: () => void;
   userAvatar: string;
+  datingUserAvatar: string;
   userName: string;
   masks: Mask[];
   favorites: FavoriteMessage[];
@@ -85,6 +86,7 @@ export function DirectChatSessionContainer({
   setSettings,
   onBack,
   userAvatar,
+  datingUserAvatar,
   userName,
   masks,
   favorites,
@@ -271,6 +273,7 @@ export function DirectChatSessionContainer({
       onUpdateSettings={setSettings}
       onBack={onBack}
       userAvatar={userAvatar}
+      datingUserAvatar={datingUserAvatar}
       userName={userName}
       masks={masks}
       favorites={favorites}

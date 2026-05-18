@@ -3,40 +3,79 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   Check,
   Dices,
+  Palette,
   Pencil,
   RefreshCw,
   Sparkles,
+  Target,
   WandSparkles,
   X,
 } from 'lucide-react';
 import type { GroupOfflineStylePresetId } from '../../types';
 
-type GooseDirectorOrbProps = {
+export type GooseDirectorInstructionMode = 'start' | 'rewrite' | 'next_round';
+export type GooseDirectorSection = 'dispatch' | 'progress' | 'display' | 'style' | 'instruction' | 'round';
+
+type GooseDirectorProgressPanel = {
+  roundLabel: string;
+  backgroundLabel?: string;
+  taskLabel?: string;
+  statusLabel: string;
+  progressSummary: string;
+  successCondition?: string;
+  failureCondition?: string;
+  pressureLine?: string;
+  taskSteps: Array<{
+    slot: number;
+    label: string;
+    status: 'pending' | 'completed' | 'failed';
+    note?: string;
+  }>;
+  memoryRows: Array<{
+    characterName: string;
+    shortTermCount: number;
+    longTermCount: number;
+  }>;
+  lockReason?: string;
+};
+
+export type GooseDirectorOrbProps = {
   containerRef: React.RefObject<HTMLElement | null>;
-  mode: 'blocks' | 'ensemble';
+  mode: 'blocks';
   loading: boolean;
   manualSelectionMode: boolean;
   queuedLabels: string[];
   recommendedLabels: string[];
+  highlightColor: string;
+  bodyTextColor: string;
+  highlightColorOptions: string[];
+  bodyTextColorOptions: string[];
   stylePresetOptions: Array<{ id: GroupOfflineStylePresetId; label: string }>;
+  progressPanel?: GooseDirectorProgressPanel;
+  dispatchDisabledReason?: string;
+  directorLaunchToken?: number;
+  initialDirectorSection?: GooseDirectorSection;
+  currentDirectorInstruction?: string;
+  awaitingDirectorInstruction?: boolean;
+  hasCurrentRound?: boolean;
   onRecommend: () => void;
   onRandom: () => void;
   onToggleManual: () => void;
   onClearManual: () => void;
   onRunManual: () => void;
-  onContinueEnsemble: () => void;
   onRetryRound?: () => void;
   onRewindRound?: () => void;
   onApplyStylePreset?: (presetId: GroupOfflineStylePresetId) => void;
   onOpenCustomStyle?: () => void;
+  onApplyDirectorInstruction?: (text: string, mode: GooseDirectorInstructionMode) => void;
+  onHighlightColorChange: (color: string) => void;
+  onBodyTextColorChange: (color: string) => void;
 };
 
 type OrbPosition = {
   x: number;
   y: number;
 };
-
-type GooseDirectorSection = 'dispatch' | 'style' | 'round';
 
 const ORB_SIZE = 52;
 const ORB_MARGIN = 12;
@@ -110,6 +149,7 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
   const [docked, setDocked] = useState(true);
   const [activeSection, setActiveSection] = useState<GooseDirectorSection>('dispatch');
   const [position, setPosition] = useState<OrbPosition>({ x: 0, y: 168 });
+  const [directorInstructionDraft, setDirectorInstructionDraft] = useState(props.currentDirectorInstruction || '');
   const dragRef = useRef<{
     pointerId: number;
     originX: number;
@@ -118,6 +158,20 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
     startY: number;
     moved: boolean;
   } | null>(null);
+  const lastLaunchTokenRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setDirectorInstructionDraft(props.currentDirectorInstruction || '');
+  }, [props.currentDirectorInstruction]);
+
+  useEffect(() => {
+    if (!props.directorLaunchToken) return;
+    if (props.directorLaunchToken === lastLaunchTokenRef.current) return;
+    lastLaunchTokenRef.current = props.directorLaunchToken;
+    setActiveSection(props.initialDirectorSection || 'instruction');
+    setDocked(false);
+    setOpen(true);
+  }, [props.directorLaunchToken, props.initialDirectorSection]);
 
   const alignRight = useMemo(() => {
     const container = props.containerRef.current;
@@ -127,14 +181,34 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
 
   const availableSections = useMemo<GooseDirectorSection[]>(() => {
     const sections: GooseDirectorSection[] = ['dispatch'];
+    if (props.progressPanel) {
+      sections.push('progress');
+    }
+    if (props.highlightColorOptions.length > 0 || props.bodyTextColorOptions.length > 0) {
+      sections.push('display');
+    }
     if ((props.stylePresetOptions.length > 0 && props.onApplyStylePreset) || props.onOpenCustomStyle) {
       sections.push('style');
+    }
+    if (props.onApplyDirectorInstruction) {
+      sections.push('instruction');
     }
     if (props.onRetryRound || props.onRewindRound) {
       sections.push('round');
     }
     return sections;
-  }, [props.onApplyStylePreset, props.onOpenCustomStyle, props.onRetryRound, props.onRewindRound, props.stylePresetOptions.length]);
+  }, [
+    props.currentDirectorInstruction,
+    props.bodyTextColorOptions.length,
+    props.highlightColorOptions.length,
+    props.onApplyDirectorInstruction,
+    props.onApplyStylePreset,
+    props.onOpenCustomStyle,
+    props.onRetryRound,
+    props.onRewindRound,
+    props.progressPanel,
+    props.stylePresetOptions.length,
+  ]);
 
   const snapPosition = (next: OrbPosition) => {
     const container = props.containerRef.current;
@@ -295,19 +369,37 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
     setDocked(false);
   };
 
+  const closeAndRun = (action: () => void) => {
+    setOpen(false);
+    setDocked(false);
+    action();
+  };
+
   const sectionTitle = activeSection === 'style'
     ? '改文风'
+    : activeSection === 'display'
+      ? '配色'
+    : activeSection === 'progress'
+      ? '看进度'
+    : activeSection === 'instruction'
+      ? '特殊指令'
     : activeSection === 'round'
       ? '轮级'
       : '调度';
 
   const sectionDescription = activeSection === 'style'
     ? '这一层只动写法和表达，不改现在这一轮已经发生的事。'
+    : activeSection === 'display'
+      ? '这里只动场内文字颜色，不改内容、不改文风。'
+    : activeSection === 'progress'
+      ? '这里统一看任务、轮数、推进状态和记忆累计，不用在场内来回翻。'
+    : activeSection === 'instruction'
+      ? (props.awaitingDirectorInstruction
+        ? '这次是从特殊指令入口进来的。先写清这一场该怎么开，再点“开始这场”。'
+        : '特殊指令只改这一轮怎么推进、先回应谁、节奏和限制，不改角色是谁，也不和文风混用。')
     : activeSection === 'round'
       ? '这里放整轮控制，不是改单个角色块。'
-      : props.mode === 'blocks'
-        ? '选这一轮谁出场，或者直接让系统替你调度。'
-        : '当前是同场群像，继续推进会让多人一起往下走。';
+      : '选这一轮谁出场，或者直接让系统替你调度。';
 
   return (
     <div className="goose-director-orb" aria-live="polite">
@@ -337,8 +429,28 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
 
             <div className="goose-director-orb__tabs">
               {availableSections.map((section) => {
-                const label = section === 'style' ? '改文风' : section === 'round' ? '轮级' : '调度';
-                const Icon = section === 'style' ? Sparkles : section === 'round' ? RefreshCw : WandSparkles;
+                const label = section === 'style'
+                  ? '改文风'
+                  : section === 'display'
+                    ? '配色'
+                  : section === 'progress'
+                    ? '进度'
+                    : section === 'instruction'
+                      ? '特殊指令'
+                    : section === 'round'
+                      ? '轮级'
+                      : '调度';
+                const Icon = section === 'style'
+                  ? Sparkles
+                  : section === 'display'
+                    ? Palette
+                  : section === 'progress'
+                    ? Target
+                    : section === 'instruction'
+                      ? WandSparkles
+                    : section === 'round'
+                      ? RefreshCw
+                      : WandSparkles;
                 return (
                   <button
                     key={section}
@@ -362,74 +474,58 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
 
               {activeSection === 'dispatch' ? (
                 <>
-                  {props.mode === 'blocks' ? (
-                    <>
-                      <div className="goose-director-orb__actions-grid">
-                        <button
-                          type="button"
-                          className="goose-director-orb__action"
-                          onClick={() => handleLeafAction(props.onRecommend)}
-                          disabled={props.loading}
-                        >
-                          <Sparkles size={14} />
-                          <span>系统推荐</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="goose-director-orb__action"
-                          onClick={() => handleLeafAction(props.onRandom)}
-                          disabled={props.loading}
-                        >
-                          <Dices size={14} />
-                          <span>随机出场</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`goose-director-orb__action ${props.manualSelectionMode ? 'goose-director-orb__action--active' : ''}`}
-                          onClick={props.onToggleManual}
-                          disabled={props.loading}
-                        >
-                          <Pencil size={14} />
-                          <span>{props.manualSelectionMode ? '退出手动' : '手动选人'}</span>
-                        </button>
-                      </div>
+                  <div className="goose-director-orb__actions-grid">
+                    <button
+                      type="button"
+                      className="goose-director-orb__action"
+                      onClick={() => handleLeafAction(props.onRecommend)}
+                      disabled={props.loading || !!props.dispatchDisabledReason}
+                    >
+                      <Sparkles size={14} />
+                      <span>系统推荐</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="goose-director-orb__action"
+                      onClick={() => handleLeafAction(props.onRandom)}
+                      disabled={props.loading || !!props.dispatchDisabledReason}
+                    >
+                      <Dices size={14} />
+                      <span>随机出场</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`goose-director-orb__action ${props.manualSelectionMode ? 'goose-director-orb__action--active' : ''}`}
+                      onClick={props.onToggleManual}
+                      disabled={props.loading || !!props.dispatchDisabledReason}
+                    >
+                      <Pencil size={14} />
+                      <span>{props.manualSelectionMode ? '退出手动' : '手动选人'}</span>
+                    </button>
+                  </div>
 
-                      {props.manualSelectionMode ? (
-                        <div className="goose-director-orb__actions-grid goose-director-orb__actions-grid--compact">
-                          <button
-                            type="button"
-                            className="goose-director-orb__action goose-director-orb__action--secondary"
-                            onClick={props.onClearManual}
-                            disabled={props.loading}
-                          >
-                            <X size={14} />
-                            <span>清空顺序</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="goose-director-orb__action goose-director-orb__action--primary"
-                            onClick={() => handleLeafAction(props.onRunManual)}
-                            disabled={props.loading || props.queuedLabels.length === 0}
-                          >
-                            <Check size={14} />
-                            <span>开始本轮</span>
-                          </button>
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
+                  {props.manualSelectionMode ? (
                     <div className="goose-director-orb__actions-grid goose-director-orb__actions-grid--compact">
                       <button
                         type="button"
-                        className="goose-director-orb__action goose-director-orb__action--primary"
-                        onClick={() => handleLeafAction(props.onContinueEnsemble)}
-                        disabled={props.loading}
+                        className="goose-director-orb__action goose-director-orb__action--secondary"
+                        onClick={props.onClearManual}
+                        disabled={props.loading || !!props.dispatchDisabledReason}
                       >
-                        <WandSparkles size={14} />
-                        <span>继续同场</span>
+                        <X size={14} />
+                        <span>清空顺序</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="goose-director-orb__action goose-director-orb__action--primary"
+                        onClick={() => handleLeafAction(props.onRunManual)}
+                        disabled={props.loading || props.queuedLabels.length === 0 || !!props.dispatchDisabledReason}
+                      >
+                        <Check size={14} />
+                        <span>开始本轮</span>
                       </button>
                     </div>
-                  )}
+                  ) : null}
 
                   {props.recommendedLabels.length > 0 ? (
                     <div className="goose-director-orb__meta-card">
@@ -446,7 +542,138 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
                       </div>
                     </div>
                   ) : null}
+
+                  {props.dispatchDisabledReason ? (
+                    <div className="goose-director-orb__meta-card goose-director-orb__meta-card--warning">
+                      <div className="goose-director-orb__meta-label">当前不能继续推进</div>
+                      <div className="goose-director-orb__meta-text">{props.dispatchDisabledReason}</div>
+                    </div>
+                  ) : null}
                 </>
+              ) : null}
+
+              {activeSection === 'progress' && props.progressPanel ? (
+                <div className="goose-director-orb__progress">
+                  <div className="goose-director-orb__progress-top">
+                    <div className="goose-director-orb__meta-card">
+                      <div className="goose-director-orb__meta-label">轮次</div>
+                      <div className="goose-director-orb__meta-text">{props.progressPanel.roundLabel}</div>
+                    </div>
+                    <div className="goose-director-orb__meta-card">
+                      <div className="goose-director-orb__meta-label">状态</div>
+                      <div className="goose-director-orb__meta-text">{props.progressPanel.statusLabel}</div>
+                    </div>
+                  </div>
+
+                  <div className="goose-director-orb__meta-card">
+                    <div className="goose-director-orb__meta-label">当前任务</div>
+                    <div className="goose-director-orb__meta-text">
+                      {props.progressPanel.taskLabel || props.progressPanel.progressSummary}
+                    </div>
+                    {props.progressPanel.taskLabel && props.progressPanel.progressSummary ? (
+                      <div className="goose-director-orb__progress-inline-note">{props.progressPanel.progressSummary}</div>
+                    ) : null}
+                  </div>
+
+                  {props.progressPanel.taskSteps.length > 0 ? (
+                    <div className="goose-director-orb__meta-card">
+                      <div className="goose-director-orb__meta-label">任务步骤</div>
+                      <div className="goose-director-orb__progress-steps">
+                        {props.progressPanel.taskSteps.map((step) => (
+                          <div key={step.slot} className="goose-director-orb__progress-step">
+                            <div className={`goose-director-orb__progress-step-dot goose-director-orb__progress-step-dot--${step.status}`} />
+                            <div className="goose-director-orb__progress-step-copy">
+                              <div className="goose-director-orb__progress-step-title">{step.slot}. {step.label}</div>
+                              {step.note ? <div className="goose-director-orb__progress-step-note">{step.note}</div> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {(props.progressPanel.successCondition || props.progressPanel.failureCondition || props.progressPanel.pressureLine) ? (
+                    <div className="goose-director-orb__meta-card">
+                      <div className="goose-director-orb__meta-label">规则</div>
+                      <div className="goose-director-orb__meta-text">
+                        {[
+                          props.progressPanel.successCondition ? `成：${props.progressPanel.successCondition}` : '',
+                          props.progressPanel.failureCondition ? `败：${props.progressPanel.failureCondition}` : '',
+                          props.progressPanel.pressureLine ? `限：${props.progressPanel.pressureLine}` : '',
+                        ].filter(Boolean).join('\n')}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {props.progressPanel.memoryRows.length > 0 ? (
+                    <div className="goose-director-orb__meta-card">
+                      <div className="goose-director-orb__meta-label">记忆累计</div>
+                      <div className="goose-director-orb__memory-list">
+                        {props.progressPanel.memoryRows.map((row) => (
+                          <div key={row.characterName} className="goose-director-orb__memory-row">
+                            <span className="goose-director-orb__memory-name">{row.characterName}</span>
+                            <span className="goose-director-orb__memory-value">
+                              短期 {row.shortTermCount}/10 · 长期 {row.longTermCount}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {props.progressPanel.lockReason ? (
+                    <div className="goose-director-orb__meta-card goose-director-orb__meta-card--warning">
+                      <div className="goose-director-orb__meta-label">推进提示</div>
+                      <div className="goose-director-orb__meta-text">{props.progressPanel.lockReason}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeSection === 'display' ? (
+                <div className="goose-director-orb__display">
+                  <div className="goose-director-orb__meta-card">
+                    <div className="goose-director-orb__meta-label">高亮文字颜色</div>
+                    <div className="goose-director-orb__color-grid">
+                      {props.highlightColorOptions.map((color) => {
+                        const active = props.highlightColor === color;
+                        return (
+                          <button
+                            key={`highlight-${color}`}
+                            type="button"
+                            className={`goose-director-orb__color-swatch ${active ? 'goose-director-orb__color-swatch--active' : ''}`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => props.onHighlightColorChange(color)}
+                            disabled={props.loading}
+                            aria-label={`选择高亮文字颜色 ${color}`}
+                            title={active ? '当前高亮颜色' : '切换为这组高亮颜色'}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="goose-director-orb__meta-card">
+                    <div className="goose-director-orb__meta-label">普通文字颜色</div>
+                    <div className="goose-director-orb__color-grid">
+                      {props.bodyTextColorOptions.map((color) => {
+                        const active = props.bodyTextColor === color;
+                        return (
+                          <button
+                            key={`body-${color}`}
+                            type="button"
+                            className={`goose-director-orb__color-swatch ${active ? 'goose-director-orb__color-swatch--active' : ''}`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => props.onBodyTextColorChange(color)}
+                            disabled={props.loading}
+                            aria-label={`选择普通文字颜色 ${color}`}
+                            title={active ? '当前普通文字颜色' : '切换为这组普通文字颜色'}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               ) : null}
 
               {activeSection === 'style' && (props.onApplyStylePreset || props.onOpenCustomStyle) ? (
@@ -475,6 +702,59 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
                     </button>
                   ) : null}
                 </div>
+              ) : null}
+
+              {activeSection === 'instruction' && props.onApplyDirectorInstruction ? (
+                <>
+                  <div className="goose-director-orb__option-label">特殊指令</div>
+                  <textarea
+                    value={directorInstructionDraft}
+                    onChange={(event) => setDirectorInstructionDraft(event.target.value)}
+                    className="goose-director-orb__textarea"
+                    rows={6}
+                    placeholder={props.awaitingDirectorInstruction
+                      ? '例如：先不要按默认主线开场，直接把这场写成一个带任务感的临时局，先让被我点名的人接，再收束到当前目标。'
+                      : '例如：这一轮先让被我点名的人接，少铺环境，多落任务推进；或者压住起哄角色，把焦点收回两个人。'}
+                    disabled={props.loading}
+                  />
+                  <div className="goose-director-orb__actions-grid goose-director-orb__actions-grid--compact">
+                    {props.awaitingDirectorInstruction ? (
+                      <button
+                        type="button"
+                        className="goose-director-orb__action goose-director-orb__action--primary"
+                        onClick={() => closeAndRun(() => props.onApplyDirectorInstruction?.(directorInstructionDraft, 'start'))}
+                        disabled={props.loading || !directorInstructionDraft.trim()}
+                      >
+                        <WandSparkles size={14} />
+                        <span>开始这场</span>
+                      </button>
+                    ) : null}
+
+                    {props.hasCurrentRound ? (
+                      <button
+                        type="button"
+                        className="goose-director-orb__action goose-director-orb__action--primary"
+                        onClick={() => closeAndRun(() => props.onApplyDirectorInstruction?.(directorInstructionDraft, 'rewrite'))}
+                        disabled={props.loading || !directorInstructionDraft.trim()}
+                      >
+                        <RefreshCw size={14} />
+                        <span>按这条指令重写本轮</span>
+                      </button>
+                    ) : null}
+
+                    {!props.awaitingDirectorInstruction ? (
+                      <button
+                        type="button"
+                        className="goose-director-orb__action goose-director-orb__action--secondary"
+                        onClick={() => closeAndRun(() => props.onApplyDirectorInstruction?.(directorInstructionDraft, 'next_round'))}
+                        disabled={props.loading || !directorInstructionDraft.trim()}
+                      >
+                        <WandSparkles size={14} />
+                        <span>{props.hasCurrentRound ? '下一轮执行一次' : '开始第一轮'}</span>
+                      </button>
+                    ) : null}
+                  </div>
+                </>
               ) : null}
 
               {activeSection === 'round' ? (

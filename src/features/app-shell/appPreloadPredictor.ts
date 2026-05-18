@@ -20,6 +20,7 @@ const DEFAULT_NEXT_APP_PREDICTIONS: Record<AppScreen, AppScreen[]> = {
   music: ['chat', 'forum', 'home'],
   forum: ['chat-session', 'chat', 'home'],
   wallet: ['chat', 'home', 'settings'],
+  mall: ['wallet', 'home', 'chat'],
 };
 
 type TransitionCounts = Partial<Record<AppScreen, Partial<Record<AppScreen, number>>>>;

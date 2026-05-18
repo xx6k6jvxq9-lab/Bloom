@@ -1,4 +1,4 @@
-import type { AppData, ForumData, ForumSpectatorSettings, WalletData } from '../../types';
+import type { AppData, ForumData, ForumSpectatorSettings, MallData, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
 import {
   extractDirectFactTraces,
@@ -15,6 +15,8 @@ import { persistFriendRequests } from './friendRequestsStore';
 import { persistMeData } from './meDataStore';
 import { persistMoments } from './momentsStore';
 import { persistMusicData } from './musicDataStore';
+import { createDefaultMallData } from '../mall/defaultMallData';
+import { persistMallData } from './mallDataStore';
 import { persistPerception } from './perceptionStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { persistUserProfile } from './userProfileStore';
@@ -61,6 +63,8 @@ const EMPTY_WALLET_DATA: WalletData = {
   transactions: [],
 };
 
+const EMPTY_MALL_DATA: MallData = createDefaultMallData();
+
 function persistIndexedDbOnly<T>(key: string, value: T): Promise<void> {
   return saveJsonRecord(key, value).catch((error) => {
     console.error(`[persistAppDataSnapshot] Failed to persist key "${key}" into IndexedDB`, error);
@@ -75,6 +79,11 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
   const normalizedFavorites = appData.favorites ?? fallbackAppData.favorites ?? [];
+  const normalizedUserAvatarLibrary = appData.userAvatarLibrary ?? fallbackAppData.userAvatarLibrary;
+  const normalizedRelationshipAvatarBindings =
+    appData.relationshipAvatarBindings
+    ?? fallbackAppData.relationshipAvatarBindings
+    ?? [];
   const normalizedPerception = appData.perception ?? fallbackAppData.perception;
   const normalizedWorldBooks = appData.worldBooks ?? fallbackAppData.worldBooks ?? [];
   const normalizedMoments = appData.moments ?? fallbackAppData.moments ?? [];
@@ -85,6 +94,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
   const normalizedVisualSettings = appData.visualSettings ?? fallbackAppData.visualSettings;
   const normalizedForumData = appData.forumData ?? fallbackAppData.forumData ?? EMPTY_FORUM_DATA;
   const normalizedMusicData = appData.musicData ?? fallbackAppData.musicData;
+  const normalizedMallData = appData.mallData ?? fallbackAppData.mallData ?? EMPTY_MALL_DATA;
   const normalizedWalletData = appData.walletData ?? fallbackAppData.walletData ?? EMPTY_WALLET_DATA;
   const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
     appData.coupleSpaceState ?? fallbackAppData.coupleSpaceState,
@@ -109,6 +119,8 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
       masks: normalizedMasks,
       favorites: normalizedFavorites,
       worldBooks: normalizedWorldBooks,
+      userAvatarLibrary: normalizedUserAvatarLibrary,
+      relationshipAvatarBindings: normalizedRelationshipAvatarBindings,
     }),
     normalizedPerception ? persistPerception(normalizedPerception) : Promise.resolve(),
     persistMoments(normalizedMoments),
@@ -128,6 +140,9 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
       persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, coupleSpaceState),
     ),
     normalizedMusicData ? persistMusicData(normalizedMusicData) : Promise.resolve(),
+    Promise.resolve(persistMallData(normalizedMallData)).then(() =>
+      persistIndexedDbOnly(STORAGE_KEYS.mallData, normalizedMallData),
+    ),
     Promise.resolve(persistWalletData(normalizedWalletData)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.walletData, normalizedWalletData),
     ),

@@ -22,6 +22,7 @@ import {
   CoupleSpaceApp,
   CustomizationApp,
   ForumApp,
+  MallApp,
   MonitorApp,
   MusicApp,
   PerceptionView,
@@ -211,6 +212,7 @@ function preloadPredictedAppTarget(app: AppScreen): Promise<unknown> | null {
     case 'music':
     case 'forum':
     case 'wallet':
+    case 'mall':
       return preloadPanelForApp(app);
     default:
       return null;
@@ -1488,8 +1490,9 @@ export function AppScreenContent({
             setChatHistory={setDirectChatHistory}
             settings={settings}
             setSettings={setSettings}
-            userAvatar={appData.userProfile.avatar}
-            userName={appData.userProfile.name}
+            userProfile={appData.userProfile}
+            userAvatarLibrary={appData.userAvatarLibrary}
+            relationshipAvatarBindings={appData.relationshipAvatarBindings}
             masks={appData.masks}
             favorites={appData.favorites}
             setFavorites={(f) => setAppData((prev) => ({ ...prev, favorites: f }))}
@@ -1774,8 +1777,9 @@ export function AppScreenContent({
           <MusicApp
             musicData={appData.musicData!}
             onUpdateMusicData={(data) => setAppData((prev) => ({ ...prev, musicData: data }))}
-            userAvatar={appData.userProfile.avatar}
-            userName={appData.userProfile.name}
+            userProfile={appData.userProfile}
+            userAvatarLibrary={appData.userAvatarLibrary}
+            relationshipAvatarBindings={appData.relationshipAvatarBindings}
             character={couplePartnerCharacter}
             directChatHistory={appData.chatHistory}
             visualSettings={appData.visualSettings}
@@ -1806,6 +1810,17 @@ export function AppScreenContent({
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
             onClose={() => transitionToApp('home')}
+          />
+        </Suspense>
+      )}
+      {activeApp === 'mall' && (
+        <Suspense fallback={null}>
+          <MallApp
+            appData={appData}
+            settings={settings}
+            onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
+            onClose={() => transitionToApp('home')}
+            onOpenChat={openDirectChatSession}
           />
         </Suspense>
       )}

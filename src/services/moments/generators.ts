@@ -434,7 +434,44 @@ function splitMomentSentences(text: string) {
     || [];
 }
 
-function rebalanceMomentParagraphs(text: string, shape?: MomentPostBlueprint['shape']) {
+function groupExplicitMomentLines(
+  lines: string[],
+  shape?: MomentPostBlueprint['shape'],
+) {
+  if (lines.length < 2) {
+    return '';
+  }
+
+  const targetParagraphCount =
+    shape === 'photo_dump'
+      ? Math.min(4, Math.max(2, Math.ceil(lines.length / 2)))
+      : shape === 'music_diary'
+        ? Math.min(3, Math.max(2, Math.ceil(lines.length / 2)))
+        : shape === 'multi_paragraph' || shape === 'journal_note'
+          ? Math.min(4, Math.max(2, Math.ceil(lines.length / 2)))
+          : Math.min(3, Math.max(2, Math.ceil(lines.length / 2)));
+  const idealGroupSize = Math.max(1, Math.ceil(lines.length / targetParagraphCount));
+  const paragraphs: string[] = [];
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (current.length >= idealGroupSize) {
+      paragraphs.push(current.join(' ').trim());
+      current = [line];
+      continue;
+    }
+
+    current.push(line);
+  }
+
+  if (current.length > 0) {
+    paragraphs.push(current.join(' ').trim());
+  }
+
+  return paragraphs.filter(Boolean).join('\n\n');
+}
+
+export function rebalanceMomentParagraphs(text: string, shape?: MomentPostBlueprint['shape']) {
   const normalizedParagraphs = text
     .split(/\n{2,}/)
     .map((paragraph) => paragraph
@@ -453,13 +490,35 @@ function rebalanceMomentParagraphs(text: string, shape?: MomentPostBlueprint['sh
     return normalizedParagraphs.join('\n\n');
   }
 
+  const explicitLines = text
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const substantiveExplicitLineCount = explicitLines.filter((line) => line.length >= 8).length;
+  if (substantiveExplicitLineCount >= 2) {
+    return groupExplicitMomentLines(explicitLines, shape);
+  }
+
   const flattened = normalizedParagraphs.join(' ').trim();
-  if (!flattened || flattened.length < 88) {
+  const minAutoParagraphChars =
+    shape === 'multi_paragraph' || shape === 'journal_note'
+      ? 72
+      : shape === 'photo_dump'
+        || shape === 'music_diary'
+        || shape === 'tiny_complaint'
+        || shape === 'soft_claim'
+        || shape === 'cheerful_share'
+        || shape === 'abstract_fragment'
+        ? 60
+        : 68;
+  if (!flattened || flattened.length < minAutoParagraphChars) {
     return flattened;
   }
 
   const sentences = splitMomentSentences(flattened);
-  if (sentences.length < 3) {
+  const minSentenceCount = shape === 'multi_paragraph' || shape === 'journal_note' ? 3 : 2;
+  if (sentences.length < minSentenceCount) {
     return flattened;
   }
 

@@ -4,6 +4,7 @@ import {
   loadCoupleSpaceApp,
   loadCustomizationApp,
   loadForumApp,
+  loadMallApp,
   loadMonitorApp,
   loadMusicApp,
   loadPerceptionView,
@@ -18,6 +19,7 @@ const PANEL_PRELOADERS = {
   music: loadMusicApp,
   forum: loadForumApp,
   wallet: loadWalletApp,
+  mall: loadMallApp,
 } as const;
 
 export const PANEL_PRELOAD_LOADERS: Array<() => Promise<unknown>> = [
@@ -25,6 +27,7 @@ export const PANEL_PRELOAD_LOADERS: Array<() => Promise<unknown>> = [
   PANEL_PRELOADERS.forum,
   PANEL_PRELOADERS.music,
   PANEL_PRELOADERS.wallet,
+  PANEL_PRELOADERS.mall,
   PANEL_PRELOADERS.customization,
   PANEL_PRELOADERS.perception,
   PANEL_PRELOADERS.monitor,
@@ -46,3 +49,4 @@ export const PerceptionView = lazy(loadPerceptionView);
 export const MusicApp = lazy(loadMusicApp);
 export const ForumApp = lazy(loadForumApp);
 export const WalletApp = lazy(loadWalletApp);
+export const MallApp = lazy(loadMallApp);

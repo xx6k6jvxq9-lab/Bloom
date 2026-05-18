@@ -1,12 +1,12 @@
 import type { Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import {
-  canCharacterAutoCommentOnMoment,
   canCharacterJoinMomentThread,
+  getCharacterMomentEngagementAccess,
+  getMomentAutoCommentSuppressionMode,
   getCharacterPublicThreadProfile,
   inferCharacterPublicThreadRelation,
   isLikelyUserDirectedMoment,
-  shouldSuppressAutoCommentsForMoment,
 } from './publicThreadPolicy';
 
 type PickInitialCommentersOptions = {
@@ -552,56 +552,104 @@ export function getMomentAutoCommentTargetCount(moment: MomentItem, characters: 
   if (characters.length <= 1) return characters.length;
 
   const context = buildCommentLoopContext(moment, characters, chatGroups);
-  if (shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)) return 0;
-  if (context.audience === 'user_directed') return 0;
+  const suppressionMode = getMomentAutoCommentSuppressionMode(moment, characters, chatGroups);
+  if (suppressionMode === 'full_block') return 0;
   if (context.timeMode === 'days_later' || context.timeMode === 'stale') return 0;
+  if (suppressionMode === 'limit_third_party') return Math.min(characters.length, 1);
+  if (context.audience === 'user_directed') return 0;
   if (moment.authorId !== 'user' && inferMomentSemanticAnchor(moment.content) === 'soft_signal') return 0;
-  if (moment.authorId === 'user') return Math.min(characters.length, Math.random() < 0.55 ? 2 : 3);
-  return Math.min(characters.length, Math.random() < 0.45 ? 2 : 3);
+  if (moment.authorId === 'user') return Math.min(characters.length, Math.random() < 0.68 ? 1 : 2);
+  return Math.min(characters.length, Math.random() < 0.62 ? 2 : 3);
 }
 
 export function pickInitialCommenters(options: PickInitialCommentersOptions) {
   const { moment, characters, chatGroups = [] } = options;
   const context = buildCommentLoopContext(moment, characters, chatGroups);
-  if (context.audience === 'user_directed' || context.timeMode === 'days_later' || context.timeMode === 'stale') {
+  const suppressionMode = getMomentAutoCommentSuppressionMode(moment, characters, chatGroups);
+  if (context.timeMode === 'days_later' || context.timeMode === 'stale') {
     return [];
   }
-  if (shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)) {
+  if (suppressionMode === 'full_block') {
+    return [];
+  }
+  if (context.audience === 'user_directed' && suppressionMode === 'none') {
     return [];
   }
 
-  const eligibleCharacters = characters.filter((character) => (
-    character.id !== moment.authorId
-    && canCharacterAutoCommentOnMoment({
-      actor: character,
-      moment,
-      characters,
-      chatGroups,
-    })
-  ));
+  const eligibleCharacters = characters
+    .filter((character) => character.id !== moment.authorId)
+    .map((character) => ({
+      character,
+      engagementAccess: getCharacterMomentEngagementAccess({
+        actor: character,
+        moment,
+        characters,
+        chatGroups,
+      }),
+    }))
+    .filter((entry) => entry.engagementAccess.canTopLevelComment);
   const targetCount = getMomentAutoCommentTargetCount(moment, characters, chatGroups);
   if (targetCount <= 0) return [];
   const momentAuthor = moment.authorId === 'user'
     ? null
     : characters.find((character) => character.id === moment.authorId) || null;
 
-  const weightedPool = shuffleCharacters(eligibleCharacters).map((character) => ({
-    character,
-    weight: (() => {
-      let weight = getParticipationWeight(character, moment);
-      if (momentAuthor) {
-        const profile = getCharacterPublicThreadProfile(character, momentAuthor, chatGroups);
-        if (profile.familiarity === 'familiar') weight += 0.42;
-        if (profile.familiarity === 'aware') weight += 0.16;
-        if (profile.familiarity === 'stranger') weight -= 0.12;
-        if (profile.userOverlap === 'shared_claim' && profile.familiarity === 'stranger') weight -= 0.18;
-      }
-      return Math.max(weight, 0.08);
-    })(),
-  }));
+  const weightedPool = [...eligibleCharacters]
+    .sort(() => Math.random() - 0.5)
+    .map(({ character, engagementAccess }) => ({
+      character,
+      commentMode: engagementAccess.commentMode,
+      weight: (() => {
+        let weight = getParticipationWeight(character, moment);
+        const relationProfile = momentAuthor
+          ? getCharacterPublicThreadProfile(character, momentAuthor, chatGroups)
+          : null;
+        if (momentAuthor) {
+          if (relationProfile.familiarity === 'familiar') weight += 0.42;
+          if (relationProfile.familiarity === 'aware') weight += 0.16;
+          if (relationProfile.familiarity === 'stranger') weight -= 0.12;
+          if (relationProfile.userOverlap === 'shared_claim' && relationProfile.familiarity === 'stranger') weight -= 0.18;
+        }
+        if (engagementAccess.commentMode === 'limited') {
+          weight -= 0.38;
+          if (relationProfile?.hasDirectReplyHistory || relationProfile?.hasMomentGrowthHint) {
+            weight += 0.12;
+          }
+        }
+        if (suppressionMode === 'limit_third_party') {
+          if (engagementAccess.commentMode === 'limited') {
+            weight -= 0.2;
+          }
+          if (relationProfile?.familiarity === 'familiar') {
+            weight += 0.08;
+          }
+        }
+        return Math.max(weight, 0.08);
+      })(),
+    }));
 
   const picked: Character[] = [];
   const usedIds = new Set<string>();
+  const reserveLimitedSeat = (
+    suppressionMode === 'none'
+    && context.audience === 'public'
+    && moment.authorId !== 'user'
+    && targetCount >= 2
+    && weightedPool.some((item) => item.commentMode === 'limited')
+    && weightedPool.some((item) => item.commentMode === 'normal')
+  );
+
+  if (reserveLimitedSeat) {
+    const limitedPick = pickWeightedCharacter(
+      weightedPool
+        .filter((item) => item.commentMode === 'limited')
+        .map((item) => ({ character: item.character, weight: item.weight })),
+    );
+    if (limitedPick) {
+      picked.push(limitedPick);
+      usedIds.add(limitedPick.id);
+    }
+  }
 
   while (picked.length < targetCount) {
     const next = pickWeightedCharacter(weightedPool.filter((item) => !usedIds.has(item.character.id)));
@@ -622,13 +670,21 @@ export function shouldTriggerFollowUpReply(
   chatGroups: ChatGroup[] = [],
 ) {
   const context = buildCommentLoopContext(moment, characters, chatGroups);
+  const suppressionMode = getMomentAutoCommentSuppressionMode(moment, characters, chatGroups);
   if (currentDepth >= context.maxDepth) return false;
   if ((context.timeMode === 'days_later' || context.timeMode === 'stale') && currentDepth >= 1) return false;
   if (isLikelyOffTopicChain(moment, recentChain)) return false;
   if (
-    shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)
+    suppressionMode === 'full_block'
     && triggerComment.authorId !== 'user'
     && triggerComment.authorId !== moment.authorId
+  ) {
+    return false;
+  }
+  if (
+    suppressionMode === 'limit_third_party'
+    && new Set(recentChain.map((comment) => comment.authorId).filter((authorId) => authorId !== 'user')).size >= 2
+    && !recentChain.some((comment) => comment.authorId === 'user')
   ) {
     return false;
   }
@@ -646,6 +702,12 @@ export function shouldTriggerFollowUpReply(
   if (REPLY_WORTHY_REGEX.test(triggerComment.content)) chance += 0.12;
   if (triggerComment.replyToCommentId) chance += 0.04;
   if (recentChain.length >= 2) chance -= 0.18;
+  if (suppressionMode === 'limit_third_party') {
+    if (triggerComment.authorId !== moment.authorId) chance -= 0.08;
+    if (recentChain.length >= 2 && !recentChain.some((comment) => comment.authorId === 'user')) {
+      chance -= 0.28;
+    }
+  }
 
   return Math.random() < Math.min(Math.max(chance, 0), 0.85);
 }
@@ -654,7 +716,7 @@ export function pickNextResponder(options: PickNextResponderOptions) {
   const { moment, characters, triggerComment, recentChain, usedAuthorIds = [], chatGroups = [] } = options;
   const context = buildCommentLoopContext(moment, characters, chatGroups);
   const blockedIds = new Set<string>(usedAuthorIds);
-  const suppressThirdParty = shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups);
+  const suppressionMode = getMomentAutoCommentSuppressionMode(moment, characters, chatGroups);
 
   const triggerAuthor = characters.find((character) => character.id === triggerComment.authorId) || null;
   const targetAuthor = triggerComment.replyToAuthorId
@@ -676,10 +738,23 @@ export function pickNextResponder(options: PickNextResponderOptions) {
         return null;
       }
 
+      const engagementAccess = getCharacterMomentEngagementAccess({
+        actor: character,
+        moment,
+        characters,
+        chatGroups,
+      });
       let weight = getParticipationWeight(character, moment);
       const hooked = hasDirectHookForCharacter(triggerComment, character);
 
       if (character.id === moment.authorId) weight += 0.45;
+      if (recentChain.length === 1 && character.id === moment.authorId && triggerComment.authorId !== moment.authorId) {
+        weight += 0.38;
+      }
+      if (engagementAccess.commentMode === 'limited') {
+        weight -= 0.42;
+        if (hooked) weight += recentChain.length <= 1 ? 0.56 : 0.24;
+      }
       if (triggerComment.authorId === 'user' && character.id === moment.authorId) {
         weight += 1.1;
       }
@@ -719,8 +794,18 @@ export function pickNextResponder(options: PickNextResponderOptions) {
         weight -= 0.85;
       }
 
-      if (suppressThirdParty && character.id !== moment.authorId && !hooked) {
+      if (suppressionMode === 'full_block' && character.id !== moment.authorId && !hooked) {
         weight -= 1.4;
+      }
+      if (suppressionMode === 'limit_third_party') {
+        if (character.id === moment.authorId) {
+          weight += 0.68;
+        } else if (!hooked) {
+          weight -= 0.9;
+          if (recentChain.length >= 1) {
+            weight -= 0.38;
+          }
+        }
       }
       if (relationToTrigger === 'sensitive' && !hooked && character.id !== moment.authorId) {
         weight -= 0.28;

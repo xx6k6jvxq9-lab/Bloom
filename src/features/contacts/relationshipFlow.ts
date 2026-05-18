@@ -208,6 +208,7 @@ export function applyNonForumFriendRequestResolution(
             friendshipStatus: 'friends' as const,
             blockedByUser: false,
             blockedByCharacter: false,
+            relationshipBlockRollbackSnapshot: undefined,
             relationshipStatusUpdatedAt: timestamp,
             ...(request.requestKind === 'reconnect'
               ? {
@@ -580,6 +581,7 @@ export function runRelationshipRequestSubmissionFlow(params: {
                 friendshipStatus: 'friends' as const,
                 blockedByUser: false,
                 blockedByCharacter: false,
+                relationshipBlockRollbackSnapshot: undefined,
                 relationshipStatusUpdatedAt: timestamp,
                 ...(pendingRequest.requestKind === 'reconnect'
                   ? {
@@ -745,7 +747,9 @@ export function runRelationshipBlockToggleFlow(params: {
             friendshipStatus: isUnblocking ? character.friendshipStatus : 'none' as const,
             blockedByUser: !isUnblocking,
             ...(isUnblocking
-              ? { relationshipBlockRollbackSnapshot: undefined }
+              ? (character.relationshipBlockRollbackSnapshot
+                ? { relationshipBlockRollbackSnapshot: character.relationshipBlockRollbackSnapshot }
+                : {})
               : { relationshipBlockRollbackSnapshot }),
             relationshipStatusUpdatedAt: timestamp,
           }
@@ -935,7 +939,6 @@ export function runRelationshipBlockToggleFlow(params: {
               friendshipStatus: 'none' as const,
               blockedByUser: true,
               blockedByCharacter: shouldCounterBlock,
-              relationshipBlockRollbackSnapshot: undefined,
               relationshipStatusUpdatedAt: timestamp,
             }
           : character

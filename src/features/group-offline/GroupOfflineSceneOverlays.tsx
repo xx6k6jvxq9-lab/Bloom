@@ -628,7 +628,7 @@ export function GroupOfflineSceneOverlays(props: GroupOfflineSceneOverlaysProps)
                 </div>
                 <div className={`group-offline-scene__ending-rule ${endingDisplayLines.length > 0 && endingRevealCount >= endingDisplayLines.length ? 'is-visible' : ''}`} />
                 {props.endingState === 'ready' && (endingDisplayLines.length === 0 || endingRevealCount >= endingDisplayLines.length) ? (
-                  <div className="group-offline-scene__ending-hint">轻 触 回 群</div>
+                  <div className="group-offline-scene__ending-hint">轻 触 回 群 看 后 续</div>
                 ) : null}
               </div>
             )}

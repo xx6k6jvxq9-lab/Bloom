@@ -72,7 +72,8 @@ function isPublicGroupMessage(message: ChatMessage): boolean {
     && !message.isRecalled
     && !message.groupPollCard
     && !message.groupRelayCard
-    && !message.groupTaskCard;
+    && !message.groupTaskCard
+    && !message.groupOfflineCard;
 }
 
 function summarizeTopicToken(text: string): string {

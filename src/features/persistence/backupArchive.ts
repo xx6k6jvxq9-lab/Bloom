@@ -294,6 +294,8 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
       masks: resolvedAppData.masks ?? [],
       favorites: resolvedAppData.favorites ?? [],
       worldBooks: resolvedAppData.worldBooks ?? [],
+      userAvatarLibrary: resolvedAppData.userAvatarLibrary ?? { entries: [], updatedAt: 0 },
+      relationshipAvatarBindings: resolvedAppData.relationshipAvatarBindings ?? [],
     },
     musicData: resolvedAppData.musicData ?? {},
     walletData: resolvedAppData.walletData ?? {},
@@ -710,6 +712,12 @@ function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<st
     masks: (modules.meData as { masks?: unknown } | null | undefined)?.masks ?? [],
     favorites: (modules.meData as { favorites?: unknown } | null | undefined)?.favorites ?? [],
     worldBooks: (modules.meData as { worldBooks?: unknown } | null | undefined)?.worldBooks ?? [],
+    userAvatarLibrary: (
+      modules.meData as { userAvatarLibrary?: unknown } | null | undefined
+    )?.userAvatarLibrary as AppData['userAvatarLibrary'],
+    relationshipAvatarBindings: (
+      modules.meData as { relationshipAvatarBindings?: unknown } | null | undefined
+    )?.relationshipAvatarBindings as AppData['relationshipAvatarBindings'],
     callHistory: modules.callHistory,
     savedDates: (modules.datingRecords as { savedDates?: unknown } | null | undefined)?.savedDates ?? [],
     collectedDates: (modules.datingRecords as { collectedDates?: unknown } | null | undefined)?.collectedDates ?? [],

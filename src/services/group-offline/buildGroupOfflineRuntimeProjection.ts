@@ -376,7 +376,7 @@ export function buildGroupOfflineRuntimeProjection(
       id: input.session.id,
       groupId: input.session.groupId,
       mode: input.session.mode,
-      generationMode: input.session.generationMode,
+      generationMode: 'blocks',
       activityType: input.session.activityType,
       customActivityType: input.session.customActivityType,
       location: input.session.location,

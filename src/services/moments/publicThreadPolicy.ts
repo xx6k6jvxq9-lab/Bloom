@@ -20,6 +20,7 @@ export type PublicThreadRelationProfile = {
   userOverlap: PublicThreadUserOverlap;
   hasSharedGroup: boolean;
   hasDirectReplyHistory: boolean;
+  hasMomentGrowthHint: boolean;
   sharedGroupStage?: ChatGroup['groupStage'];
   interactionStyle: 'guarded' | 'neutral' | 'banter' | 'warm';
   allowBanter: boolean;
@@ -30,12 +31,15 @@ export type PublicThreadRelationProfile = {
   source: 'explicit' | 'inferred';
 };
 
+export type MomentAutoCommentSuppressionMode = 'none' | 'limit_third_party' | 'full_block';
+
 export type CharacterMomentEngagementAccess = {
   visibilityScope: MomentVisibilityScope;
   familiarity: PublicThreadFamiliarity | 'user_friend' | 'self' | 'none';
   canView: boolean;
   canLike: boolean;
   canTopLevelComment: boolean;
+  commentMode: 'none' | 'limited' | 'normal';
   interactionPolicy: PublicThreadRelationProfile['momentInteractionPolicy'];
 };
 
@@ -353,6 +357,46 @@ function getMomentAuthorCharacter(moment: MomentItem, characters: Character[]) {
   return characters.find((character) => character.id === moment.authorId) || null;
 }
 
+function getCharacterMomentAliases(character: Character) {
+  return Array.from(new Set(
+    [character.name, character.remarkName]
+      .map((value) => value?.trim().toLowerCase())
+      .filter((value): value is string => Boolean(value && value.length >= 2)),
+  ));
+}
+
+function hasMomentDirectHookForActor(moment: MomentItem, actor: Character) {
+  const normalized = moment.content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return getCharacterMomentAliases(actor).some((alias) => normalized.includes(alias));
+}
+
+function hasMomentGrowthPairHint(left: Character, right: Character) {
+  const leftHint = left.publicThreadPeerHints?.find((hint) => (
+    hint.targetCharacterId === right.id && hint.source === 'moment_growth'
+  )) || null;
+  const rightHint = right.publicThreadPeerHints?.find((hint) => (
+    hint.targetCharacterId === left.id && hint.source === 'moment_growth'
+  )) || null;
+  return Boolean(leftHint || rightHint);
+}
+
+function hasCommentDirectHookForActor(comment: MomentComment, actor: Character) {
+  if (comment.replyToAuthorId === actor.id || comment.authorId === actor.id) {
+    return true;
+  }
+
+  const normalized = comment.content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return getCharacterMomentAliases(actor).some((alias) => normalized.includes(alias));
+}
+
 export function getCharacterPublicThreadProfile(
   left: Character,
   right: Character,
@@ -364,6 +408,7 @@ export function getCharacterPublicThreadProfile(
       userOverlap: 'none',
       hasSharedGroup: false,
       hasDirectReplyHistory: false,
+      hasMomentGrowthHint: false,
       interactionStyle: 'warm',
       allowBanter: true,
       allowIntimateTone: true,
@@ -423,6 +468,7 @@ export function getCharacterPublicThreadProfile(
     userOverlap: deriveUserOverlap(left, right),
     hasSharedGroup: sharedGroups.length > 0,
     hasDirectReplyHistory,
+    hasMomentGrowthHint: explicitPairHint?.source === 'moment_growth',
     sharedGroupStage,
     interactionStyle: explicitPairHint?.interactionStyle || (
       familiarity === 'familiar'
@@ -455,6 +501,7 @@ export function getCharacterMomentEngagementAccess(
       canView: false,
       canLike: false,
       canTopLevelComment: false,
+      commentMode: 'none',
       interactionPolicy: 'block',
     };
   }
@@ -467,6 +514,7 @@ export function getCharacterMomentEngagementAccess(
       canView: isUserFriend,
       canLike: isUserFriend,
       canTopLevelComment: isUserFriend,
+      commentMode: isUserFriend ? 'normal' : 'none',
       interactionPolicy: 'auto',
     };
   }
@@ -478,6 +526,7 @@ export function getCharacterMomentEngagementAccess(
       canView: true,
       canLike: false,
       canTopLevelComment: false,
+      commentMode: 'none',
       interactionPolicy: 'auto',
     };
   }
@@ -490,6 +539,7 @@ export function getCharacterMomentEngagementAccess(
       canView: false,
       canLike: false,
       canTopLevelComment: false,
+      commentMode: 'none',
       interactionPolicy: 'block',
     };
   }
@@ -502,6 +552,7 @@ export function getCharacterMomentEngagementAccess(
       canView: false,
       canLike: false,
       canTopLevelComment: false,
+      commentMode: 'none',
       interactionPolicy: relationProfile.momentInteractionPolicy,
     };
   }
@@ -512,6 +563,7 @@ export function getCharacterMomentEngagementAccess(
       canView: true,
       canLike: false,
       canTopLevelComment: false,
+      commentMode: 'none',
       interactionPolicy: relationProfile.momentInteractionPolicy,
     };
   }
@@ -522,18 +574,33 @@ export function getCharacterMomentEngagementAccess(
       canView: true,
       canLike: true,
       canTopLevelComment: true,
+      commentMode: 'normal',
       interactionPolicy: relationProfile.momentInteractionPolicy,
     };
   }
 
   const isAware = relationProfile.familiarity === 'aware' || relationProfile.familiarity === 'familiar';
   const isFamiliar = relationProfile.familiarity === 'familiar';
+  const canAwareComment = (
+    relationProfile.familiarity === 'aware'
+    && visibilityScope !== 'contacts'
+    && (
+      relationProfile.hasSharedGroup
+      || relationProfile.hasDirectReplyHistory
+      || relationProfile.hasMomentGrowthHint
+      || hasMomentDirectHookForActor(moment, actor)
+      || hasMomentGrowthPairHint(actor, author)
+    )
+  );
   const canLike = visibilityScope === 'contacts'
     ? isFamiliar
     : isAware;
-  const canTopLevelComment = visibilityScope === 'contacts'
-    ? isFamiliar
-    : isFamiliar;
+  const commentMode: CharacterMomentEngagementAccess['commentMode'] = isFamiliar
+    ? 'normal'
+    : canAwareComment
+      ? 'limited'
+      : 'none';
+  const canTopLevelComment = commentMode !== 'none';
 
   return {
     visibilityScope,
@@ -541,6 +608,7 @@ export function getCharacterMomentEngagementAccess(
     canView: isAware || isFamiliar,
     canLike,
     canTopLevelComment,
+    commentMode,
     interactionPolicy: relationProfile.momentInteractionPolicy,
   };
 }
@@ -593,6 +661,11 @@ export function canCharacterJoinMomentThread(
   }
 
   if (triggerComment.authorId === 'user' || triggerComment.replyToAuthorId === 'user') {
+    return true;
+  }
+
+  const directHooked = hasCommentDirectHookForActor(triggerComment, actor);
+  if (engagementAccess.commentMode === 'limited' && directHooked) {
     return true;
   }
 
@@ -668,24 +741,36 @@ export function isIntimateUserShadowMoment(options: {
     || (ROMANTIC_SIGNAL_REGEX.test(text) && /某人|不想分开|带走|领走|拐走|下课|变小|揣进怀里/i.test(text));
 }
 
-export function shouldSuppressAutoCommentsForMoment(
+export function getMomentAutoCommentSuppressionMode(
   moment: MomentItem,
   characters: Character[],
   _chatGroups: ChatGroup[] = [],
-) {
+): MomentAutoCommentSuppressionMode {
   if (moment.authorId === 'user') {
-    return false;
+    return 'none';
   }
 
   const author = characters.find((character) => character.id === moment.authorId) || null;
   if (!author) {
-    return false;
+    return 'none';
   }
 
-  return isIntimateUserShadowMoment({
+  if (!isIntimateUserShadowMoment({
     momentContent: moment.content,
     author,
-  });
+  })) {
+    return 'none';
+  }
+
+  return hasOwnershipClaimRisk(moment.content) ? 'full_block' : 'limit_third_party';
+}
+
+export function shouldSuppressAutoCommentsForMoment(
+  moment: MomentItem,
+  characters: Character[],
+  chatGroups: ChatGroup[] = [],
+) {
+  return getMomentAutoCommentSuppressionMode(moment, characters, chatGroups) !== 'none';
 }
 
 export function hasOwnershipClaimRisk(text: string) {

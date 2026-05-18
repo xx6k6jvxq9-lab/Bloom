@@ -817,11 +817,9 @@ export function ChatSettingsPanel({
     ? '恢复后仍建议走关系页处理修复'
     : '拉黑后普通聊天会暂停';
   const showRepairRelationshipStateControl = !!onRepairRelationshipState;
-  const canRepairRelationshipBlockState = relationshipBlockState === 'user'
-    && !pendingIncomingRequest
-    && !latestUnreadRelationshipEvent
-    && !!character.relationshipBlockRollbackSnapshot
-    && !!onRepairRelationshipState;
+  const canRepairRelationshipBlockState = !!character.relationshipBlockRollbackSnapshot
+    && !!onRepairRelationshipState
+    && !(character.friendshipStatus === 'friends' && relationshipBlockState === 'none');
   const relationshipHint = pendingIncomingRequest
     ? hasUnreadIncomingRequest
       ? `新的朋友里刚到了一条来自 ${character.remarkName?.trim() || character.name} 的${pendingIncomingRoundNo > 1 ? `第 ${pendingIncomingRoundNo} 轮` : ''}申请，等你去处理。`
@@ -863,7 +861,7 @@ export function ChatSettingsPanel({
           <div className="min-w-0">
             <div className="text-[12px] font-medium text-zinc-700">异常修复</div>
             <div className="mt-1 text-[10px] leading-4 text-zinc-400">
-              {canRepairRelationshipBlockState ? '当前可回到拉黑前，适合处理拉黑后卡住无反应。' : '仅在拉黑后卡住、还没等到角色反应时可用。'}
+              {canRepairRelationshipBlockState ? '当前可强制回到拉黑前，即使已经有后续反应也能使用。' : '只有存在可回滚的拉黑前状态时才可用。'}
             </div>
           </div>
           <button

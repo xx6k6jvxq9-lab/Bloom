@@ -11,10 +11,6 @@ import type {
   GroupOfflineRuntimeProjection,
 } from './types';
 
-function normalizeGenerationMode(mode: GroupOfflineSession['generationMode'] | GroupOfflineRound['generationMode']): 'blocks' | 'ensemble' {
-  return mode === 'ensemble' || mode === 'group' ? 'ensemble' : 'blocks';
-}
-
 function cloneTarget(target: GroupOfflineTargetRef): GroupOfflineTargetRef {
   return {
     type: target.type,
@@ -54,7 +50,7 @@ export function hydrateGroupOfflineRuntimeProjectionSnapshot(
       id: session.id,
       groupId: session.groupId,
       mode: session.mode,
-      generationMode: session.generationMode,
+      generationMode: 'blocks',
       activityType: session.activityType,
       customActivityType: session.customActivityType,
       location: session.location,
@@ -86,7 +82,7 @@ export function buildGroupOfflineRoundPlanSnapshot(
   plan: GroupOfflineRoundPlan,
 ): GroupOfflineRoundPlanSnapshot {
   return {
-    generationMode: plan.generationMode,
+    generationMode: 'blocks',
     dispatchMode: plan.dispatchMode,
     selectedCharacterIds: [...plan.selectedCharacterIds],
     summary: plan.summary,
@@ -102,7 +98,7 @@ export function hydrateGroupOfflineRoundPlanSnapshot(
   snapshot: GroupOfflineRoundPlanSnapshot,
 ): GroupOfflineRoundPlan {
   return {
-    generationMode: snapshot.generationMode,
+    generationMode: 'blocks',
     dispatchMode: snapshot.dispatchMode,
     selectedCharacterIds: [...snapshot.selectedCharacterIds],
     summary: snapshot.summary,
@@ -119,9 +115,6 @@ function deriveRoundPlanSummary(round: GroupOfflineRound, steps: GroupOfflineRou
   if (!orderedNames) {
     return '本轮暂时还没有可用的出场顺序。';
   }
-  if (normalizeGenerationMode(round.generationMode) === 'ensemble') {
-    return `本轮继续同场，当前在场角色是：${steps.map((step) => step.speakerLabel).join('、')}。`;
-  }
   if (round.dispatchMode === 'manual') {
     return `本轮按手动顺序出场：${orderedNames}。`;
   }
@@ -129,14 +122,14 @@ function deriveRoundPlanSummary(round: GroupOfflineRound, steps: GroupOfflineRou
     return `本轮按随机结果出场：${orderedNames}。`;
   }
   if (round.dispatchMode === 'continue') {
-    return `本轮继续同场：${orderedNames}。`;
+    return `本轮继续推进：${orderedNames}。`;
   }
   return `本轮按系统调度出场：${orderedNames}。`;
 }
 
 export function deriveRoundPlanFromRound(
   round: GroupOfflineRound,
-  session: GroupOfflineSession,
+  _session: GroupOfflineSession,
 ): GroupOfflineRoundPlan | undefined {
   const orderedCharacterIds = round.selectedCharacterIds?.length
     ? round.selectedCharacterIds
@@ -163,7 +156,7 @@ export function deriveRoundPlanFromRound(
   }
 
   return {
-    generationMode: normalizeGenerationMode(round.generationMode ?? session.generationMode),
+    generationMode: 'blocks',
     dispatchMode: round.dispatchMode,
     selectedCharacterIds: steps.map((step) => step.characterId),
     summary: deriveRoundPlanSummary(round, steps),

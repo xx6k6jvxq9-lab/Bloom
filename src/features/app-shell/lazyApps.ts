@@ -112,6 +112,7 @@ export const loadSettingsAppScreen = () =>
 export const loadMusicApp = () => loadWithChunkRecovery(() => import('../../components/media/MusicApp'));
 export const loadForumApp = () => loadWithChunkRecovery(() => import('../../components/social/ForumApp/Page'));
 export const loadWalletApp = () => loadWithChunkRecovery(() => import('../../components/wallet/WalletApp/Page'));
+export const loadMallApp = () => loadWithChunkRecovery(() => import('../../components/mall/MallApp/Page'));
 
 export function preloadAppScreen(app: string): Promise<unknown> | null {
   switch (app) {
@@ -140,6 +141,8 @@ export function preloadAppScreen(app: string): Promise<unknown> | null {
       return loadForumApp();
     case 'wallet':
       return loadWalletApp();
+    case 'mall':
+      return loadMallApp();
     default:
       return null;
   }

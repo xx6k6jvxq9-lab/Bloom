@@ -5,6 +5,7 @@ import type {
   GroupOfflineRoundPlan,
   GroupOfflineRuntimeProjection,
 } from '../../../group-offline/types';
+import { buildGroupOfflineScenarioState } from '../../../group-offline/scenarioTasks';
 import { buildGroupOfflinePrompt } from './buildGroupOfflinePrompt';
 
 function createSession(overrides: Partial<GroupOfflineSession> = {}): GroupOfflineSession {
@@ -13,10 +14,12 @@ function createSession(overrides: Partial<GroupOfflineSession> = {}): GroupOffli
     groupId: overrides.groupId ?? 'group-1',
     mode: overrides.mode ?? 'daily',
     generationMode: overrides.generationMode ?? 'blocks',
-    activityType: overrides.activityType ?? '夜色里也藏不住',
+    activityType: overrides.activityType ?? '夜色里也藏不住谁先偏心',
+    customActivityType: overrides.customActivityType,
+    scenePrompt: overrides.scenePrompt,
     location: overrides.location ?? '海边长椅',
     timeLabel: overrides.timeLabel ?? '今晚 21:30',
-    weatherLabel: overrides.weatherLabel ?? '海风有点凉',
+    weatherLabel: overrides.weatherLabel ?? '海风有点冷',
     vibe: overrides.vibe ?? '各怀心事',
     participants: overrides.participants ?? [
       { characterId: 'alpha', joinedAt: 1, presence: 'arrived' },
@@ -25,6 +28,10 @@ function createSession(overrides: Partial<GroupOfflineSession> = {}): GroupOffli
     createdAt: overrides.createdAt ?? 1,
     updatedAt: overrides.updatedAt ?? 1,
     currentRound: overrides.currentRound ?? 1,
+    roundLimit: overrides.roundLimit,
+    scenarioState: overrides.scenarioState,
+    directorInstruction: overrides.directorInstruction,
+    awaitingDirectorInstruction: overrides.awaitingDirectorInstruction,
     messages: overrides.messages ?? [],
     status: overrides.status ?? 'active',
   } as GroupOfflineSession;
@@ -37,11 +44,11 @@ function createProjection(): GroupOfflineRuntimeProjection {
       groupId: 'group-1',
       mode: 'daily',
       generationMode: 'blocks',
-      activityType: '夜色里也藏不住',
+      activityType: '夜色里也藏不住谁先偏心',
       customActivityType: undefined,
       location: '海边长椅',
       timeLabel: '今晚 21:30',
-      weatherLabel: '海风有点凉',
+      weatherLabel: '海风有点冷',
       vibe: '各怀心事',
       currentRound: 1,
     },
@@ -54,7 +61,7 @@ function createProjection(): GroupOfflineRuntimeProjection {
       groupRecurringDynamics: '有人爱装没事，有人专盯停顿。',
       groupSharedHistory: '一起熬过几次深夜。',
       currentScene: '刚从线下回到线上。',
-      publicFacts: '彼此都知道不是普通群友。',
+      publicFacts: '彼此都知道不只是普通群友。',
     },
     characters: [
       {
@@ -85,7 +92,7 @@ function createProjection(): GroupOfflineRuntimeProjection {
           interactionStyleLabel: '互动偏打趣',
           summary: '熟悉度：群里已经偏熟\n最近同场：最近有明显对接和来回。',
         }],
-        groupState: {},
+        groupState: {} as GroupOfflineRuntimeProjection['characters'][number]['groupState'],
       },
       {
         identity: {
@@ -98,7 +105,7 @@ function createProjection(): GroupOfflineRuntimeProjection {
           corePersona: '说话更直接，但不喜欢真把态度说穿。',
           expressionStyle: '更常用轻一点的打趣把气氛往前拨。',
         },
-        memory: {},
+        memory: {} as GroupOfflineRuntimeProjection['characters'][number]['memory'],
         userRelation: {
           relationshipSummary: '和用户说话已经不完全客气。',
         },
@@ -109,7 +116,7 @@ function createProjection(): GroupOfflineRuntimeProjection {
           interactionStyleLabel: '互动偏中性',
           summary: '熟悉度：群里已经偏熟\n最近同场：最近有同场露面，但互动还不算多。',
         }],
-        groupState: {},
+        groupState: {} as GroupOfflineRuntimeProjection['characters'][number]['groupState'],
       },
     ],
   };
@@ -141,67 +148,126 @@ test('buildGroupOfflinePrompt uses runtime projection and keeps round plan as di
     phase: 'round',
     selectedCharacterIds: ['alpha', 'beta'],
     dispatchMode: 'manual',
-    latestUserMessage: '张白，你别光顾着看吃的。',
+    latestUserMessage: '张白，你别光顾着看热闹。',
     roundPlan,
   });
 
   assert.match(prompt, /## 本轮调度/);
   assert.match(prompt, /调度摘要：本轮按手动顺序出场：沈星回 -> 张白。/);
-  assert.match(prompt, /这份规划只负责谁出场、顺序和目标对象/);
+  assert.match(prompt, /这份调度只约束谁先出场、对谁出声/);
   assert.match(prompt, /群线下运行时状态/);
-  assert.match(prompt, /和用户关系：和用户之间已经不是泛泛之交。/);
-  assert.match(prompt, /notebook 必须严格控制在 30 到 50 个汉字/);
+  assert.match(prompt, /和用户之间已经不是泛泛之交/);
   assert.match(prompt, /aftereffects\.items 固定输出 4 张卡/);
-  assert.match(prompt, /不要输出新的 soundtrack 或 participantSoundtracks/);
+  assert.match(prompt, /memoryPanel\.shortTerm/);
+  assert.doesNotMatch(prompt, /articleParagraphs/);
   assert.doesNotMatch(prompt, /"soundtrack": \{/);
-  assert.doesNotMatch(prompt, /动作节拍：/);
-  assert.doesNotMatch(prompt, /意图：/);
 });
 
-test('buildGroupOfflinePrompt requires ensemble rounds to output article paragraphs as main reading body', () => {
-  const roundPlan: GroupOfflineRoundPlan = {
-    generationMode: 'ensemble',
-    dispatchMode: 'continue',
-    selectedCharacterIds: ['alpha', 'beta'],
-    summary: '本轮继续同场，让多人自然接话往下走。',
-    characterSteps: [
-      {
-        characterId: 'alpha',
-        speakerLabel: '沈星回',
-        target: { type: 'group', label: '全场' },
-      },
-      {
-        characterId: 'beta',
-        speakerLabel: '张白',
-        target: { type: 'character', label: '沈星回', characterId: 'alpha' },
-      },
-    ],
-  };
+test('buildGroupOfflinePrompt adds task-forward scenario rules for task-based sessions', () => {
+  const scenarioSession = createSession({
+    mode: 'scenario',
+    activityType: '倒计时任务',
+    scenePrompt: '封锁区已经开始清场。',
+    currentRound: 2,
+    roundLimit: 6,
+    scenarioState: buildGroupOfflineScenarioState({
+      type: '倒计时任务',
+      scenePrompt: '封锁区已经开始清场。',
+      location: '封锁区后门',
+      weatherLabel: '风压很低',
+      vibe: '越聊越紧',
+      participantNames: ['沈星回', '张白'],
+      seed: 7,
+    }),
+  });
 
   const prompt = buildGroupOfflinePrompt({
-    session: createSession({ generationMode: 'ensemble' }),
+    session: scenarioSession,
     runtimeProjection: {
       ...createProjection(),
       session: {
         ...createProjection().session,
-        generationMode: 'ensemble',
+        mode: 'scenario',
+        activityType: '倒计时任务',
+        currentRound: 2,
       },
     },
     phase: 'round',
     selectedCharacterIds: ['alpha', 'beta'],
-    dispatchMode: 'continue',
-    latestUserMessage: '你们继续。',
-    roundPlan,
+    dispatchMode: 'recommend',
+    latestUserMessage: '别拖了，先把真正的东西带出来。',
   });
 
-  assert.match(prompt, /articleParagraphs 才是主阅读正文/);
-  assert.match(prompt, /必须明显分段/);
-  assert.match(prompt, /focusCharacterIds 和 speakerCharacterIds/);
-  assert.match(prompt, /不要再按角色分块输出/);
-  assert.match(prompt, /characterEntries 不是主阅读正文/);
-  assert.match(prompt, /不要输出新的 soundtrack 或 participantSoundtracks/);
-  assert.doesNotMatch(prompt, /"soundtrack": \{/);
-  assert.match(prompt, /"articleParagraphs": \[/);
-  assert.match(prompt, /"focusCharacterIds": \[/);
-  assert.match(prompt, /"speakerCharacterIds": \[/);
+  assert.match(prompt, /## 设定局任务/);
+  assert.match(prompt, /当前任务：/);
+  assert.match(prompt, /如果这一轮完成了关键步骤、任务成功或任务失败/);
+  assert.match(prompt, /scenarioUpdate/);
+  assert.match(prompt, /taskStepUpdates/);
+});
+
+test('buildGroupOfflinePrompt keeps stored director text dormant unless this turn explicitly activates it', () => {
+  const prompt = buildGroupOfflinePrompt({
+    session: createSession({
+      directorInstruction: '先让沈星回接，少铺环境，多落到任务物上。',
+    }),
+    runtimeProjection: createProjection(),
+    phase: 'round',
+    selectedCharacterIds: ['alpha', 'beta'],
+    dispatchMode: 'recommend',
+  });
+
+  assert.doesNotMatch(prompt, /## 导演额外指令/);
+  assert.doesNotMatch(prompt, /先让沈星回接/);
+});
+
+test('buildGroupOfflinePrompt injects director instruction block when start or next-round explicitly uses it', () => {
+  const prompt = buildGroupOfflinePrompt({
+    session: createSession({
+      directorInstruction: '先把真正的东西交到我手里，再让张白补一句。',
+      awaitingDirectorInstruction: true,
+    }),
+    runtimeProjection: createProjection(),
+    phase: 'intro',
+    directorMode: 'start',
+  });
+
+  assert.match(prompt, /## 导演额外指令/);
+  assert.match(prompt, /优先级顺序：角色设定 \/ 世界观 \/ 不在场约束 > 设定局任务 > 调度顺序 > 导演指令 > 文风。/);
+  assert.match(prompt, /先把真正的东西交到我手里，再让张白补一句。/);
+});
+
+test('buildGroupOfflinePrompt lets explicit special-instruction length override the outer max-char cap', () => {
+  const prompt = buildGroupOfflinePrompt({
+    session: createSession({
+      maxGeneratedChars: 800,
+    }),
+    runtimeProjection: createProjection(),
+    phase: 'round',
+    selectedCharacterIds: ['alpha', 'beta'],
+    dispatchMode: 'recommend',
+    directorInstructionOverride: '这一轮按任务压迫感写，正文尽量展开到5000字，先让沈星回接。',
+    directorMode: 'next_round',
+  });
+
+  assert.match(prompt, /如果这条特殊指令明确要求了篇幅或字数，以这条特殊指令为准；外部默认字数上限只在特殊指令没提篇幅时兜底。/);
+  assert.match(prompt, /这次如果特殊指令明确要求了篇幅或字数，以特殊指令为准，不要再被外部默认字数上限截断。/);
+  assert.doesNotMatch(prompt, /总字数控制在 800 汉字以内/);
+});
+
+test('buildGroupOfflinePrompt switches to html page-episode schema when special instruction asks for html', () => {
+  const prompt = buildGroupOfflinePrompt({
+    session: createSession(),
+    runtimeProjection: createProjection(),
+    phase: 'round',
+    selectedCharacterIds: ['alpha', 'beta'],
+    dispatchMode: 'recommend',
+    directorInstructionOverride: '生成一个 html 页面，这一轮改成一个可交互的小模块，带按钮和反馈区。',
+    directorMode: 'next_round',
+  });
+
+  assert.match(prompt, /输出协议不是普通正文轮，而是独立 HTML 页面轮/);
+  assert.match(prompt, /"mode": "page_episode"/);
+  assert.match(prompt, /"pageType": "micro_app"/);
+  assert.match(prompt, /"htmlDocument": "完整 html 或可直接渲染的主体结构"/);
+  assert.doesNotMatch(prompt, /每个角色正文最好 2 到 4 段/);
 });

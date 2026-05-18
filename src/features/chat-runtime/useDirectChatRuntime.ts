@@ -47,6 +47,7 @@ import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invi
 import {
   copyMessageText,
   createForwardText,
+  getMessageActionText,
   createQuoteReplyPayload,
   createShareAction,
   deleteMessageAtIndex,
@@ -1158,12 +1159,18 @@ function toPromptHistoryContent(
     return `${prefix}${transferContextText}`;
   }
 
+  const normalizedMessageText = message.location || message.sharedPost || message.sharedMallItem
+    ? getMessageActionText(message)
+    : message.text || '';
+
   if (message.role === 'user') {
-    const userText = normalizeBracketActionTextForPrompt(message.text || '');
+    const userText = normalizeBracketActionTextForPrompt(normalizedMessageText);
     return isUsableChatText(userText) ? `${prefix}${normalizeChatPunctuationNoise(userText)}` : '';
   }
 
-  return isUsableChatText(message.text || '') ? `${prefix}${normalizeChatPunctuationNoise(message.text || '')}` : '';
+  return isUsableChatText(normalizedMessageText)
+    ? `${prefix}${normalizeChatPunctuationNoise(normalizedMessageText)}`
+    : '';
 }
 
 function getDirectHistoryWindowByTemporalMode(
@@ -1197,7 +1204,7 @@ function isVisibleDirectUserMessage(message: ChatMessage): boolean {
     message.role === 'user'
     && !message.isSystem
     && !message.isRecalled
-    && Boolean(message.text || message.imageUrl || message.audioUrl || message.location)
+    && Boolean(message.text || message.imageUrl || message.audioUrl || message.location || message.sharedPost || message.sharedMallItem)
   );
 }
 

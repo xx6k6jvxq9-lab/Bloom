@@ -10,6 +10,7 @@ import { DEFAULT_CHARACTERS } from './defaultCharacters';
 import { DEFAULT_USER } from './defaultSettings';
 import { DEFAULT_MOMENTS, sanitizePersistedCharacters as sanitizePersistedCharactersFromStore } from '../persistence/appDataSanitizers';
 import { createDefaultCoupleSpaceData, createDefaultCoupleSpaceState } from '../persistence/coupleSpaceStore';
+import { createDefaultMallData } from '../mall/defaultMallData';
 import { createDefaultPerceptionSettings } from '../persistence/perceptionStore';
 
 export function createDefaultAppData(): AppData {
@@ -23,6 +24,11 @@ export function createDefaultAppData(): AppData {
     userProfile: DEFAULT_USER,
     masks: [],
     favorites: [],
+    userAvatarLibrary: {
+      entries: [],
+      updatedAt: 0,
+    },
+    relationshipAvatarBindings: [],
     perception: createDefaultPerceptionSettings(),
     friendRequests: [],
     chatGroups: [],
@@ -110,5 +116,6 @@ export function createDefaultAppData(): AppData {
       queue: [],
       songLibrary: [],
     },
+    mallData: createDefaultMallData(),
   };
 }

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Character, ChatGroup, MomentComment, MomentItem } from '../../types';
-import { pickInitialCommenters } from './commentRules';
+import { getMomentAutoCommentTargetCount, pickInitialCommenters } from './commentRules';
 import {
   canCharacterAutoCommentOnMoment,
   canCharacterAutoLikeMoment,
   canCharacterJoinMomentThread,
   getCharacterMomentEngagementAccess,
+  getMomentAutoCommentSuppressionMode,
 } from './publicThreadPolicy';
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
@@ -130,6 +131,57 @@ test('aware peers can auto-like but still cannot start top-level comments', () =
   );
 });
 
+test('aware peers in shared groups can be lightly unlocked for top-level comments', () => {
+  const author = createCharacter({ id: 'author', name: 'Author' });
+  const awarePeer = createCharacter({ id: 'aware-peer', name: 'Aware Peer' });
+  const chatGroups = [createGroup({
+    memberIds: [author.id, awarePeer.id],
+    groupStage: 'warming',
+    memberRelationshipState: 'semi',
+  })];
+  const moment = createMoment({ authorId: author.id, content: 'author post' });
+  const characters = [author, awarePeer];
+
+  const access = getCharacterMomentEngagementAccess({
+    actor: awarePeer,
+    moment,
+    characters,
+    chatGroups,
+  });
+
+  assert.equal(access.canLike, true);
+  assert.equal(access.canTopLevelComment, true);
+  assert.equal(access.commentMode, 'limited');
+});
+
+test('aware peers can be lightly unlocked when the post directly hooks them', () => {
+  const hints = createMutualHintPair('author', 'aware-peer', 'aware');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: hints.left,
+  });
+  const awarePeer = createCharacter({
+    id: 'aware-peer',
+    name: 'Aware Peer',
+    publicThreadPeerHints: hints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: 'Aware Peer，出来接一句。',
+  });
+  const characters = [author, awarePeer];
+
+  const access = getCharacterMomentEngagementAccess({
+    actor: awarePeer,
+    moment,
+    characters,
+  });
+
+  assert.equal(access.canTopLevelComment, true);
+  assert.equal(access.commentMode, 'limited');
+});
+
 test('familiar peers remain eligible for top-level auto comments', () => {
   const hints = createMutualHintPair('author', 'familiar-peer', 'familiar');
   const author = createCharacter({
@@ -248,6 +300,44 @@ test('user moments only allow friend characters, and aware peers can only join t
   }), true);
 });
 
+test('limited aware peers can join a thread when another comment directly hooks them', () => {
+  const awareHints = createMutualHintPair('author', 'aware-peer', 'aware');
+  const familiarHints = createMutualHintPair('author', 'familiar-peer', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: awareHints.left,
+  });
+  const awarePeer = createCharacter({
+    id: 'aware-peer',
+    name: 'Aware Peer',
+    publicThreadPeerHints: awareHints.right,
+  });
+  const familiarPeer = createCharacter({
+    id: 'familiar-peer',
+    name: 'Familiar Peer',
+    publicThreadPeerHints: familiarHints.right,
+  });
+  const chatGroups = [createGroup({
+    memberIds: [author.id, awarePeer.id, familiarPeer.id],
+    groupStage: 'warming',
+    memberRelationshipState: 'semi',
+  })];
+  const moment = createMoment({ authorId: author.id, content: 'author post' });
+  const triggerComment = createComment({
+    authorId: familiarPeer.id,
+    content: 'Aware Peer，轮到你接了。',
+  });
+
+  assert.equal(canCharacterJoinMomentThread({
+    actor: awarePeer,
+    moment,
+    characters: [author, awarePeer, familiarPeer],
+    chatGroups,
+    triggerComment,
+  }), true);
+});
+
 test('forum_mirror moments suppress auto interaction inside Moments even for familiar peers', () => {
   const hints = createMutualHintPair('author', 'familiar-peer', 'familiar');
   const author = createCharacter({
@@ -333,6 +423,130 @@ test('explicit allow_interaction can unlock stranger public interaction for char
     moment,
     characters: [author, strangerPeer],
   }), true);
+});
+
+test('soft user-shadow moments allow one limited third-party comment instead of clearing the floor', () => {
+  const hints = createMutualHintPair('author', 'familiar-peer', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    corePersona: '喜欢你，黏人，护着你',
+    publicThreadPeerHints: hints.left,
+  });
+  const familiarPeer = createCharacter({
+    id: 'familiar-peer',
+    name: 'Familiar Peer',
+    publicThreadPeerHints: hints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: '今天有点不想分开。',
+  });
+  const characters = [author, familiarPeer];
+
+  assert.equal(getMomentAutoCommentSuppressionMode(moment, characters), 'limit_third_party');
+  const picked = pickInitialCommenters({
+    moment,
+    characters,
+  });
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0]?.id, familiarPeer.id);
+});
+
+test('character moments reserve one limited seat when the first-wave floor has room', () => {
+  const familiarA = createMutualHintPair('author', 'familiar-a', 'familiar');
+  const familiarB = createMutualHintPair('author', 'familiar-b', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: [...familiarA.left, ...familiarB.left],
+  });
+  const familiarPeerA = createCharacter({
+    id: 'familiar-a',
+    name: 'Familiar A',
+    publicThreadPeerHints: familiarA.right,
+  });
+  const familiarPeerB = createCharacter({
+    id: 'familiar-b',
+    name: 'Familiar B',
+    publicThreadPeerHints: familiarB.right,
+  });
+  const awarePeer = createCharacter({
+    id: 'aware-peer',
+    name: 'Aware Peer',
+  });
+  const chatGroups = [createGroup({
+    memberIds: [author.id, familiarPeerA.id, familiarPeerB.id, awarePeer.id],
+    groupStage: 'warming',
+    memberRelationshipState: 'semi',
+  })];
+  const moment = createMoment({ authorId: author.id, content: 'author post' });
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    const picked = pickInitialCommenters({
+      moment,
+      characters: [author, familiarPeerA, familiarPeerB, awarePeer],
+      chatGroups,
+    });
+    assert.equal(picked.length, 2);
+    assert.equal(picked.some((character) => character.id === awarePeer.id), true);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test('user moments now cap the first wave at one or two comments while character moments start at two or three', () => {
+  const userMoment = createMoment({ authorId: 'user', content: 'user post' });
+  const characterMoment = createMoment({ authorId: 'author', content: 'author post' });
+  const characters = [
+    createCharacter({ id: 'a', name: 'A' }),
+    createCharacter({ id: 'b', name: 'B' }),
+    createCharacter({ id: 'c', name: 'C' }),
+    createCharacter({ id: 'd', name: 'D' }),
+    createCharacter({ id: 'e', name: 'E' }),
+  ];
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    assert.equal(getMomentAutoCommentTargetCount(userMoment, characters), 1);
+    assert.equal(getMomentAutoCommentTargetCount(characterMoment, characters), 2);
+
+    Math.random = () => 0.99;
+    assert.equal(getMomentAutoCommentTargetCount(userMoment, characters), 2);
+    assert.equal(getMomentAutoCommentTargetCount(characterMoment, characters), 3);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test('ownership-heavy user-shadow moments still fully suppress auto comments', () => {
+  const hints = createMutualHintPair('author', 'familiar-peer', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    corePersona: '喜欢你，黏人，护着你',
+    publicThreadPeerHints: hints.left,
+  });
+  const familiarPeer = createCharacter({
+    id: 'familiar-peer',
+    name: 'Familiar Peer',
+    publicThreadPeerHints: hints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: '今天直接把某人带走，我的人。',
+  });
+  const characters = [author, familiarPeer];
+
+  assert.equal(getMomentAutoCommentSuppressionMode(moment, characters), 'full_block');
+  assert.deepEqual(
+    pickInitialCommenters({
+      moment,
+      characters,
+    }),
+    [],
+  );
 });
 
 test('explicit observe_only and block override familiar defaults', () => {

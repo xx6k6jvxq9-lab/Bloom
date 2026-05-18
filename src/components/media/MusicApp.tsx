@@ -33,6 +33,9 @@ import {
   Character,
   ChatMessage,
   ChatHistory,
+  RelationshipAvatarBinding,
+  UserAvatarLibrary,
+  UserProfileExtended,
   VisualSettings,
   AppSettings,
   WorldBookEntry,
@@ -50,6 +53,7 @@ import { formatTogetherReplyMessages } from "../../features/music-together/forma
 import { TogetherChatPanel } from "../../features/music-together/TogetherChatPanel";
 import { buildMusicTogetherWritebackPlan } from "../../features/music-together/buildMusicTogetherWritebackPlan";
 import { persistMusicTogetherEvidence } from "../../features/music-together/persistMusicTogetherEvidence";
+import { resolveUserAvatarForScene } from "../../services/user-avatar/userAvatarState";
 
 function ResolvedMusicAvatar({
   value,
@@ -132,8 +136,9 @@ function withSongLibrary(data: MusicData, extraSongs: Song[] = []): MusicData {
 
 type MusicAppProps = {
   character: Character;
-  userAvatar: string;
-  userName: string;
+  userProfile: UserProfileExtended;
+  userAvatarLibrary?: UserAvatarLibrary;
+  relationshipAvatarBindings?: RelationshipAvatarBinding[];
   musicData: MusicData;
   onUpdateMusicData: (data: MusicData) => void;
   directChatHistory: ChatHistory;
@@ -148,8 +153,9 @@ type MusicAppProps = {
 
 export default function MusicApp({
   character,
-  userAvatar,
-  userName,
+  userProfile,
+  userAvatarLibrary,
+  relationshipAvatarBindings,
   musicData,
   onUpdateMusicData,
   directChatHistory,
@@ -394,6 +400,22 @@ export default function MusicApp({
     () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
     [allCharacters, safeCharacter, currentMusicData.togetherWith],
   );
+  const userAvatar = useMemo(
+    () => resolveUserAvatarForScene({
+      userProfile,
+      userAvatarLibrary,
+      relationshipAvatarBindings,
+      characterId: currentMusicData.togetherWith || null,
+      scene: 'music_together',
+    }).avatar,
+    [
+      currentMusicData.togetherWith,
+      relationshipAvatarBindings,
+      userAvatarLibrary,
+      userProfile,
+    ],
+  );
+  const userName = userProfile.name;
   const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
@@ -645,7 +667,7 @@ export default function MusicApp({
       if (!nextPlaybackUrl) {
         gesturePrimedSongIdRef.current = null;
         setIsAudioActuallyPlaying(false);
-        setPlaybackError("褰撳墠姝屾洸鏆傛椂鏃犳硶鎾斁");
+        setPlaybackError('当前歌曲暂时无法播放');
         resetAudioElement(audio);
         if (currentMusicDataRef.current?.isPlaying) {
           onUpdateMusicDataRef.current({

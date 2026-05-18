@@ -715,6 +715,36 @@ export type CharacterAvatarLibrary = {
   updatedAt: number;
 };
 
+export type RelationshipAvatarScene =
+  | 'direct_chat'
+  | 'dating'
+  | 'couple_space'
+  | 'music_together';
+
+export type UserAvatarLibraryEntry = {
+  id: string;
+  image: string;
+  source: CharacterAvatarLibraryEntrySource;
+  addedAt: number;
+  updatedAt: number;
+  label?: string;
+  tags?: string[];
+  note?: string;
+};
+
+export type UserAvatarLibrary = {
+  entries: UserAvatarLibraryEntry[];
+  updatedAt: number;
+};
+
+export type RelationshipAvatarBinding = {
+  characterId: string;
+  userAvatarEntryId: string;
+  characterAvatarEntryId?: string;
+  sceneIds?: RelationshipAvatarScene[];
+  updatedAt: number;
+};
+
 export type CharacterPublicThreadPeerHint = {
   targetCharacterId: string;
   familiarity: 'stranger' | 'aware' | 'familiar';
@@ -839,6 +869,21 @@ export type SharedPostSnapshot = {
   authorAvatar: string;
 };
 
+export type SharedMallItemSnapshot = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  category: string;
+  price: number;
+  blurb: string;
+  detailDescription?: string;
+  coverImage?: string;
+  fallbackEmoji?: string;
+  fallbackIcon?: string;
+  accentColor?: string;
+  backgroundPreset?: string;
+};
+
 export type GroupPollOption = {
   id: string;
   text: string;
@@ -940,9 +985,62 @@ export type GroupAdminNominationCard = {
 export type GroupGovernanceCard = GroupJoinRequestCard | GroupAdminNominationCard;
 
 export type GroupOfflineMode = 'daily' | 'scenario' | 'random';
-export type GroupOfflineGenerationMode = 'blocks' | 'ensemble' | 'single' | 'pair' | 'group';
+export type GroupOfflineGenerationMode = 'blocks';
 export type GroupOfflineRoundDispatchMode = 'recommend' | 'random' | 'manual' | 'continue';
 export type GroupOfflineStylePresetId = 'jjwxc' | 'haitang' | 'yanyan' | 'fanqie' | 'qidian';
+export type GroupOfflineScenarioType =
+  | '临时同盟'
+  | '倒计时任务'
+  | '身份错位'
+  | '穿越落点'
+  | '盲盒任务'
+  | '世界故障'
+  | '密室未退场'
+  | '临时营救';
+export type GroupOfflineScenarioTaskStatus = 'active' | 'completed' | 'failed';
+export type GroupOfflineScenarioTaskStepStatus = 'pending' | 'completed' | 'failed';
+
+export type GroupOfflineScenarioTaskStep = {
+  slot: number;
+  label: string;
+  status: GroupOfflineScenarioTaskStepStatus;
+  note?: string;
+  updatedAtRound?: number;
+};
+
+export type GroupOfflineScenarioTaskStepUpdate = {
+  slot: number;
+  status: GroupOfflineScenarioTaskStepStatus;
+  note?: string;
+};
+
+export type GroupOfflineScenarioUpdate = {
+  status?: GroupOfflineScenarioTaskStatus;
+  progressSummary?: string;
+  currentTask?: string;
+  taskStepUpdates?: GroupOfflineScenarioTaskStepUpdate[];
+};
+
+export type GroupOfflineScenarioState = {
+  type: GroupOfflineScenarioType;
+  storySourceLabel?: string;
+  userInvolvementLabel?: string;
+  missionObjectLabel?: string;
+  identityPairLabel?: string;
+  rescueTargetLabel?: string;
+  handoffPointLabel?: string;
+  exitMethodLabel?: string;
+  backgroundLabel: string;
+  currentTask: string;
+  successCondition: string;
+  failureCondition: string;
+  pressureLine?: string;
+  progressSummary: string;
+  taskSteps: GroupOfflineScenarioTaskStep[];
+  status: GroupOfflineScenarioTaskStatus;
+  completedAtRound?: number;
+  failedAtRound?: number;
+};
 
 export type GroupOfflineParticipantPresence =
   | 'arrived'
@@ -1032,22 +1130,6 @@ export type GroupOfflineRoundCharacterEntry = {
   lastOperation?: 'generated' | 'retried' | 'polished' | 'edited';
 };
 
-export type GroupOfflineRoundArticleHighlight = {
-  characterId: string;
-  speakerLabel: string;
-  quote: string;
-  target?: GroupOfflineTargetRef;
-};
-
-export type GroupOfflineRoundArticleParagraph = {
-  id: string;
-  text: string;
-  highlights: GroupOfflineRoundArticleHighlight[];
-  presentCharacterIds?: string[];
-  focusCharacterIds?: string[];
-  speakerCharacterIds?: string[];
-};
-
 export type GroupOfflineRoundRuntimeProjectionSnapshot = {
   userName: string;
   groupName: string;
@@ -1116,7 +1198,7 @@ export type GroupOfflineRoundRuntimeProjectionSnapshot = {
 };
 
 export type GroupOfflineRoundPlanSnapshot = {
-  generationMode: 'blocks' | 'ensemble';
+  generationMode: 'blocks';
   dispatchMode?: GroupOfflineRoundDispatchMode;
   selectedCharacterIds: string[];
   summary: string;
@@ -1131,12 +1213,15 @@ export type GroupOfflineRound = {
   id: string;
   title?: string;
   sceneText?: string;
-  articleParagraphs?: GroupOfflineRoundArticleParagraph[];
   characterEntries: GroupOfflineRoundCharacterEntry[];
+  appliedDirectorInstruction?: string;
+  mode?: 'scene' | 'page_episode';
+  pageEpisode?: DatingPageEpisode;
   generationMode?: GroupOfflineGenerationMode;
   dispatchMode?: GroupOfflineRoundDispatchMode;
   selectedCharacterIds?: string[];
   userMessageText?: string;
+  scenarioUpdate?: GroupOfflineScenarioUpdate;
   runtimeProjectionSnapshot?: GroupOfflineRoundRuntimeProjectionSnapshot;
   plannerSnapshot?: GroupOfflineRoundPlanSnapshot;
 };
@@ -1145,6 +1230,43 @@ export type GroupOfflineEndingVoice = {
   characterId: string;
   characterName: string;
   text: string;
+};
+
+export type GroupOfflineRecruitDraft = {
+  createdAt: number;
+  recruitCardSessionId?: string;
+  title: string;
+  mode: GroupOfflineMode;
+  activityType: string;
+  customActivityType?: string;
+  location: string;
+  scenePrompt?: string;
+  timeLabel: string;
+  weatherLabel: string;
+  vibe: string;
+  highlightColor?: string;
+  bodyTextColor?: string;
+  selectedParticipantIds: string[];
+  participantLabels: string[];
+  selectedWorldBookIds?: string[];
+  worldBookSnapshot?: WorldBookEntry[];
+  backgroundImage?: string;
+  backgroundSource?: 'group-background' | 'url' | 'local-upload';
+  narrativePerspective?: DateNarrativePerspective;
+  writingPreset?: DateWritingPreset;
+  writingReference?: DateWritingReference;
+  dialogueFormat?: DateDialogueFormat;
+  descriptionDensity?: DateDescriptionDensity;
+  writingStyleCustom?: string;
+  directorInstruction?: string;
+  awaitingDirectorInstruction?: boolean;
+  signedUpParticipantIds?: string[];
+  confirmedParticipantIds?: string[];
+  rosterLockedAt?: number;
+  launchedAt?: number;
+  maxGeneratedChars?: number;
+  roundLimit?: number;
+  scenarioState?: GroupOfflineScenarioState;
 };
 
 export type GroupOfflineGeneratedContent = {
@@ -1180,11 +1302,18 @@ export type GroupOfflineCard = {
   createdBy: string;
   createdAt: number;
   mode: GroupOfflineMode;
-  status: 'active' | 'ended';
+  status: 'recruiting' | 'active' | 'ended';
   locationLabel: string;
   timeLabel: string;
   weatherLabel?: string;
   participantLabels: string[];
+  backgroundLabel?: string;
+  taskLabel?: string;
+  statusLabel?: string;
+  progressLabel?: string;
+  signupCount?: number;
+  confirmedCount?: number;
+  rosterLockedAt?: number;
   objectiveLabel?: string;
   roundLabel?: string;
   summaryLines?: string[];
@@ -1206,6 +1335,7 @@ export type GroupOfflineSession = {
   highlightColor?: string;
   bodyTextColor?: string;
   selectedWorldBookIds?: string[];
+  worldBookSnapshot?: WorldBookEntry[];
   worldBookHint?: string;
   backgroundImage?: string;
   backgroundSource?: 'group-background' | 'url' | 'local-upload';
@@ -1215,12 +1345,15 @@ export type GroupOfflineSession = {
   dialogueFormat?: DateDialogueFormat;
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;
+  directorInstruction?: string;
+  awaitingDirectorInstruction?: boolean;
   maxGeneratedChars?: number;
   participants: GroupOfflineParticipant[];
   createdAt: number;
   updatedAt: number;
   currentRound: number;
   roundLimit?: number;
+  scenarioState?: GroupOfflineScenarioState;
   generatedContent?: GroupOfflineGeneratedContent;
   messages: GroupOfflineLiveMessage[];
   isSaved?: boolean;
@@ -1229,6 +1362,7 @@ export type GroupOfflineSession = {
     title: string;
     lines: string[];
   };
+  sourceRecruitCardSessionId?: string;
   status: 'active' | 'ended';
   endedAt?: number;
 };
@@ -1320,6 +1454,7 @@ export type ChatMessage = {
   systemTone?: 'default' | 'danger';
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;
+  sharedMallItem?: SharedMallItemSnapshot;
   replyTo?: {
     text: string;
     role: 'user' | 'model';
@@ -1341,6 +1476,7 @@ export type ChatMessage = {
   groupTaskCard?: GroupTaskCard;
   groupGovernanceCard?: GroupGovernanceCard;
   groupOfflineCard?: GroupOfflineCard;
+  groupOfflineDraft?: GroupOfflineRecruitDraft;
   memorySnapshot?: ChatMemorySnapshot;
   lightInteractionMeta?: LightInteractionMessageMeta;
 };
@@ -2227,6 +2363,129 @@ export type WalletData = {
   transactions: WalletTransaction[];
 };
 
+export type MallCatalogItemSensitivity = 'normal' | 'private' | 'restricted';
+export type MallDestinationKind = 'self' | 'gift' | 'shared_space' | 'digital';
+export type MallMediaStyle = 'photo' | 'illustration' | 'icon' | 'emoji';
+
+export type MallCatalogItem = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  category: string;
+  subCategory?: string;
+  price: number;
+  tags: string[];
+  sceneTags?: string[];
+  styleTags?: string[];
+  sensitivity: MallCatalogItemSensitivity;
+  destinationKinds: MallDestinationKind[];
+  isWearable?: boolean;
+  isConsumable?: boolean;
+  isDisplayable?: boolean;
+  media: {
+    coverImage?: string;
+    thumbnailImage?: string;
+    fallbackIcon?: string;
+    fallbackEmoji?: string;
+    templateKey?: string;
+    accentColor?: string;
+    backgroundPreset?: string;
+    style?: MallMediaStyle;
+  };
+  copy: {
+    cardBlurb: string;
+    detailDescription: string;
+    recommendationReason?: string;
+  };
+};
+
+export type MallCartEntry = {
+  id: string;
+  itemId: string;
+  quantity: number;
+  mode: Extract<MallDestinationKind, 'self' | 'digital'>;
+  addedAt: number;
+};
+
+export type MallAddress = {
+  id: string;
+  recipientName: string;
+  phone: string;
+  region: string;
+  detail: string;
+  tag?: string;
+  isDefault?: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MallOrderAddressSnapshot = {
+  recipientName: string;
+  phone: string;
+  region: string;
+  detail: string;
+  tag?: string;
+};
+
+export type MallOrderStatus =
+  | 'pending_payment'
+  | 'paid'
+  | 'packing'
+  | 'delivering'
+  | 'signed'
+  | 'fulfilled'
+  | 'cancelled'
+  | 'refunded';
+
+export type MallOrder = {
+  id: string;
+  itemId: string;
+  mode: Extract<MallDestinationKind, 'self' | 'digital'>;
+  status: MallOrderStatus;
+  walletTransactionId?: string;
+  shippingAddressId?: string;
+  shippingAddressSnapshot?: MallOrderAddressSnapshot;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MallOwnedItemOwnership =
+  | 'self'
+  | 'wardrobe'
+  | 'prop'
+  | 'gift_record'
+  | 'shared_space'
+  | 'digital';
+
+export type MallOwnedItem = {
+  id: string;
+  sourceOrderId: string;
+  itemId: string;
+  ownership: MallOwnedItemOwnership;
+  acquiredAt: number;
+};
+
+export type MallDeliveryEvent = {
+  id: string;
+  orderId: string;
+  kind: 'status_update' | 'delivery' | 'system';
+  text: string;
+  timestamp: number;
+};
+
+export type MallData = {
+  catalog: MallCatalogItem[];
+  cart: MallCartEntry[];
+  orders: MallOrder[];
+  ownedItems: MallOwnedItem[];
+  deliveryFeed: MallDeliveryEvent[];
+  wishlist: string[];
+  recentSearches: string[];
+  addresses: MallAddress[];
+  selectedAddressId?: string | null;
+  currentShoppingCompanionId?: string | null;
+};
+
 export type AppDataExtended = {
   characters: Character[];
   masks: Mask[];
@@ -2235,11 +2494,14 @@ export type AppDataExtended = {
   visualSettings: VisualSettings;
   userProfile: UserProfileExtended;
   worldBooks: WorldBookEntry[];
+  userAvatarLibrary?: UserAvatarLibrary;
+  relationshipAvatarBindings?: RelationshipAvatarBinding[];
   musicData?: MusicData;
   forumData?: ForumData;
   friendRequests?: FriendRequest[];
   chatGroups?: ChatGroup[];
   walletData?: WalletData;
+  mallData?: MallData;
 };
 
 export type AppData = {
@@ -2253,6 +2515,8 @@ export type AppData = {
   groups: string[];
   moments: MomentItem[];
   worldBooks: WorldBookEntry[];
+  userAvatarLibrary?: UserAvatarLibrary;
+  relationshipAvatarBindings?: RelationshipAvatarBinding[];
   coupleSpace?: CoupleSpaceData;
   coupleSpaceState?: CoupleSpaceState;
   friendRequests?: FriendRequest[];
@@ -2263,4 +2527,5 @@ export type AppData = {
   musicData?: MusicData;
   walletData?: WalletData;
   forumData?: ForumData;
+  mallData?: MallData;
 };

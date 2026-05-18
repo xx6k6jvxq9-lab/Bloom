@@ -37,6 +37,7 @@ type SceneSettlementOpenLoopConfig = {
   taskResumeHint: string;
   topicResumeHint: string;
   limit?: number;
+  enabled?: boolean;
 };
 
 type SceneSettlementSharedStateConfig = {
@@ -259,6 +260,9 @@ function appendSettlementOpenLoopEntries(
   now: number,
   config: SceneSettlementOpenLoopConfig,
 ): CharacterOpenLoopEntry[] | undefined {
+  if (config.enabled === false) {
+    return existing;
+  }
   const existingEntries = Array.isArray(existing) ? existing : [];
   const nextEntries: CharacterOpenLoopEntry[] = [
     ...((taskResidue || []).map((item, index) => ({

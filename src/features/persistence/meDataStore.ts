@@ -1,4 +1,10 @@
-import type { FavoriteMessage, Mask, WorldBookEntry } from '../../types';
+import type {
+  FavoriteMessage,
+  Mask,
+  RelationshipAvatarBinding,
+  UserAvatarLibrary,
+  WorldBookEntry,
+} from '../../types';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
@@ -8,11 +14,18 @@ import {
 } from '../../services/world-book/worldBookMeta';
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 import { applyDerivedWorldBookMetadata } from '../../services/world-book/worldBookDerived';
+import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
+import {
+  normalizeRelationshipAvatarBindings,
+  normalizeUserAvatarLibrary,
+} from '../../services/user-avatar/userAvatarState';
 
 export type MeData = {
   masks: Mask[];
   favorites: FavoriteMessage[];
   worldBooks: WorldBookEntry[];
+  userAvatarLibrary?: UserAvatarLibrary;
+  relationshipAvatarBindings?: RelationshipAvatarBinding[];
 };
 
 function normalizeWorldBookEntry(entry: WorldBookEntry): WorldBookEntry {
@@ -35,6 +48,72 @@ function mergeWorldBooks(
   fallback: WorldBookEntry[],
 ): WorldBookEntry[] {
   return mergeById(primary, fallback).map(normalizeWorldBookEntry);
+}
+
+function sanitizeUserAvatarLibrary(library: UserAvatarLibrary | undefined): UserAvatarLibrary {
+  const normalizedLibrary = normalizeUserAvatarLibrary(library);
+  const entries = normalizedLibrary.entries
+    .map((entry) => {
+      const image = sanitizeTransientAssetValue(entry.image) || '';
+      if (!image) {
+        return null;
+      }
+
+      return {
+        ...entry,
+        image,
+      };
+    })
+    .filter((entry): entry is UserAvatarLibrary['entries'][number] => !!entry);
+
+  return {
+    entries,
+    updatedAt: entries.reduce(
+      (maxValue, entry) => Math.max(maxValue, entry.updatedAt),
+      normalizedLibrary.updatedAt,
+    ),
+  };
+}
+
+function mergeUserAvatarLibraries(
+  primary: UserAvatarLibrary | undefined,
+  fallback: UserAvatarLibrary | undefined,
+): UserAvatarLibrary {
+  const normalizedPrimary = sanitizeUserAvatarLibrary(primary);
+  const normalizedFallback = sanitizeUserAvatarLibrary(fallback);
+  const entries = [...normalizedPrimary.entries];
+  const seenKeys = new Set(
+    normalizedPrimary.entries.flatMap((entry) => [entry.id, `image:${entry.image}`]),
+  );
+
+  normalizedFallback.entries.forEach((entry) => {
+    const imageKey = `image:${entry.image}`;
+    if (seenKeys.has(entry.id) || seenKeys.has(imageKey)) {
+      return;
+    }
+
+    entries.push(entry);
+    seenKeys.add(entry.id);
+    seenKeys.add(imageKey);
+  });
+
+  return {
+    entries,
+    updatedAt: entries.reduce(
+      (maxValue, entry) => Math.max(maxValue, entry.updatedAt),
+      Math.max(normalizedPrimary.updatedAt, normalizedFallback.updatedAt),
+    ),
+  };
+}
+
+function mergeRelationshipBindings(
+  primary: RelationshipAvatarBinding[] | undefined,
+  fallback: RelationshipAvatarBinding[] | undefined,
+): RelationshipAvatarBinding[] {
+  return normalizeRelationshipAvatarBindings([
+    ...(fallback || []),
+    ...(primary || []),
+  ]);
 }
 
 function mergeById<T extends { id: string }>(
@@ -63,6 +142,11 @@ export function hydrateMeData(source: Partial<MeData> | null | undefined, fallba
     masks: mergeById(source?.masks, fallback.masks),
     favorites: mergeById(source?.favorites, fallback.favorites),
     worldBooks: mergeWorldBooks(source?.worldBooks, fallback.worldBooks),
+    userAvatarLibrary: mergeUserAvatarLibraries(source?.userAvatarLibrary, fallback.userAvatarLibrary),
+    relationshipAvatarBindings: mergeRelationshipBindings(
+      source?.relationshipAvatarBindings,
+      fallback.relationshipAvatarBindings,
+    ),
   };
 }
 

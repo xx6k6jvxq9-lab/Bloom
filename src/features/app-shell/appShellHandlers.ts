@@ -19,6 +19,7 @@ export type AppScreen =
   | 'music'
   | 'forum'
   | 'wallet'
+  | 'mall'
   | 'group-chat-session';
 
 export type AppTab = 'chat' | 'contacts' | 'moments' | 'me';

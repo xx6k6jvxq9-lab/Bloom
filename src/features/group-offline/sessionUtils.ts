@@ -3,13 +3,17 @@ import type {
   Character,
   GroupOfflineCard,
   GroupOfflineGeneratedContent,
-  GroupOfflineGenerationMode,
   GroupOfflineParticipant,
+  GroupOfflineRecruitDraft,
   GroupOfflineRound,
   GroupOfflineRoundCharacterEntry,
   GroupOfflineRoundDispatchMode,
   GroupOfflineSession,
 } from '../../types';
+import {
+  buildGroupOfflineScenarioCardFields,
+  getGroupOfflineScenarioRemainingRounds,
+} from '../../services/group-offline/scenarioTasks';
 
 export type GroupOfflineContentPhase = 'intro' | 'round';
 
@@ -42,37 +46,20 @@ function clampCount(value: number, max: number) {
   return Math.max(1, Math.min(value, max, MAX_GROUP_OFFLINE_BLOCK_SELECTION));
 }
 
-export function normalizeGroupOfflineGenerationMode(
-  mode: GroupOfflineGenerationMode | undefined,
-): 'blocks' | 'ensemble' {
-  return 'blocks';
-}
-
-export function hasRemovedGroupOfflineEnsembleContent(
-  session: GroupOfflineSession | null | undefined,
-): boolean {
-  if (!session) {
-    return false;
-  }
-
-  if (session.generationMode === 'ensemble' || session.generationMode === 'group') {
-    return true;
-  }
-
-  return (session.generatedContent?.rounds || []).some((round) => (
-    round.generationMode === 'ensemble'
-    || round.generationMode === 'group'
-    || !!round.articleParagraphs?.length
-  ));
-}
-
 function buildRoundLabel(session: GroupOfflineSession): string {
   if (session.currentRound <= 0) {
-    return '共景';
+    const remainingRounds = getGroupOfflineScenarioRemainingRounds(session);
+    return typeof remainingRounds === 'number'
+      ? `共景 · 剩余 ${remainingRounds} 轮`
+      : '共景';
   }
-  return session.roundLimit
-    ? `第 ${session.currentRound}/${session.roundLimit} 轮`
-    : `第 ${session.currentRound} 轮`;
+  const remainingRounds = getGroupOfflineScenarioRemainingRounds(session);
+  if (session.roundLimit) {
+    return typeof remainingRounds === 'number'
+      ? `第 ${session.currentRound}/${session.roundLimit} 轮 · 剩余 ${remainingRounds} 轮`
+      : `第 ${session.currentRound}/${session.roundLimit} 轮`;
+  }
+  return `第 ${session.currentRound} 轮`;
 }
 
 export function createGroupOfflineSessionId(seed = Date.now()): string {
@@ -98,6 +85,7 @@ function buildCardFromSession(
   members: Character[],
   summaryLines?: string[],
 ): GroupOfflineCard {
+  const scenarioCardFields = buildGroupOfflineScenarioCardFields(session);
   return {
     kind: 'offline',
     sessionId: session.id,
@@ -110,8 +98,8 @@ function buildCardFromSession(
     timeLabel: session.timeLabel,
     weatherLabel: session.weatherLabel,
     participantLabels: buildParticipantLabels(session, members),
-    objectiveLabel: session.mode === 'scenario' ? '设定局推进中' : undefined,
-    roundLabel: buildRoundLabel(session),
+    ...scenarioCardFields,
+    roundLabel: scenarioCardFields.roundLabel || buildRoundLabel(session),
     summaryLines,
     soundtrack: session.generatedContent?.soundtrack,
   };
@@ -128,6 +116,102 @@ export function createGroupOfflineStartMessage(params: {
     timestamp: params.session.createdAt,
     isSystem: true,
     groupOfflineCard: card,
+  };
+}
+
+function normalizeRecruitParticipantIds(value: string[] | undefined): string[] {
+  return Array.from(new Set((value || []).filter((item) => typeof item === 'string' && item.trim().length > 0)));
+}
+
+type BuildGroupOfflineRecruitCardParams = {
+  draft: GroupOfflineRecruitDraft;
+  createdBy: string;
+  timestamp?: number;
+  status?: GroupOfflineCard['status'];
+  participantLabelsOverride?: string[];
+  summaryLinesOverride?: string[];
+};
+
+export function buildGroupOfflineRecruitCard(params: BuildGroupOfflineRecruitCardParams): GroupOfflineCard {
+  const createdAt = params.timestamp ?? params.draft.createdAt;
+  const signupCount = normalizeRecruitParticipantIds(params.draft.signedUpParticipantIds).length;
+  const confirmedCount = normalizeRecruitParticipantIds(params.draft.confirmedParticipantIds).length;
+  const rosterLockedAt = typeof params.draft.rosterLockedAt === 'number' && Number.isFinite(params.draft.rosterLockedAt)
+    ? params.draft.rosterLockedAt
+    : undefined;
+  const status = params.status || 'recruiting';
+  const participantLabels = params.participantLabelsOverride || params.draft.participantLabels;
+  const defaultStatusLabel = status === 'active'
+    ? '已开局'
+    : status === 'ended'
+      ? '已结束'
+      : rosterLockedAt
+        ? '名单已锁定'
+        : confirmedCount > 0
+          ? '待开局'
+          : signupCount > 0
+            ? '待确认'
+            : '征集中';
+  const defaultSummaryLines = status === 'recruiting'
+    ? [
+        participantLabels.length > 0 ? `拟邀 ${participantLabels.length} 人` : '开放报名中',
+        `已报名 ${signupCount} 人 · 已确认 ${confirmedCount} 人`,
+        rosterLockedAt ? '名单已锁定，开局会按确认名单发起。' : '',
+      ].filter(Boolean)
+    : [];
+
+  return {
+    kind: 'offline',
+    sessionId: params.draft.recruitCardSessionId || `group-offline-recruit-${createdAt}`,
+    title: params.draft.title,
+    createdBy: params.createdBy,
+    createdAt,
+    mode: params.draft.mode,
+    status,
+    locationLabel: params.draft.location,
+    timeLabel: params.draft.timeLabel,
+    weatherLabel: params.draft.weatherLabel,
+    participantLabels,
+    statusLabel: defaultStatusLabel,
+    signupCount,
+    confirmedCount,
+    ...(rosterLockedAt ? { rosterLockedAt } : {}),
+    ...(((params.summaryLinesOverride || defaultSummaryLines).length > 0)
+      ? { summaryLines: params.summaryLinesOverride || defaultSummaryLines }
+      : {}),
+    ...(params.draft.mode === 'scenario' && params.draft.scenarioState
+      ? {
+          backgroundLabel: params.draft.scenarioState.backgroundLabel,
+          taskLabel: params.draft.scenarioState.currentTask,
+          progressLabel: params.draft.scenarioState.progressSummary,
+          objectiveLabel: params.draft.scenarioState.currentTask,
+          roundLabel: typeof params.draft.roundLimit === 'number'
+            ? `共景 · 剩余 ${params.draft.roundLimit} 轮`
+            : '共景',
+        }
+      : {}),
+  };
+}
+
+export function createGroupOfflineRecruitMessage(params: {
+  draft: GroupOfflineRecruitDraft;
+  createdBy: string;
+  timestamp?: number;
+}): ChatMessage {
+  const createdAt = params.timestamp ?? params.draft.createdAt;
+  const card = buildGroupOfflineRecruitCard({
+    draft: params.draft,
+    createdBy: params.createdBy,
+    timestamp: createdAt,
+    status: 'recruiting',
+  });
+
+  return {
+    role: 'user',
+    text: `[group-offline-recruit] ${card.title}`,
+    timestamp: createdAt,
+    groupOfflineCard: card,
+    groupOfflineDraft: params.draft,
   };
 }
 
@@ -166,13 +250,12 @@ function resolveRoundParticipantsForShell(input: BuildFallbackGroupOfflineGenera
     return selectedParticipants;
   }
 
-  const legacyDesiredCount = input.session.generationMode === 'single'
-    ? 1
-    : input.session.generationMode === 'pair'
-      ? 2
-      : 2;
+  if (input.session.participants.length === 0) {
+    return [];
+  }
 
-  return input.session.participants.slice(0, clampCount(legacyDesiredCount, input.session.participants.length));
+  const defaultDesiredCount = Math.min(2, input.session.participants.length);
+  return input.session.participants.slice(0, clampCount(defaultDesiredCount, input.session.participants.length));
 }
 
 function buildRoundEntryShells(input: BuildFallbackGroupOfflineGeneratedContentInput): GroupOfflineRoundCharacterEntry[] {
@@ -235,6 +318,7 @@ export function buildGroupOfflineGeneratedContentShell(
 ): GroupOfflineGeneratedContent {
   const phase = input.phase || 'round';
   const participantLabels = buildParticipantLabels(input.session, input.members);
+  const scenarioCardFields = buildGroupOfflineScenarioCardFields(input.session);
 
   const baseContent: GroupOfflineGeneratedContent = {
     card: {
@@ -242,8 +326,8 @@ export function buildGroupOfflineGeneratedContentShell(
       locationLabel: input.session.location,
       weatherLabel: input.session.weatherLabel || DEFAULT_WEATHER_BY_MODE[input.session.mode],
       participantLabels,
-      objectiveLabel: input.session.mode === 'scenario' ? '设定局推进中。' : undefined,
-      roundLabel: buildRoundLabel(input.session),
+      objectiveLabel: scenarioCardFields.objectiveLabel,
+      roundLabel: scenarioCardFields.roundLabel || buildRoundLabel(input.session),
     },
     intro: input.session.generatedContent?.intro || '',
     soundtrack: input.session.generatedContent?.soundtrack,
@@ -260,11 +344,10 @@ export function buildGroupOfflineGeneratedContentShell(
   const roundEntries = buildRoundEntryShells(input);
   const roundShell: GroupOfflineRound = {
     id: createGroupOfflineRoundId(input.session.updatedAt || Date.now()),
-    title: normalizeGroupOfflineGenerationMode(input.session.generationMode) === 'ensemble' ? '同场推进' : '分块推进',
+    title: '分块推进',
     sceneText: undefined,
-    articleParagraphs: [],
     characterEntries: roundEntries,
-    generationMode: normalizeGroupOfflineGenerationMode(input.session.generationMode),
+    generationMode: 'blocks',
     dispatchMode: input.dispatchMode,
     selectedCharacterIds: roundEntries.map((entry) => entry.characterId),
     userMessageText: input.userMessageText?.trim() || undefined,

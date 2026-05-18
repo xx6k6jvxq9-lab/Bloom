@@ -24,14 +24,9 @@ type BuildGroupOfflineEntryRewritePromptOptions = {
   roundPlan?: GroupOfflineRoundPlan;
 };
 
-function normalizeGenerationMode(mode: GroupOfflineSession['generationMode']): 'blocks' | 'ensemble' {
-  return mode === 'ensemble' || mode === 'group' ? 'ensemble' : 'blocks';
-}
-
 export function buildGroupOfflineEntryRewritePrompt(
   options: BuildGroupOfflineEntryRewritePromptOptions,
 ): string {
-  const normalizedMode = normalizeGenerationMode(options.session.generationMode);
   const peerContext = options.round.characterEntries
     .filter((item) => item.characterId !== options.entry.characterId)
     .map((item) => `${item.speakerLabel}：${item.text}`)
@@ -41,8 +36,8 @@ export function buildGroupOfflineEntryRewritePrompt(
 
   return [
     options.kind === 'retry'
-      ? '你现在只需要重写群线下里的一个角色块。'
-      : '你现在只需要润色群线下里的一个角色块，保持事件不变。',
+      ? '你现在只需要重写群线下里的一块角色输出。'
+      : '你现在只需要润色群线下里的一块角色输出，保持事件不变。',
     '只输出 JSON，不要解释。',
     '不要改别的角色块，不要把这一轮重写成整篇。',
     options.kind === 'retry'
@@ -52,10 +47,10 @@ export function buildGroupOfflineEntryRewritePrompt(
     '输出 JSON：{"target": {...可选}, "text": "...", "highlightText": "...", "statusFields": [...], "notebook": "...", "aftereffects": {...}, "memoryPanel": {...}}',
     'highlightText 必须仍然是 text 里的单独一行；statusFields 固定保留 4 个字段：状态、衣着、动作、心声；notebook、aftereffects、memoryPanel 也要一起跟着这一轮内容更新。',
     'notebook 必须严格控制在 30 到 50 个汉字，少一字、多一字都不行。',
-    'aftereffects.items 固定输出 4 张卡，四张都必须由这次生成直接给出，不要省略、不要留给系统兜底补卡。',
-    'memoryPanel.shortTerm 在当前这一轮只新增 1 条，系统会跨轮累计展示，不是覆盖旧条目；只有累计短期记忆满 10 条时，memoryPanel.longTerm 才允许输出 1 条总结。',
+    'aftereffects.items 固定输出 4 张卡，四张都必须由这次生成直接给出，不要省略，不要留给系统兜底补卡。',
+    'memoryPanel.shortTerm 在当前这一轮只新增 1 条，系统会跨轮累计显示，不是覆盖旧条目；只有累计短期记忆满 10 条时，memoryPanel.longTerm 才允许输出 1 条总结。',
     '',
-    `玩法：${normalizedMode === 'blocks' ? '分块推进' : '同场群像'}`,
+    '玩法：分块推进',
     `活动：${options.session.customActivityType?.trim() || options.session.activityType}`,
     `地点：${options.session.location}`,
     `时间：${options.session.timeLabel}`,

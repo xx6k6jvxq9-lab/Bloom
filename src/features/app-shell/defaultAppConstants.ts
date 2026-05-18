@@ -42,6 +42,7 @@ export const DEFAULT_HOME_ICONS: DesktopIconConfig[] = [
   { id: 'perception', slotId: 'slot-3-1' },
   { id: 'music', slotId: 'slot-4-0' },
   { id: 'forum', slotId: 'slot-4-1' },
+  { id: 'mall', page: 1, slotId: 'slot-1-2' },
 ];
 
 export const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [

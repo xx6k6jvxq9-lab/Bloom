@@ -53,7 +53,8 @@ function isPublicMessage(message: ChatMessage): boolean {
     && !message.isRecalled
     && !message.groupPollCard
     && !message.groupRelayCard
-    && !message.groupTaskCard;
+    && !message.groupTaskCard
+    && !message.groupOfflineCard;
 }
 
 function sanitizeField(value: unknown, maxLength = MAX_FIELD_LENGTH): string | undefined {

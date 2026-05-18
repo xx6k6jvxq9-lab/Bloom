@@ -5,6 +5,7 @@ const MIRRORED_STORAGE_KEYS = new Set<string>([
   STORAGE_KEYS.coupleSpace,
   STORAGE_KEYS.datingRecords,
   STORAGE_KEYS.forumData,
+  STORAGE_KEYS.mallData,
   STORAGE_KEYS.meData,
   STORAGE_KEYS.moments,
   STORAGE_KEYS.musicData,

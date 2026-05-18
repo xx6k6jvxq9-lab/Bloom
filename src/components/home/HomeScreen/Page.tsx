@@ -196,7 +196,7 @@ function observeElementSize(element: Element, onResize: () => void): () => void 
   };
 }
 
-type DesktopAppId = 'chat' | 'settings' | 'worldbook' | 'monitor' | 'couple-space' | 'perception' | 'music' | 'forum';
+type DesktopAppId = 'chat' | 'settings' | 'worldbook' | 'monitor' | 'couple-space' | 'perception' | 'music' | 'forum' | 'mall';
 
 const APP_ICON_URL = 'https://tu.tuhenmei.com/tu2026/2025120917/gg0qhoi1q2j25922.jpeg';
 const DESKTOP_ROWS = 7;
@@ -212,7 +212,7 @@ export function HomeScreen({
   appData,
   setAppData,
 }: {
-  onOpenApp: (app: 'chat' | 'settings' | 'dream' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet') => void;
+  onOpenApp: (app: 'chat' | 'settings' | 'dream' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet' | 'mall') => void;
   userProfile: UserProfile;
   setUserProfile: (p: UserProfile) => void;
   visualSettings: VisualSettings;
@@ -292,11 +292,13 @@ export function HomeScreen({
       'couple-space',
       'perception',
       'music',
+      'mall',
     ];
     const filteredOrder = order.filter((id): id is DesktopAppId => id !== ('wallet' as DesktopAppId));
     if (!filteredOrder.includes('perception')) filteredOrder.push('perception');
     if (!filteredOrder.includes('music')) filteredOrder.push('music');
     if (!filteredOrder.includes('forum')) filteredOrder.push('forum');
+    if (!filteredOrder.includes('mall')) filteredOrder.push('mall');
     return filteredOrder;
   });
 
@@ -327,6 +329,7 @@ export function HomeScreen({
         onClick: () => onOpenApp('music'),
       },
       { id: 'forum', name: '界隙', icon: APP_ICON_URL, onClick: () => onOpenApp('forum') },
+      { id: 'mall', name: '商城', icon: APP_ICON_URL, onClick: () => onOpenApp('mall') },
       { id: 'wallet', name: '钱包', icon: APP_ICON_URL, onClick: () => onOpenApp('wallet') },
       { id: 'dream', name: '梦境', icon: APP_ICON_URL, onClick: () => onOpenApp('dream') },
       { id: 'customization', name: '自定义', icon: APP_ICON_URL, onClick: () => onOpenApp('customization') },

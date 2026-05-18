@@ -23,10 +23,6 @@ type GroupOfflineSharedSettlementResult = SceneSettlementResult;
 
 const TASK_MARKERS = /(答应|约定|确认|回复|处理|完成|安排|计划|改天|下次|补上|兑现|去做|办完|一起|记得|要去|要做)/;
 
-function normalizeGenerationMode(mode: GroupOfflineSession['generationMode']): 'blocks' | 'ensemble' {
-  return mode === 'ensemble' || mode === 'group' ? 'ensemble' : 'blocks';
-}
-
 function getRecentRounds(session: GroupOfflineSession): GroupOfflineRound[] {
   return (session.generatedContent?.rounds || []).slice(-3);
 }
@@ -58,10 +54,10 @@ function buildCharacterOfflineSummary(session: GroupOfflineSession, character: C
   ].filter(Boolean);
 
   if (snippets.length === 0) {
-    return `${character.name}刚结束了一场${activity || '群线下'}，场上的余温还没有完全散掉。`;
+    return `${character.name}刚结束了一场${activity || '群线下'}，场上的余温还没完全散掉。`;
   }
 
-  return `${character.name}刚在${location || '线下现场'}结束了一场${activity || '群线下'}：${snippets.join('；')}`;
+  return `${character.name}刚在${location || '线下现场'}结束了一场${activity || '群线下'}，${snippets.join('；')}`;
 }
 
 function buildRelationshipResidue(
@@ -170,13 +166,9 @@ function buildSceneProgressRecords(
   }
 
   const latestRound = rounds[rounds.length - 1];
-  const stageLabel = normalizeGenerationMode(session.generationMode) === 'ensemble'
-    ? '群线下同场推进阶段'
-    : '群线下分块推进阶段';
   const latestCharacterEntry = latestRound.characterEntries.find((entry) => entry.characterId === character.id);
-  const currentSignature = normalizeGenerationMode(session.generationMode) === 'ensemble'
-    ? '多人同场 / 群像推进'
-    : '分块推进 / 角色轮次';
+  const stageLabel = '群线下分块推进阶段';
+  const currentSignature = '分块推进 / 角色轮次';
 
   return [{
     summary: `群线下推进到${stageLabel}：${summarizeSettlementText(
@@ -186,12 +178,10 @@ function buildSceneProgressRecords(
     stageLabel,
     currentBeat: latestRound.sceneText
       ? summarizeSettlementText(latestRound.sceneText, 80)
-      : `${character.name}在群线下最后一轮留下了新的公开余波。`,
+      : `${character.name}在线下最后一轮留下了新的公开余波。`,
     currentSignature,
     completedActions: [
-      normalizeGenerationMode(session.generationMode) === 'ensemble'
-        ? '群线下完成了一轮同场推进'
-        : '群线下完成了一轮角色分块推进',
+      '群线下完成了一轮角色分块推进',
     ],
     unresolvedTension: '这场线下已经结束，但回到群聊后的余波和关系变化还会继续发酵。',
     nextStepOptions: [
@@ -230,6 +220,7 @@ export function buildGroupOfflineSharedSettlement(
       taskResumeHint: '这是群线下结束后仍可能算数的约定或待办，只有当前相关时再恢复。',
       topicResumeHint: '这是群线下里刚碰过的话题锚点，只有当前真的碰到时再带回。',
       limit: 10,
+      enabled: false,
     },
     sharedState: {
       publicSummaries: [

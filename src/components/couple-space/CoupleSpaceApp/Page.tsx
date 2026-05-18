@@ -58,6 +58,7 @@ import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteract
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
 import { persistSceneSettlement } from '../../../services/memory/sceneSettlement';
+import { resolveUserAvatarForScene } from '../../../services/user-avatar/userAvatarState';
 
 const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
 const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
@@ -259,7 +260,28 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
   const selectedLoveLetter = (coupleSpace.loveLetters || []).find((letter: LoveLetter) => letter.id === selectedLoveLetterId) || null;
-  const user = appData.userProfile;
+  const resolvedCoupleSpaceUserAvatar = React.useMemo(
+    () => resolveUserAvatarForScene({
+      userProfile: appData.userProfile,
+      userAvatarLibrary: appData.userAvatarLibrary,
+      relationshipAvatarBindings: appData.relationshipAvatarBindings,
+      characterId: partner?.id || null,
+      scene: 'couple_space',
+    }).avatar,
+    [
+      appData.relationshipAvatarBindings,
+      appData.userAvatarLibrary,
+      appData.userProfile,
+      partner?.id,
+    ],
+  );
+  const user = React.useMemo(
+    () => ({
+      ...appData.userProfile,
+      avatar: resolvedCoupleSpaceUserAvatar,
+    }),
+    [appData.userProfile, resolvedCoupleSpaceUserAvatar],
+  );
   const { setRemoteUrl, clearValue } = usePersistentFieldActions();
   const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(coupleSpace.backgroundUrl);
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(user?.avatar);

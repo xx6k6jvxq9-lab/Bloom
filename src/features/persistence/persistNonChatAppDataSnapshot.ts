@@ -1,4 +1,4 @@
-import type { AppData, ForumData, ForumSpectatorSettings, WalletData } from '../../types';
+import type { AppData, ForumData, ForumSpectatorSettings, MallData, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
 import { stripCharacterChatPreviewFieldsFromList } from './characterChatPreview';
 import { saveCharacters } from './charactersStore';
@@ -8,6 +8,8 @@ import { persistForumData } from './forumDataStore';
 import { persistMeData } from './meDataStore';
 import { persistMoments } from './momentsStore';
 import { persistMusicData } from './musicDataStore';
+import { createDefaultMallData } from '../mall/defaultMallData';
+import { persistMallData } from './mallDataStore';
 import { persistPerception } from './perceptionStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { persistUserProfile } from './userProfileStore';
@@ -57,6 +59,8 @@ const EMPTY_WALLET_DATA: WalletData = {
   transactions: [],
 };
 
+const EMPTY_MALL_DATA: MallData = createDefaultMallData();
+
 function persistIndexedDbOnly<T>(key: string, value: T): Promise<void> {
   return saveJsonRecord(key, value).catch((error) => {
     console.error(`[persistNonChatAppDataSnapshot] Failed to persist key "${key}" into IndexedDB`, error);
@@ -68,6 +72,8 @@ export type PersistableNonChatAppDataSnapshot = {
   userProfile: AppData['userProfile'];
   masks: AppData['masks'];
   favorites: AppData['favorites'];
+  userAvatarLibrary?: AppData['userAvatarLibrary'];
+  relationshipAvatarBindings?: NonNullable<AppData['relationshipAvatarBindings']>;
   perception?: AppData['perception'];
   worldBooks: AppData['worldBooks'];
   moments: AppData['moments'];
@@ -77,6 +83,7 @@ export type PersistableNonChatAppDataSnapshot = {
   visualSettings: AppData['visualSettings'];
   forumData: ForumData;
   musicData?: AppData['musicData'];
+  mallData: MallData;
   walletData: WalletData;
   coupleSpace: AppData['coupleSpace'];
   coupleSpaceState: AppData['coupleSpaceState'];
@@ -94,6 +101,11 @@ export function buildPersistableNonChatAppDataSnapshot(
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
   const normalizedFavorites = appData.favorites ?? fallbackAppData.favorites ?? [];
+  const normalizedUserAvatarLibrary = appData.userAvatarLibrary ?? fallbackAppData.userAvatarLibrary;
+  const normalizedRelationshipAvatarBindings =
+    appData.relationshipAvatarBindings
+    ?? fallbackAppData.relationshipAvatarBindings
+    ?? [];
   const normalizedPerception = appData.perception ?? fallbackAppData.perception;
   const normalizedWorldBooks = appData.worldBooks ?? fallbackAppData.worldBooks ?? [];
   const normalizedMoments = appData.moments ?? fallbackAppData.moments ?? [];
@@ -110,6 +122,7 @@ export function buildPersistableNonChatAppDataSnapshot(
     ),
   };
   const normalizedMusicData = appData.musicData ?? fallbackAppData.musicData;
+  const normalizedMallData = appData.mallData ?? fallbackAppData.mallData ?? EMPTY_MALL_DATA;
   const normalizedWalletData = appData.walletData ?? fallbackAppData.walletData ?? EMPTY_WALLET_DATA;
   const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
     appData.coupleSpaceState ?? fallbackAppData.coupleSpaceState,
@@ -121,6 +134,8 @@ export function buildPersistableNonChatAppDataSnapshot(
     userProfile: normalizedUserProfile,
     masks: normalizedMasks,
     favorites: normalizedFavorites,
+    userAvatarLibrary: normalizedUserAvatarLibrary,
+    relationshipAvatarBindings: normalizedRelationshipAvatarBindings,
     perception: normalizedPerception,
     worldBooks: normalizedWorldBooks,
     moments: normalizedMoments,
@@ -130,6 +145,7 @@ export function buildPersistableNonChatAppDataSnapshot(
     visualSettings: normalizedVisualSettings,
     forumData: normalizedForumData,
     musicData: normalizedMusicData,
+    mallData: normalizedMallData,
     walletData: normalizedWalletData,
     coupleSpace,
     coupleSpaceState,
@@ -146,6 +162,8 @@ export async function persistNonChatAppDataSnapshot(
       masks: snapshot.masks,
       favorites: snapshot.favorites,
       worldBooks: snapshot.worldBooks,
+      userAvatarLibrary: snapshot.userAvatarLibrary,
+      relationshipAvatarBindings: snapshot.relationshipAvatarBindings,
     }),
     snapshot.perception ? persistPerception(snapshot.perception) : Promise.resolve(),
     persistMoments(snapshot.moments),
@@ -162,6 +180,9 @@ export async function persistNonChatAppDataSnapshot(
       persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, snapshot.coupleSpaceState),
     ),
     snapshot.musicData ? persistMusicData(snapshot.musicData) : Promise.resolve(),
+    Promise.resolve(persistMallData(snapshot.mallData)).then(() =>
+      persistIndexedDbOnly(STORAGE_KEYS.mallData, snapshot.mallData),
+    ),
     Promise.resolve(persistWalletData(snapshot.walletData)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.walletData, snapshot.walletData),
     ),

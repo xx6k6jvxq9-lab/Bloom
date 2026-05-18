@@ -76,11 +76,33 @@ const getSharedPostSummary = (message: ChatMessage): string => {
   return summaryParts.length > 0 ? `[分享动态]\n${summaryParts.join('\n')}` : '[分享动态]';
 };
 
+const getSharedMallItemSummary = (message: ChatMessage): string => {
+  if (!message.sharedMallItem) {
+    return '';
+  }
+
+  const title = message.sharedMallItem.title?.trim();
+  const subtitle = message.sharedMallItem.subtitle?.trim();
+  const blurb = message.sharedMallItem.blurb?.trim();
+  const price = Number.isFinite(message.sharedMallItem.price)
+    ? `价格：¥${message.sharedMallItem.price.toFixed(2)}`
+    : '';
+  const summaryParts = [
+    title ? `商品：${title}` : '',
+    subtitle ? `副标题：${subtitle}` : '',
+    price,
+    blurb ? `简介：${blurb}` : '',
+  ].filter(Boolean);
+
+  return summaryParts.length > 0 ? `[分享商品]\n${summaryParts.join('\n')}` : '[分享商品]';
+};
+
 export const getMessageActionText = (message: ChatMessage): string => {
   const { mainText, translation } = getLegacyTranslationParts(message.text || '');
   const normalizedMainText = sanitizePipeMarkers(mainText, '\n');
   const normalizedTranslation = sanitizePipeMarkers(message.translation?.trim() || translation, '\n');
   const sharedPostSummary = getSharedPostSummary(message);
+  const sharedMallItemSummary = getSharedMallItemSummary(message);
   const isStickerMessage = !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
   const normalizedVisualText = normalizedMainText.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim();
 
@@ -90,7 +112,8 @@ export const getMessageActionText = (message: ChatMessage): string => {
     !normalizedVisualText && !isStickerMessage && message.imageUrl ? '[图片]' : '',
     !normalizedMainText && message.location ? `[位置分享] ${message.location.name}` : '',
     !normalizedMainText && message.isVoiceCall ? '[语音通话]' : '',
-    !normalizedMainText && sharedPostSummary ? sharedPostSummary : '',
+    sharedPostSummary,
+    sharedMallItemSummary,
   ].filter(Boolean).join('\n');
 
   if (normalizedTranslation && normalizedTranslation !== normalizedMainText) {

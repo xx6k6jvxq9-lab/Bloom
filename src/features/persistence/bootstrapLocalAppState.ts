@@ -24,6 +24,7 @@ import {
   hydrateForumData,
   loadPersistedForumData,
 } from './forumDataStore';
+import { createDefaultMallData } from '../mall/defaultMallData';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
 import { normalizeForumRuntimeAuthorProfiles } from '../../services/social-id/stableNumericId';
 import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
@@ -41,6 +42,10 @@ import {
   loadPreferredMoments,
 } from './momentsStore';
 import { loadPreferredMusicData } from './musicDataStore';
+import {
+  hydrateMallData,
+  loadPersistedMallData,
+} from './mallDataStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import {
@@ -221,6 +226,7 @@ export async function bootstrapLocalAppState({
     indexedDbCoupleSpace,
     indexedDbFriendRequests,
     indexedDbMeData,
+    indexedDbMallData,
     indexedDbWalletData,
     indexedDbPerception,
   ] = await Promise.all([
@@ -234,6 +240,7 @@ export async function bootstrapLocalAppState({
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.coupleSpace),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.friendRequests),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.meData),
+    loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.mallData),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.walletData),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.perception),
   ]);
@@ -254,6 +261,7 @@ export async function bootstrapLocalAppState({
   const hasIndexedDbCoupleSpace = indexedDbCoupleSpace != null;
   const hasIndexedDbFriendRequests = indexedDbFriendRequests != null;
   const hasIndexedDbMeData = indexedDbMeData != null;
+  const hasIndexedDbMallData = indexedDbMallData != null;
   const hasIndexedDbWalletData = indexedDbWalletData != null;
   const hasIndexedDbPerception = indexedDbPerception != null;
 
@@ -269,6 +277,7 @@ export async function bootstrapLocalAppState({
   const hasLocalCoupleSpace = hasStoredJson(STORAGE_KEYS.coupleSpace);
   const hasLocalVisualSettings = hasStoredJson(STORAGE_KEYS.visualSettings);
   const hasLocalMusicData = hasStoredJson(STORAGE_KEYS.musicData);
+  const hasLocalMallData = hasStoredJson(STORAGE_KEYS.mallData);
   const hasLocalWalletData = hasStoredJson(STORAGE_KEYS.walletData);
   const hasLocalCallHistory = hasStoredJson(STORAGE_KEYS.callHistory);
   const hasLocalPerception = hasStoredJson(STORAGE_KEYS.perception);
@@ -283,6 +292,7 @@ export async function bootstrapLocalAppState({
     || hasIndexedDbCoupleSpace
     || hasIndexedDbFriendRequests
     || hasIndexedDbMeData
+    || hasIndexedDbMallData
     || hasIndexedDbWalletData
     || hasIndexedDbPerception
     || hasLocalCharacters
@@ -297,6 +307,7 @@ export async function bootstrapLocalAppState({
     || hasLocalCoupleSpace
     || hasLocalVisualSettings
     || hasLocalMusicData
+    || hasLocalMallData
     || hasLocalWalletData
     || hasLocalCallHistory
     || hasLocalPerception
@@ -341,11 +352,21 @@ export async function bootstrapLocalAppState({
       ? hydrateWalletData(indexedDbWalletData as Partial<typeof localWalletData>, localWalletData)
       : localWalletData;
 
+    const mallFallback =
+      !hasIndexedDbMallData && !hasLocalMallData
+        ? (legacyAppData?.mallData ?? createDefaultMallData())
+        : createDefaultMallData();
+    const localMallData = loadPersistedMallData(mallFallback);
+    const mallData = hasIndexedDbMallData
+      ? hydrateMallData(indexedDbMallData as Partial<typeof localMallData>, localMallData)
+      : localMallData;
+
     return {
       friendRequests,
       callHistory: await loadPreferredCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
       savedDates: datingRecords.savedDates,
       collectedDates: datingRecords.collectedDates,
+      mallData,
       walletData,
       forumData,
     } satisfies Partial<AppData>;
@@ -399,6 +420,12 @@ export async function bootstrapLocalAppState({
     worldBooks: !hasIndexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.worldBooks)
       ? legacyAppData.worldBooks
       : defaultAppData.worldBooks,
+    userAvatarLibrary: !hasIndexedDbMeData && !hasLocalMeData && legacyAppData?.userAvatarLibrary
+      ? legacyAppData.userAvatarLibrary
+      : defaultAppData.userAvatarLibrary,
+    relationshipAvatarBindings: !hasIndexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.relationshipAvatarBindings)
+      ? legacyAppData.relationshipAvatarBindings
+      : defaultAppData.relationshipAvatarBindings,
   };
   const meData = await loadPreferredMeData(meDataFallback);
 
@@ -450,6 +477,8 @@ export async function bootstrapLocalAppState({
     userProfile,
     masks: meData.masks,
     favorites: meData.favorites,
+    userAvatarLibrary: meData.userAvatarLibrary,
+    relationshipAvatarBindings: meData.relationshipAvatarBindings,
     perception,
     visualSettings,
     groups: persistedChatOrganization.groups,
@@ -466,6 +495,7 @@ export async function bootstrapLocalAppState({
     savedDates: [],
     collectedDates: [],
     musicData,
+    mallData: defaultAppData.mallData ?? createDefaultMallData(),
     walletData: defaultAppData.walletData ?? { cards: [], transactions: [] },
     forumData: defaultAppData.forumData ?? EMPTY_FORUM_DATA,
   };

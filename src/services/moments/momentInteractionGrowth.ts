@@ -99,6 +99,41 @@ function resolveNextFamiliarity(params: {
   return null;
 }
 
+function resolveMomentGrowthPatch(params: {
+  currentProfile: ReturnType<typeof getCharacterPublicThreadProfile>;
+  stats: ReturnType<typeof getPairStats>;
+  kind: PairInteractionKind;
+  nextFamiliarity: 'stranger' | 'aware' | 'familiar' | null;
+}) {
+  const { currentProfile, stats, kind, nextFamiliarity } = params;
+  const targetFamiliarity = nextFamiliarity || currentProfile.familiarity;
+  const patch: Parameters<typeof applyBidirectionalPublicThreadPeerHint>[3] = {
+    familiarity: targetFamiliarity,
+  };
+
+  const canUnlockLightBanter = (
+    targetFamiliarity === 'familiar'
+    && (stats.directReplyCount >= 1 || kind === 'direct_reply')
+  );
+
+  if (canUnlockLightBanter) {
+    if (!currentProfile.allowBanter) {
+      patch.allowBanter = true;
+    }
+    if (currentProfile.interactionStyle !== 'banter') {
+      patch.interactionStyle = 'banter';
+    }
+  }
+
+  const changed = (
+    patch.familiarity !== currentProfile.familiarity
+    || patch.allowBanter !== undefined
+    || patch.interactionStyle !== undefined
+  );
+
+  return changed ? patch : null;
+}
+
 export function applyMomentInteractionGrowth(params: {
   characters: Character[];
   moment: MomentItem;
@@ -132,7 +167,14 @@ export function applyMomentInteractionGrowth(params: {
       kind: pairInteraction.kind,
     });
 
-    if (!nextFamiliarity || nextFamiliarity === currentProfile.familiarity) {
+    const growthPatch = resolveMomentGrowthPatch({
+      currentProfile,
+      stats,
+      kind: pairInteraction.kind,
+      nextFamiliarity,
+    });
+
+    if (!growthPatch) {
       continue;
     }
 
@@ -141,7 +183,7 @@ export function applyMomentInteractionGrowth(params: {
       left.id,
       right.id,
       {
-        familiarity: nextFamiliarity,
+        ...growthPatch,
         source: 'moment_growth',
       },
     );
