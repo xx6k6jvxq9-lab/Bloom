@@ -33,7 +33,7 @@ import {
   inferMomentTone,
 } from './triggers';
 import { hasOwnershipClaimRisk } from './publicThreadPolicy';
-import { getCharacterPublicThreadProfile } from './publicThreadPolicy';
+import { getCharacterPublicThreadProfile, isLikelyUserDirectedMoment } from './publicThreadPolicy';
 import {
   buildRecentMomentImageReferenceMessages,
   extractSelectedRecentMomentImages,
@@ -51,6 +51,7 @@ type MomentLike = {
   content: string;
   timestamp: number;
   images?: string[];
+  sourceImage?: MomentSourceImageRef;
   comments: MomentCommentLike[];
 };
 
@@ -1449,6 +1450,13 @@ export async function generateMomentAutoComment(options: {
   const relationProfile = momentAuthor
     ? getCharacterPublicThreadProfile(replyCharacter, momentAuthor, chatGroups || [])
     : null;
+  const isUserDirectedMoment = momentAuthor
+    ? isLikelyUserDirectedMoment({
+      momentContent: moment.content,
+      author: momentAuthor,
+      sourceImage: moment.sourceImage,
+    })
+    : false;
   const relationHint = !momentAuthor
     ? '这是公开动态下的一句短评。'
     : relationProfile?.familiarity === 'familiar'
@@ -1486,6 +1494,13 @@ export async function generateMomentAutoComment(options: {
         '像评论区顺手留一句短评。',
         '可以是态度、接梗、轻吐槽或认可。',
         '不要写成私聊回复。',
+        ...(isUserDirectedMoment && replyCharacter.id !== moment.authorId
+          ? [
+            '这条动态更像楼主在对用户说，不是在对你说。',
+            '你只能从你和楼主的关系、你看到的状态、你对楼主的观察出发评论。',
+            '不要把楼主的话理解成在点你、骂你、调你，也不要把自己写成被影射对象。',
+          ]
+          : []),
         relationStyleHint,
         ...(relationNoteHint ? [relationNoteHint] : []),
       ],

@@ -180,6 +180,7 @@ export function inferMomentAudience(moment: MomentItem, characters: Character[],
   return isLikelyUserDirectedMoment({
     momentContent: moment.content,
     author,
+    sourceImage: moment.sourceImage,
   }) ? 'user_directed' : 'public';
 }
 
@@ -556,7 +557,7 @@ export function getMomentAutoCommentTargetCount(moment: MomentItem, characters: 
   if (suppressionMode === 'full_block') return 0;
   if (context.timeMode === 'days_later' || context.timeMode === 'stale') return 0;
   if (suppressionMode === 'limit_third_party') return Math.min(characters.length, 1);
-  if (context.audience === 'user_directed') return 0;
+  if (context.audience === 'user_directed') return moment.authorId === 'user' ? 0 : characters.length;
   if (moment.authorId !== 'user' && inferMomentSemanticAnchor(moment.content) === 'soft_signal') return 0;
   if (moment.authorId === 'user') return Math.min(characters.length, Math.random() < 0.68 ? 1 : 2);
   return Math.min(characters.length, Math.random() < 0.62 ? 2 : 3);
@@ -572,10 +573,9 @@ export function pickInitialCommenters(options: PickInitialCommentersOptions) {
   if (suppressionMode === 'full_block') {
     return [];
   }
-  if (context.audience === 'user_directed' && suppressionMode === 'none') {
-    return [];
-  }
-
+  const momentAuthor = moment.authorId === 'user'
+    ? null
+    : characters.find((character) => character.id === moment.authorId) || null;
   const eligibleCharacters = characters
     .filter((character) => character.id !== moment.authorId)
     .map((character) => ({
@@ -587,12 +587,17 @@ export function pickInitialCommenters(options: PickInitialCommentersOptions) {
         chatGroups,
       }),
     }))
-    .filter((entry) => entry.engagementAccess.canTopLevelComment);
+    .filter((entry) => entry.engagementAccess.canTopLevelComment)
+    .filter((entry) => {
+      if (context.audience !== 'user_directed' || !momentAuthor) {
+        return true;
+      }
+
+      const relationProfile = getCharacterPublicThreadProfile(entry.character, momentAuthor, chatGroups);
+      return relationProfile.familiarity === 'familiar';
+    });
   const targetCount = getMomentAutoCommentTargetCount(moment, characters, chatGroups);
   if (targetCount <= 0) return [];
-  const momentAuthor = moment.authorId === 'user'
-    ? null
-    : characters.find((character) => character.id === moment.authorId) || null;
 
   const weightedPool = [...eligibleCharacters]
     .sort(() => Math.random() - 0.5)

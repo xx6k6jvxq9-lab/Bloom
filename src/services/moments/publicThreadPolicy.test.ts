@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Character, ChatGroup, MomentComment, MomentItem } from '../../types';
-import { getMomentAutoCommentTargetCount, pickInitialCommenters } from './commentRules';
+import { getMomentAutoCommentTargetCount, inferMomentAudience, pickInitialCommenters } from './commentRules';
 import {
   canCharacterAutoCommentOnMoment,
   canCharacterAutoLikeMoment,
@@ -180,6 +180,108 @@ test('aware peers can be lightly unlocked when the post directly hooks them', ()
 
   assert.equal(access.canTopLevelComment, true);
   assert.equal(access.commentMode, 'limited');
+});
+
+test('chat-image sourced moments stay user-directed but can allow one familiar relationship-based comment', () => {
+  const hints = createMutualHintPair('author', 'familiar-peer', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: hints.left,
+    corePersona: '喜欢你，嘴硬，护短',
+  });
+  const familiarPeer = createCharacter({
+    id: 'familiar-peer',
+    name: 'Familiar Peer',
+    publicThreadPeerHints: hints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: '手机红电报警，脑子也快停机了。长得挺乖，就是大半夜发图的行为有点存心不良。',
+    sourceImage: {
+      source: 'recent_chat_image',
+      characterId: author.id,
+      messageTimestamp: Date.now() - 1000,
+    },
+  });
+  const characters = [author, familiarPeer];
+
+  assert.equal(inferMomentAudience(moment, characters), 'user_directed');
+  const picked = pickInitialCommenters({
+    moment,
+    characters,
+  });
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0]?.id, familiarPeer.id);
+});
+
+test('chat-image sourced user-directed moments allow all familiar peers to comment in the first wave', () => {
+  const familiarAHints = createMutualHintPair('author', 'familiar-a', 'familiar');
+  const familiarBHints = createMutualHintPair('author', 'familiar-b', 'familiar');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: [...familiarAHints.left, ...familiarBHints.left],
+  });
+  const familiarPeerA = createCharacter({
+    id: 'familiar-a',
+    name: 'Familiar A',
+    publicThreadPeerHints: familiarAHints.right,
+  });
+  const familiarPeerB = createCharacter({
+    id: 'familiar-b',
+    name: 'Familiar B',
+    publicThreadPeerHints: familiarBHints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: '这条也是聊天图片带出来的动态。',
+    sourceImage: {
+      source: 'recent_chat_image',
+      characterId: author.id,
+      messageTimestamp: Date.now() - 1000,
+    },
+  });
+
+  const picked = pickInitialCommenters({
+    moment,
+    characters: [author, familiarPeerA, familiarPeerB],
+  });
+  assert.equal(picked.length, 2);
+  assert.equal(picked.some((character) => character.id === familiarPeerA.id), true);
+  assert.equal(picked.some((character) => character.id === familiarPeerB.id), true);
+});
+
+test('chat-image sourced user-directed moments still keep aware peers out of first-wave comments', () => {
+  const hints = createMutualHintPair('author', 'aware-peer', 'aware');
+  const author = createCharacter({
+    id: 'author',
+    name: 'Author',
+    publicThreadPeerHints: hints.left,
+  });
+  const awarePeer = createCharacter({
+    id: 'aware-peer',
+    name: 'Aware Peer',
+    publicThreadPeerHints: hints.right,
+  });
+  const moment = createMoment({
+    authorId: author.id,
+    content: '这条也是半夜发图后的余波。',
+    sourceImage: {
+      source: 'recent_chat_image',
+      characterId: author.id,
+      messageTimestamp: Date.now() - 1000,
+    },
+  });
+
+  assert.equal(inferMomentAudience(moment, [author, awarePeer]), 'user_directed');
+  assert.deepEqual(
+    pickInitialCommenters({
+      moment,
+      characters: [author, awarePeer],
+    }),
+    [],
+  );
 });
 
 test('familiar peers remain eligible for top-level auto comments', () => {

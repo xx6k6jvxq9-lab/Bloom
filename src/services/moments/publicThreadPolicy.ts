@@ -706,11 +706,19 @@ export function inferCharacterPublicThreadRelation(
 export function isLikelyUserDirectedMoment(options: {
   momentContent: string;
   author: Character | null;
+  sourceImage?: MomentItem['sourceImage'];
 }) {
-  const { momentContent, author } = options;
+  const { momentContent, author, sourceImage } = options;
   const text = momentContent.trim();
   if (!text || !author) {
     return false;
+  }
+
+  if (
+    sourceImage?.source === 'recent_chat_image'
+    && sourceImage.characterId === author.id
+  ) {
+    return true;
   }
 
   const relationStrength = getCharacterUserRelationStrength(author);
