@@ -7,6 +7,7 @@ import { sanitizeAdminNominationCooldowns } from '../group-settings/groupGoverna
 import { sanitizeMutedMemberEntries } from '../group-settings/groupMutedMembers';
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-chat/groupShortTermMemory';
+import { sanitizeCollectedGroupOfflineSessionRecords } from '../../services/group-offline/collectedGroupOfflineSessions';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
 import { normalizeContactGroupName } from './contactGroupNames';
 import { migrateCharacterShapes } from './migrateCharacterShape';
@@ -121,6 +122,7 @@ export function sanitizeChatGroupsWithCharacters(
     currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
     publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
     activeOfflineSession: sanitizeGroupOfflineSession(group.activeOfflineSession),
+    collectedOfflineSessions: sanitizeCollectedGroupOfflineSessionRecords(group.collectedOfflineSessions),
     awarenessMode: getGroupAwarenessMode(group),
     groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
       ? group.groupShortTermSummary.trim() || undefined

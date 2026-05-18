@@ -45,7 +45,7 @@ function createSession(overrides: Partial<DateSession> = {}): DateSession {
   };
 }
 
-test('special directive content blocks direct-chat memory writeback even when it asks to merge into mainline', () => {
+test('special directives still stay out of mainline even when the raw text says to merge back', () => {
   const session = createSession({
     directorInstruction: '暂停主线，生成一个番外小剧场，但这次内容计入主线。',
     generatedContent: createGeneratedContent({
@@ -54,13 +54,26 @@ test('special directive content blocks direct-chat memory writeback even when it
         pageType: 'feed_post',
         platform: 'weibo',
         title: '微博页',
-        canonMode: 'mainline',
+        canonMode: 'side_story',
         feed: {
           authorName: '测试角色',
           body: '正文',
           comments: [],
         },
       },
+    }),
+  });
+
+  assert.equal(hasDatingSpecialDirectiveContent(session), true);
+  assert.equal(resolveDatingWritebackPolicy(session), 'side_story');
+  assert.equal(shouldWriteDatingMemoryBackToDirectChat(session), false);
+});
+
+test('special directive content still blocks direct-chat memory writeback when it stays a side story', () => {
+  const session = createSession({
+    directorInstruction: '暂停主线，生成一个番外小剧场。',
+    generatedContent: createGeneratedContent({
+      appliedDirectorInstruction: '暂停主线，生成一个番外小剧场。',
     }),
   });
 

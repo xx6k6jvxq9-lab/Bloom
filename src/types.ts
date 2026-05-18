@@ -475,6 +475,17 @@ export type CoupleSpaceInitiativeDraftEntry = {
   source: 'manual_check' | 'auto_check';
 };
 
+export type CoupleSpaceSharedMallItem = {
+  id: string;
+  itemId: string;
+  snapshot: SharedMallItemSnapshot;
+  sourceOrderId?: string;
+  sourceOwnedItemId?: string;
+  placedAt: number;
+  placedBy: 'user' | 'partner' | 'system';
+  placementReason?: 'manual' | 'gift_feedback';
+};
+
 export type CoupleSpacePublishingActionSettings = {
   enabled: boolean;
   cadence: CoupleSpaceInitiativeCadence;
@@ -986,6 +997,7 @@ export type GroupGovernanceCard = GroupJoinRequestCard | GroupAdminNominationCar
 
 export type GroupOfflineMode = 'daily' | 'scenario' | 'random';
 export type GroupOfflineGenerationMode = 'blocks';
+export type GroupOfflineMemoryWritebackPolicy = 'allow' | 'block';
 export type GroupOfflineRoundDispatchMode = 'recommend' | 'random' | 'manual' | 'continue';
 export type GroupOfflineStylePresetId = 'jjwxc' | 'haitang' | 'yanyan' | 'fanqie' | 'qidian';
 export type GroupOfflineScenarioType =
@@ -1209,6 +1221,15 @@ export type GroupOfflineRoundPlanSnapshot = {
   }>;
 };
 
+export type GroupOfflineDirectorOutputMode =
+  | 'auto'
+  | 'narrative'
+  | 'wechat_chat'
+  | 'feed_post'
+  | 'document_page'
+  | 'custom_html'
+  | 'micro_app';
+
 export type GroupOfflineRound = {
   id: string;
   title?: string;
@@ -1230,6 +1251,15 @@ export type GroupOfflineEndingVoice = {
   characterId: string;
   characterName: string;
   text: string;
+};
+
+export type GroupOfflineRecruitDecision = 'join' | 'decline';
+
+export type GroupOfflineRecruitResponseRecord = {
+  characterId: string;
+  decision: GroupOfflineRecruitDecision;
+  text: string;
+  respondedAt: number;
 };
 
 export type GroupOfflineRecruitDraft = {
@@ -1259,7 +1289,10 @@ export type GroupOfflineRecruitDraft = {
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;
   directorInstruction?: string;
+  directorInstructionOutputMode?: GroupOfflineDirectorOutputMode;
+  memoryWritebackPolicy?: GroupOfflineMemoryWritebackPolicy;
   awaitingDirectorInstruction?: boolean;
+  recruitResponses?: GroupOfflineRecruitResponseRecord[];
   signedUpParticipantIds?: string[];
   confirmedParticipantIds?: string[];
   rosterLockedAt?: number;
@@ -1313,11 +1346,33 @@ export type GroupOfflineCard = {
   progressLabel?: string;
   signupCount?: number;
   confirmedCount?: number;
+  declinedCount?: number;
+  pendingCount?: number;
   rosterLockedAt?: number;
   objectiveLabel?: string;
   roundLabel?: string;
   summaryLines?: string[];
   soundtrack?: GroupOfflineSoundtrack;
+};
+
+export type CollectedGroupOfflineSessionRecord = {
+  sessionId: string;
+  groupId: string;
+  groupName: string;
+  title: string;
+  mode: GroupOfflineMode;
+  status: 'active' | 'ended';
+  locationLabel: string;
+  timeLabel: string;
+  weatherLabel?: string;
+  participantLabels: string[];
+  objectiveLabel?: string;
+  roundLabel?: string;
+  summaryLines: string[];
+  createdAt: number;
+  updatedAt: number;
+  endedAt?: number;
+  sessionSnapshot?: GroupOfflineSession;
 };
 
 export type GroupOfflineSession = {
@@ -1346,6 +1401,8 @@ export type GroupOfflineSession = {
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;
   directorInstruction?: string;
+  directorInstructionOutputMode?: GroupOfflineDirectorOutputMode;
+  memoryWritebackPolicy?: GroupOfflineMemoryWritebackPolicy;
   awaitingDirectorInstruction?: boolean;
   maxGeneratedChars?: number;
   participants: GroupOfflineParticipant[];
@@ -1632,6 +1689,7 @@ export type CoupleSpaceData = {
   posts?: CouplePost[];
   anniversaries?: Anniversary[];
   messageBoard?: MessageBoardEntry[];
+  sharedMallItems?: CoupleSpaceSharedMallItem[];
   initiativeDrafts?: CoupleSpaceInitiativeDraftEntry[];
   initiativeRuntime?: Partial<
     Record<CoupleSpaceInitiativeActionType, CoupleSpaceInitiativeRuntimeRecord>
@@ -2013,6 +2071,7 @@ export type ChatGroup = {
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
   activeOfflineSession?: GroupOfflineSession | null;
+  collectedOfflineSessions?: CollectedGroupOfflineSessionRecord[];
 };
 
 export type CallRecord = {
@@ -2403,7 +2462,9 @@ export type MallCartEntry = {
   id: string;
   itemId: string;
   quantity: number;
-  mode: Extract<MallDestinationKind, 'self' | 'digital'>;
+  mode: Extract<MallDestinationKind, 'self' | 'gift' | 'shared_space' | 'digital'>;
+  giftTargetCharacterId?: string;
+  giftTargetCharacterName?: string;
   addedAt: number;
 };
 
@@ -2437,14 +2498,26 @@ export type MallOrderStatus =
   | 'cancelled'
   | 'refunded';
 
+export type MallGiftFeedbackSnapshot = {
+  summary: string;
+  accepted: boolean;
+  liked: boolean;
+  willMentionAgain: boolean;
+  placeIntoSharedSpace: boolean;
+  generatedAt: number;
+};
+
 export type MallOrder = {
   id: string;
   itemId: string;
-  mode: Extract<MallDestinationKind, 'self' | 'digital'>;
+  mode: Extract<MallDestinationKind, 'self' | 'gift' | 'shared_space' | 'digital'>;
   status: MallOrderStatus;
   walletTransactionId?: string;
   shippingAddressId?: string;
   shippingAddressSnapshot?: MallOrderAddressSnapshot;
+  giftTargetCharacterId?: string;
+  giftTargetCharacterName?: string;
+  giftFeedback?: MallGiftFeedbackSnapshot;
   createdAt: number;
   updatedAt: number;
 };
@@ -2481,6 +2554,7 @@ export type MallData = {
   deliveryFeed: MallDeliveryEvent[];
   wishlist: string[];
   recentSearches: string[];
+  recentViewedItemIds: string[];
   addresses: MallAddress[];
   selectedAddressId?: string | null;
   currentShoppingCompanionId?: string | null;

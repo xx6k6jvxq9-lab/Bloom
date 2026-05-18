@@ -167,6 +167,8 @@ export function GroupChatSessionContainer({
             ? {
                 ...item,
                 history: [],
+                relationshipWaves: [],
+                factTraces: [],
                 topicState: undefined,
                 groupShortTermSummary: undefined,
                 groupMemberPerspectiveSummaries: undefined,

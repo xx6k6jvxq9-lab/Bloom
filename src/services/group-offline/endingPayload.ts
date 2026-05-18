@@ -1,173 +1,196 @@
-import type {
-  Character,
-  GroupOfflineEndingVoice,
-  GroupOfflineRound,
-  GroupOfflineRoundCharacterEntry,
-  GroupOfflineSession,
-} from '../../types';
+import type { Character, GroupOfflineEndingVoice, GroupOfflineSession } from '../../types';
+import {
+  buildGroupOfflineWritebackPlan,
+  type GroupOfflineWritebackPlan,
+} from './groupOfflineWritebackPlan';
 
 export type GroupOfflineEndingPayload = {
   summaryLines: string[];
   endingVoices: GroupOfflineEndingVoice[];
 };
 
-type EndingInteractionSeed = {
-  member: Character;
-  round: GroupOfflineRound;
-  entry: GroupOfflineRoundCharacterEntry;
-  kind: 'user_target' | 'user_mentioned';
+export type GroupOfflineEndingReactionKind =
+  | 'user_followup'
+  | 'pair_aftertaste'
+  | 'lingering_aftertaste'
+  | 'group_aftertaste';
+
+export type GroupOfflineEndingReactionCue = {
+  characterId: string;
+  characterName: string;
+  kind: GroupOfflineEndingReactionKind;
+  preferredCarryoverText?: string;
+  targetLabel?: string;
+  highlightText?: string;
+  evidenceSummary: string;
+};
+
+export type GroupOfflineEndingReactionPlan = {
+  sharedEventSummary?: string;
+  summaryLines: string[];
+  cues: GroupOfflineEndingReactionCue[];
+  isSpecialDirectiveSession: boolean;
 };
 
 function normalizeText(value: string | null | undefined): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeDialogueCore(value: string | undefined): string {
-  return normalizeText(value).replace(/^[“"'「『]+|[”"'」』]+$/gu, '').trim();
-}
-
-function buildCharacterAliases(member: Character): string[] {
-  return [member.name, member.remarkName?.trim()]
-    .map((value) => normalizeText(value))
-    .filter(Boolean);
-}
-
-function textMentionsMember(text: string | undefined, member: Character): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  return buildCharacterAliases(member).some((alias) => alias && normalized.includes(alias));
-}
-
-function buildVariantSeed(value: string): number {
-  let total = 0;
-  for (const [index, char] of Array.from(value).entries()) {
-    total += char.charCodeAt(0) * (index + 17);
-  }
-  return total;
-}
-
-function pickVariant(memberId: string, variants: string[]): string {
-  if (variants.length === 0) return '';
-  return variants[Math.abs(buildVariantSeed(memberId)) % variants.length];
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
 function summarizeText(value: string | undefined, max = 48): string {
   const normalized = normalizeText(value);
   if (!normalized) return '';
-  if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, Math.max(0, max - 1)).trim()}…`;
+  return normalized.length > max
+    ? `${normalized.slice(0, Math.max(0, max - 3)).trim()}...`
+    : normalized;
 }
 
-function buildSummaryLines(session: GroupOfflineSession): string[] {
-  const rounds = session.generatedContent?.rounds || [];
-  const latestRound = rounds[rounds.length - 1];
-  const activityLabel = session.customActivityType?.trim() || session.activityType;
-  const leadSummary = normalizeText(latestRound?.sceneText)
-    || normalizeText(session.generatedContent?.intro)
-    || normalizeText(session.scenePrompt)
-    || `${activityLabel}先收在这里了。`;
-  const condensedSummary = summarizeText(leadSummary, 48);
+function buildSummaryLines(
+  session: GroupOfflineSession,
+  writebackPlan: GroupOfflineWritebackPlan,
+): string[] {
+  const activityLabel = normalizeText(session.customActivityType || session.activityType) || '这场群线下';
+  const sharedEventSummary = summarizeText(writebackPlan.sharedEventSummary, 64);
+  const locationLine = normalizeText(session.location)
+    ? `${activityLabel}先收在${normalizeText(session.location)}。`
+    : `${activityLabel}先收在这里。`;
 
   return [
-    `${activityLabel}先收在这里了。`,
-    condensedSummary,
+    locationLine,
+    sharedEventSummary,
   ].filter(Boolean);
 }
 
-function findEndingInteractionSeed(
-  session: GroupOfflineSession,
-  member: Character,
-): EndingInteractionSeed | null {
-  const rounds = session.generatedContent?.rounds || [];
-  let mentionedCandidate: EndingInteractionSeed | null = null;
-
-  for (let index = rounds.length - 1; index >= 0; index -= 1) {
-    const round = rounds[index];
-    const entry = round.characterEntries.find((item) => item.characterId === member.id);
-    if (!entry) continue;
-
-    if (entry.target?.type === 'user') {
-      return {
-        member,
-        round,
-        entry,
-        kind: 'user_target',
-      };
-    }
-
-    if (!mentionedCandidate && textMentionsMember(round.userMessageText, member)) {
-      mentionedCandidate = {
-        member,
-        round,
-        entry,
-        kind: 'user_mentioned',
-      };
-    }
-  }
-
-  return mentionedCandidate;
+function buildCueEvidenceSummary(parts: Array<string | undefined>): string {
+  return parts
+    .map((part) => summarizeText(part, 56))
+    .filter(Boolean)
+    .join('；');
 }
 
-function buildEndingVoiceText(seed: EndingInteractionSeed): string {
-  const quote = summarizeText(normalizeDialogueCore(seed.entry.highlightText), 18);
-
-  if (seed.kind === 'user_target') {
-    if (quote) {
-      return pickVariant(seed.member.id, [
-        `你刚才那句「${quote}」我先记着，回去再跟我说完。`,
-        `刚才接到一半那句「${quote}」别就这么算了，回去继续。`,
-      ]);
-    }
-
-    return pickVariant(seed.member.id, [
-      '刚才你没说完的那句，回去继续。',
-      '刚才接到一半那句，你回去再跟我说清楚。',
-    ]);
+function resolveReactionKind(input: {
+  latestTargetType?: 'user' | 'character' | 'group' | 'scene';
+  latestTargetLabel?: string;
+  highlightText?: string;
+  preferredCarryoverText?: string;
+}): GroupOfflineEndingReactionKind {
+  if (input.latestTargetType === 'user') {
+    return 'user_followup';
   }
-
-  if (quote) {
-    return pickVariant(seed.member.id, [
-      `刚才我都点到你了，那句「${quote}」你别想带过去。`,
-      `既然刚才都点到你了，「${quote}」这句你回去再说完。`,
-    ]);
+  if (input.latestTargetType === 'character' && input.latestTargetLabel) {
+    return 'pair_aftertaste';
   }
+  if (input.highlightText || input.preferredCarryoverText) {
+    return 'lingering_aftertaste';
+  }
+  return 'group_aftertaste';
+}
 
-  return pickVariant(seed.member.id, [
-    '刚才我都点你了，别装没听见，回去继续。',
-    '刚才都叫到你了，这句你回去别躲。',
-  ]);
+export function buildGroupOfflineEndingReactionPlan(
+  session: GroupOfflineSession,
+  members: Character[],
+  options?: {
+    writebackPlan?: GroupOfflineWritebackPlan;
+  },
+): GroupOfflineEndingReactionPlan {
+  const writebackPlan = options?.writebackPlan || buildGroupOfflineWritebackPlan(session, members);
+  const memberMap = new Map(members.map((member) => [member.id, member]));
+  const cues = session.participants
+    .map((participant) => {
+      const member = memberMap.get(participant.characterId);
+      if (!member) {
+        return null;
+      }
+
+      const evidence = writebackPlan.participantEvidenceByCharacterId[member.id];
+      const kind = resolveReactionKind({
+        latestTargetType: evidence?.latestTargetType,
+        latestTargetLabel: evidence?.latestTargetLabel,
+        highlightText: evidence?.latestHighlightText,
+        preferredCarryoverText: evidence?.preferredCarryoverText,
+      });
+      const evidenceSummary = buildCueEvidenceSummary([
+        evidence?.preferredCarryoverText,
+        evidence?.latestHighlightText ? `刚才那句：${evidence.latestHighlightText}` : undefined,
+        evidence?.latestTargetLabel ? `当前还盯着：${evidence.latestTargetLabel}` : undefined,
+      ]) || '这场留下的余波还没散。';
+
+      return {
+        characterId: member.id,
+        characterName: member.remarkName?.trim() || member.name,
+        kind,
+        ...(evidence?.preferredCarryoverText ? { preferredCarryoverText: evidence.preferredCarryoverText } : {}),
+        ...(evidence?.latestTargetLabel ? { targetLabel: evidence.latestTargetLabel } : {}),
+        ...(evidence?.latestHighlightText ? { highlightText: evidence.latestHighlightText } : {}),
+        evidenceSummary,
+      } satisfies GroupOfflineEndingReactionCue;
+    })
+    .filter((cue): cue is GroupOfflineEndingReactionCue => !!cue);
+
+  return {
+    sharedEventSummary: writebackPlan.sharedEventSummary,
+    summaryLines: buildSummaryLines(session, writebackPlan),
+    cues,
+    isSpecialDirectiveSession: writebackPlan.isSpecialDirectiveSession,
+  };
+}
+
+function buildEndingVoiceText(cue: GroupOfflineEndingReactionCue): string {
+  switch (cue.kind) {
+    case 'user_followup':
+      if (cue.highlightText) {
+        return `我回群了。刚才那句“${cue.highlightText}”我还记着，先别让我就这么放掉。`;
+      }
+      return cue.preferredCarryoverText
+        ? '我先回群说一声，刚才那点后话我还没翻篇，先让我记着。'
+        : '我先回群说一声，刚才那点后话我还没翻篇。';
+    case 'pair_aftertaste':
+      if (cue.targetLabel && cue.highlightText) {
+        return `@${cue.targetLabel} 刚才那句“${cue.highlightText}”我还记着，你别装已经翻篇了。`;
+      }
+      return cue.targetLabel
+        ? `@${cue.targetLabel} 刚才那点话头先别散，我还挂着。`
+        : '刚才那点话头先别散，我还挂着。';
+    case 'lingering_aftertaste':
+      if (cue.highlightText) {
+        return `我回来了。刚才那句“${cue.highlightText}”还在那儿挂着，先别急着压下去。`;
+      }
+      return cue.preferredCarryoverText
+        ? '我回群了。刚才那点余温还没散，先别急着翻篇。'
+        : '我回群了。刚才那点余温还没散。';
+    case 'group_aftertaste':
+    default:
+      return cue.preferredCarryoverText
+        ? '我先回来了。场子表面散了，但后劲还在。'
+        : '我回群了。场子是散了，气还没完全落下去。';
+  }
 }
 
 export function buildUserAnchoredGroupOfflineEndingVoices(
   session: GroupOfflineSession,
   members: Character[],
 ): GroupOfflineEndingVoice[] {
-  const memberMap = new Map(members.map((member) => [member.id, member]));
+  const reactionPlan = buildGroupOfflineEndingReactionPlan(session, members);
 
-  return session.participants
-    .map((participant) => memberMap.get(participant.characterId))
-    .filter((member): member is Character => !!member)
-    .map((member) => {
-      const seed = findEndingInteractionSeed(session, member);
-      if (!seed) {
-        return null;
-      }
-
-      return {
-        characterId: member.id,
-        characterName: member.remarkName?.trim() || member.name,
-        text: buildEndingVoiceText(seed),
-      } satisfies GroupOfflineEndingVoice;
-    })
-    .filter((voice): voice is GroupOfflineEndingVoice => !!voice && !!normalizeText(voice.text));
+  return reactionPlan.cues
+    .map((cue) => ({
+      characterId: cue.characterId,
+      characterName: cue.characterName,
+      text: buildEndingVoiceText(cue),
+    }))
+    .filter((voice) => !!normalizeText(voice.text));
 }
 
 export function buildDerivedGroupOfflineEndingPayload(
   session: GroupOfflineSession,
   members: Character[],
 ): GroupOfflineEndingPayload {
+  const reactionPlan = buildGroupOfflineEndingReactionPlan(session, members);
   return {
-    summaryLines: buildSummaryLines(session),
-    endingVoices: buildUserAnchoredGroupOfflineEndingVoices(session, members),
+    summaryLines: reactionPlan.summaryLines,
+    endingVoices: reactionPlan.cues.map((cue) => ({
+      characterId: cue.characterId,
+      characterName: cue.characterName,
+      text: buildEndingVoiceText(cue),
+    })),
   };
 }

@@ -74,6 +74,8 @@ type UseGroupChatRuntimeArgs = {
     groupShortTermSummary?: ChatGroup['groupShortTermSummary'];
     groupMemberPerspectiveSummaries?: ChatGroup['groupMemberPerspectiveSummaries'];
     groupLongTermMemory?: ChatGroup['groupLongTermMemory'];
+    relationshipWaves?: ChatGroup['relationshipWaves'];
+    factTraces?: ChatGroup['factTraces'];
   };
   history: ChatMessage[];
   setHistory: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -1380,6 +1382,8 @@ export function useGroupChatRuntime({
             groupShortTermSummary: groupMeta.groupShortTermSummary,
             groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
             groupLongTermMemory: groupMeta.groupLongTermMemory,
+            relationshipWaves: groupMeta.relationshipWaves,
+            factTraces: groupMeta.factTraces,
           }
         : undefined,
       userName,
@@ -1429,6 +1433,8 @@ export function useGroupChatRuntime({
     groupMeta?.groupLongTermMemory,
     groupMeta?.groupMemberPerspectiveSummaries,
     groupMeta?.groupShortTermSummary,
+    groupMeta?.relationshipWaves,
+    groupMeta?.factTraces,
     groupMeta?.groupStage,
     groupMeta?.memberRelationSeeds,
     groupMeta?.memberRelationshipNote,
@@ -1487,6 +1493,8 @@ export function useGroupChatRuntime({
             groupShortTermSummary: groupMeta.groupShortTermSummary,
             groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
             groupLongTermMemory: groupMeta.groupLongTermMemory,
+            relationshipWaves: groupMeta.relationshipWaves,
+            factTraces: groupMeta.factTraces,
           }
         : undefined,
       userName,
@@ -1757,6 +1765,8 @@ export function useGroupChatRuntime({
     groupMeta?.groupShortTermSummary,
     groupMeta?.groupMemberPerspectiveSummaries,
     groupMeta?.groupLongTermMemory,
+    groupMeta?.relationshipWaves,
+    groupMeta?.factTraces,
     members,
     userName,
     directChatHistory,

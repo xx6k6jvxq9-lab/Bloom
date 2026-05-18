@@ -41,7 +41,7 @@ function GroupFeatureActionButton(props: {
 }) {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       disabled={props.disabled}
       className="flex flex-col items-center gap-2 disabled:cursor-not-allowed disabled:opacity-45"
     >

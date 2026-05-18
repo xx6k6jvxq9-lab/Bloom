@@ -179,8 +179,25 @@ test('buildGroupOfflineRoundRewritePrompt keeps page-episode schema when retryin
     previousRounds: [createRound()],
   });
 
-  assert.match(prompt, /这一轮必须继续以独立 HTML 页面轮的形式输出/);
+  assert.match(prompt, /page_episode/);
   assert.match(prompt, /"mode": "page_episode"/);
   assert.match(prompt, /"pageType": "custom_html"/);
   assert.match(prompt, /"htmlDocument": "完整 html 或可直接渲染的主体结构"/);
+});
+
+test('buildGroupOfflineRoundRewritePrompt switches to wechat page schema when director rewrite asks for a wechat page', () => {
+  const prompt = buildGroupOfflineRoundRewritePrompt({
+    mode: 'director_instruction',
+    session: createSession(),
+    round: createRound(),
+    runtimeProjection: createProjection(),
+    previousRounds: [createRound()],
+    directorInstructionText: '暂停主线，改成一个微信聊天页面，不要状态栏，消息不少于 20 条。',
+  });
+
+  assert.match(prompt, /"mode": "page_episode"/);
+  assert.match(prompt, /"pageType": "wechat_chat"/);
+  assert.match(prompt, /"platform": "wechat"/);
+  assert.match(prompt, /"chat": \{/);
+  assert.match(prompt, /"messages": \[/);
 });

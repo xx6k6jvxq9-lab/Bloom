@@ -14,6 +14,10 @@ import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buil
 import { areMemoryRecordDataEqual, loadPreferredMemoryRecordData, resetMemoryRecordData, saveMemoryRecordData } from './memoryRecordStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { sanitizeChatMessageArrayForOfflineFields } from '../../services/group-offline/persistenceSanitizers';
+import {
+  mergeFactTraceRecords,
+  mergeRelationshipWaveRecords,
+} from '../../services/group-offline/groupOfflineUnifiedContext';
 
 const CHAT_HISTORY_SHARD_INDEX_FORMAT = 'chat-history-shard-index';
 const CHAT_HISTORY_SHARD_VERSION = 1;
@@ -709,6 +713,16 @@ export function resetChatHistoryRecords(): void {
 export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, PersistedGroupSession> {
   return chatGroups.reduce<Record<string, PersistedGroupSession>>((acc, group) => {
     const history = group.history || [];
+    const derivedRelationshipWaves = buildGroupRelationshipWaveRecords({
+      groupId: group.id,
+      messages: history,
+      memberIds: group.memberIds,
+    });
+    const derivedFactTraces = buildGroupFactTraceRecords({
+      groupId: group.id,
+      messages: history,
+      memberIds: group.memberIds,
+    });
     acc[group.id] = {
       history,
       lastMessage: group.lastMessage,
@@ -717,16 +731,8 @@ export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, Pe
       groupShortTermSummary: group.groupShortTermSummary,
       groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
       groupLongTermMemory: group.groupLongTermMemory,
-      relationshipWaves: buildGroupRelationshipWaveRecords({
-        groupId: group.id,
-        messages: history,
-        memberIds: group.memberIds,
-      }),
-      factTraces: buildGroupFactTraceRecords({
-        groupId: group.id,
-        messages: history,
-        memberIds: group.memberIds,
-      }),
+      relationshipWaves: mergeRelationshipWaveRecords(group.relationshipWaves, derivedRelationshipWaves),
+      factTraces: mergeFactTraceRecords(group.factTraces, derivedFactTraces),
     };
     return acc;
   }, {});
@@ -820,6 +826,16 @@ export function extractGroupSessionsWithFallback(
 
     if (hasSessionFields) {
       const history = group.history || [];
+      const derivedRelationshipWaves = buildGroupRelationshipWaveRecords({
+        groupId: group.id,
+        messages: history,
+        memberIds: group.memberIds,
+      });
+      const derivedFactTraces = buildGroupFactTraceRecords({
+        groupId: group.id,
+        messages: history,
+        memberIds: group.memberIds,
+      });
       acc[group.id] = {
         history,
         lastMessage: group.lastMessage,
@@ -828,16 +844,8 @@ export function extractGroupSessionsWithFallback(
         groupShortTermSummary: group.groupShortTermSummary,
         groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
         groupLongTermMemory: group.groupLongTermMemory,
-        relationshipWaves: buildGroupRelationshipWaveRecords({
-          groupId: group.id,
-          messages: history,
-          memberIds: group.memberIds,
-        }),
-        factTraces: buildGroupFactTraceRecords({
-          groupId: group.id,
-          messages: history,
-          memberIds: group.memberIds,
-        }),
+        relationshipWaves: mergeRelationshipWaveRecords(group.relationshipWaves, derivedRelationshipWaves),
+        factTraces: mergeFactTraceRecords(group.factTraces, derivedFactTraces),
       };
       return acc;
     }

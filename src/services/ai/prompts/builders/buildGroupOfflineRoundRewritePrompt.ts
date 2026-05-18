@@ -32,6 +32,10 @@ type BuildGroupOfflineRoundRewritePromptOptions = {
   customStyleText?: string;
   directorInstructionText?: string;
   roundPlan?: GroupOfflineRoundPlan;
+  directorPagePlanOverride?: {
+    pageType: NonNullable<NonNullable<GroupOfflineRound['pageEpisode']>['pageType']>;
+    platform?: NonNullable<GroupOfflineRound['pageEpisode']>['platform'];
+  };
 };
 
 function formatPreviousRounds(rounds: GroupOfflineRound[] | undefined, currentRoundId: string): string {
@@ -91,25 +95,156 @@ function formatCurrentRound(round: GroupOfflineRound): string {
   ].filter(Boolean).join('\n\n');
 }
 
-function resolveHtmlRewritePageType(
+function resolvePageRewritePlan(
   options: BuildGroupOfflineRoundRewritePromptOptions,
-): 'micro_app' | 'custom_html' | undefined {
+): {
+  pageType: NonNullable<NonNullable<GroupOfflineRound['pageEpisode']>['pageType']>;
+  platform?: NonNullable<GroupOfflineRound['pageEpisode']>['platform'];
+} | undefined {
+  if (options.directorPagePlanOverride) {
+    return options.directorPagePlanOverride;
+  }
+
   const compiled = options.directorInstructionText?.trim()
     ? compileSpecialDirective(options.directorInstructionText.trim())
     : null;
-  if (compiled?.pageType === 'micro_app' || compiled?.pageType === 'custom_html') {
-    return compiled.pageType;
+  if (compiled?.pageType) {
+    return {
+      pageType: compiled.pageType,
+      ...(compiled.platform ? { platform: compiled.platform } : {}),
+    };
   }
 
-  if (options.round.pageEpisode?.pageType === 'micro_app' || options.round.pageEpisode?.pageType === 'custom_html') {
-    return options.round.pageEpisode.pageType;
+  if (options.round.pageEpisode?.pageType) {
+    return {
+      pageType: options.round.pageEpisode.pageType,
+      platform: options.round.pageEpisode.platform,
+    };
   }
 
   return undefined;
 }
 
+function buildGroupOfflinePageRewriteRuleLines(
+  pagePlan: {
+    pageType: NonNullable<NonNullable<GroupOfflineRound['pageEpisode']>['pageType']>;
+    platform?: NonNullable<GroupOfflineRound['pageEpisode']>['platform'];
+  },
+): string[] {
+  if (pagePlan.pageType === 'wechat_chat') {
+    return [
+      '6. round.pageEpisode.chat.messages 必须给出完整聊天记录；用 message 数组拆开时间戳、系统提示、转账卡片和普通消息，不要把整页聊天揉成一段说明文。',
+      '7. 如果导演要求隐藏状态栏或自定义状态栏，把 round.pageEpisode.statusBar 一起写出来；如果没要求，就按正常微信聊天页处理。',
+      '8. 聊天内容必须服务这一轮推进，不能只做 UI 壳子或空白占位。',
+    ];
+  }
+
+  if (pagePlan.pageType === 'feed_post') {
+    return [
+      '6. 如果导演要求的是多条动态/多条帖子，不要把编号硬塞进一个 body；要拆成 round.pageEpisode.feed.items 里的多条独立动态卡片。',
+      '7. round.pageEpisode.feed 要把 authorName、headline、body、comments 等字段拆开；微博/小红书/网易云/校园墙这类平台页，不要把标题、来源、地点、标签全糊进正文。',
+      '8. 除微信和朋友圈外，社交媒体页默认要有评论区；如果导演要求评论条数，要补足对应数量。',
+    ];
+  }
+
+  if (pagePlan.pageType === 'document_page') {
+    return [
+      '6. round.pageEpisode.document 必须给出完整文档结构：title、subtitle、intro、sections，以及需要的话 primaryActionLabel / secondaryActionLabel。',
+      '7. sections 要拆成多段信息块，不要把所有内容塞成一整段说明文。',
+      '8. 文档页也必须服务这一轮推进，像调查页、通知页、报名页或现场记录页，而不是脱离剧情的模板空壳。',
+    ];
+  }
+
+  return [
+    '6. round.pageEpisode.htmlDocument 必须给出完整、可渲染的 html 页面内容；首屏必须直接可见，不能只有空壳背景。',
+    '7. 至少给出一个明确根容器、一个主要视觉区、一个可操作控件和一个操作后的反馈区；点击或切换后要看得出状态变化。',
+    '8. 页面内容仍然必须服务这轮剧情推进，不能脱离当前现场的人设、关系、任务和世界观。',
+  ];
+}
+
+function buildGroupOfflinePageRewriteSchemaLines(
+  pagePlan: {
+    pageType: NonNullable<NonNullable<GroupOfflineRound['pageEpisode']>['pageType']>;
+    platform?: NonNullable<GroupOfflineRound['pageEpisode']>['platform'];
+  },
+  indent = '    ',
+): string[] {
+  const lines = [
+    `${indent}"pageEpisode": {`,
+    `${indent}  "pageType": "${pagePlan.pageType}",`,
+    ...(pagePlan.platform ? [`${indent}  "platform": "${pagePlan.platform}",`] : []),
+    `${indent}  "title": "页面标题",`,
+    `${indent}  "subtitle": "页面副标题",`,
+    `${indent}  "caption": "页面补充说明，可选",`,
+  ];
+
+  if (pagePlan.pageType === 'wechat_chat') {
+    return [
+      ...lines,
+      `${indent}  "statusBar": { "mode": "auto|hidden|custom", "time": "22:18", "carrier": "中国移动", "network": "5G", "battery": 86 },`,
+      `${indent}  "chat": {`,
+      `${indent}    "headerTitle": "聊天页顶部标题",`,
+      `${indent}    "headerSubtitle": "聊天页副标题，可选",`,
+      `${indent}    "inputPlaceholder": "输入框提示，可选",`,
+      `${indent}    "messages": [`,
+      `${indent}      { "sender": "system|user|character", "kind": "text|timestamp|system|transfer", "text": "消息正文", "timestampLabel": "22:18", "amountLabel": "¥520.00", "note": "可选备注" }`,
+      `${indent}    ]`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  if (pagePlan.pageType === 'feed_post') {
+    return [
+      ...lines,
+      `${indent}  "feed": {`,
+      `${indent}    "authorName": "主发帖人",`,
+      `${indent}    "authorBadge": "身份标记，可选",`,
+      `${indent}    "headline": "动态标题，可选",`,
+      `${indent}    "body": "主动态正文",`,
+      `${indent}    "sourceLabel": "来源，可选",`,
+      `${indent}    "timestampLabel": "时间，可选",`,
+      `${indent}    "locationLabel": "地点，可选",`,
+      `${indent}    "topics": ["标签1", "标签2"],`,
+      `${indent}    "likeCountLabel": "99+",`,
+      `${indent}    "commentCountLabel": "12",`,
+      `${indent}    "repostCountLabel": "8",`,
+      `${indent}    "comments": [{ "authorName": "评论人", "authorRole": "character|user|other", "text": "评论正文", "badge": "可选" }],`,
+      `${indent}    "items": [`,
+      `${indent}      { "authorName": "动态作者", "headline": "单条动态标题，可选", "body": "单条动态正文", "comments": [] }`,
+      `${indent}    ]`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  if (pagePlan.pageType === 'document_page') {
+    return [
+      ...lines,
+      `${indent}  "document": {`,
+      `${indent}    "title": "文档标题",`,
+      `${indent}    "subtitle": "文档副标题，可选",`,
+      `${indent}    "intro": "文档导语，可选",`,
+      `${indent}    "sections": [`,
+      `${indent}      { "heading": "分节标题，可选", "body": "分节正文" }`,
+      `${indent}    ],`,
+      `${indent}    "primaryActionLabel": "主按钮文案，可选",`,
+      `${indent}    "secondaryActionLabel": "次按钮文案，可选"`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  return [
+    ...lines,
+    `${indent}  "htmlDocument": "完整 html 或可直接渲染的主体结构"`,
+    `${indent}}`,
+  ];
+}
+
 function buildDirectorInstructionBlock(options: BuildGroupOfflineRoundRewritePromptOptions): string {
-  const instruction = options.directorInstructionText?.trim();
+  const rawInstruction = options.directorInstructionText?.trim();
+  const instruction = rawInstruction;
   if (options.mode !== 'director_instruction' || !instruction) {
     return '';
   }
@@ -117,7 +252,7 @@ function buildDirectorInstructionBlock(options: BuildGroupOfflineRoundRewritePro
   return [
     '## 导演额外指令',
     '这次重写当前轮时，要把这条导演指令当成高优先级剧情指令来执行，而不是轻量参考。',
-    /(\d{2,5}\s*(字|汉字|字符|字左右)|[一二两三四五六七八九十百千万]+字|(篇幅|长篇|短篇|写长|写满|放开写|尽量写长|尽量详细|详细展开|多写一点|少写一点))/u.test(instruction)
+    /(\d{2,5}\s*(字|汉字|字符|字左右)|[一二两三四五六七八九十百千万]+字|(篇幅|长篇|短篇|写长|写满|放开写|尽量写长|尽量详细|详细展开|多写一点|少写一点))/u.test(rawInstruction || '')
       ? '如果这条特殊指令明确要求了篇幅或字数，以这条特殊指令为准，不要回退到外部默认字数限制。'
       : '如果这条特殊指令没有明确要求篇幅，再按外部默认字数去控制。',
     '优先级顺序：角色设定 / 世界观 / 不在场约束 > 设定局任务 > 当前轮已确定的调度顺序 > 导演指令 > 文风。',
@@ -138,7 +273,7 @@ export function buildGroupOfflineRoundRewritePrompt(
   const scenarioBrief = formatGroupOfflineScenarioBrief(options.session);
   const scenarioRuleLines = buildGroupOfflineScenarioRoundRuleLines(options.session);
   const directorInstructionBlock = buildDirectorInstructionBlock(options);
-  const htmlRewritePageType = resolveHtmlRewritePageType(options);
+  const pageRewritePlan = resolvePageRewritePlan(options);
   const roundCharacters = options.round.characterEntries.length > 0
     ? options.round.characterEntries
         .map((entry) => findProjectionCharacter(options.runtimeProjection, entry.characterId))
@@ -149,23 +284,23 @@ export function buildGroupOfflineRoundRewritePrompt(
   const selectedNames = roundCharacters.map((character) => character.identity.displayName).join('、');
   const roundProfiles = roundCharacters.map((character) => formatProjectionCharacterProfile(character));
 
-  if (htmlRewritePageType && options.mode !== 'style_preset' && options.mode !== 'custom_style') {
+  if (pageRewritePlan && options.mode !== 'style_preset' && options.mode !== 'custom_style') {
+    const pageRuleLines = buildGroupOfflinePageRewriteRuleLines(pageRewritePlan);
     return [
       options.mode === 'director_instruction'
-        ? '你现在要按导演指令重写群聊线下里的当前轮，而且这一轮必须继续以独立 HTML 页面轮的形式输出。'
-        : '你现在要重试群聊线下里的当前轮，而且这一轮必须继续以独立 HTML 页面轮的形式输出。',
+        ? '你现在要按导演指令重写群聊线下里的当前轮，而且这一轮必须继续以独立 page_episode 页面轮的形式输出。'
+        : '你现在要重试群聊线下里的当前轮，而且这一轮必须继续以独立 page_episode 页面轮的形式输出。',
       '这不是普通群聊，也不是单人约会，而是多人在同一现场的群线下。',
       '',
       '硬性要求：',
       '1. 只输出 JSON，不要解释，不要 markdown。',
       '2. 只处理当前轮，不要改前面的轮次。',
-      `3. 当前轮输出模式固定为 \`page_episode\`，页面类型固定为 \`${htmlRewritePageType}\`。`,
+      `3. 当前轮输出模式固定为 \`page_episode\`，页面类型固定为 \`${pageRewritePlan.pageType}\`。`,
       '4. 保留当前轮的出场角色、出场顺序、玩法、用户输入和基本事件事实，不要增删角色，不要把不在场的人写进页面。',
+      roundCharacters.length > 1 ? '4.5. 当前轮是多人同场，不要把页面误写成只剩一个人的单人页；至少让其他出场角色通过评论、回复、并列卡片或同页互动被看见。' : '',
       ...scenarioRuleLines,
       '5. round.sceneText 仍然必须写，而且它是这轮页面内容的剧情摘要，用于主线衔接，不是大段普通正文。',
-      '6. round.pageEpisode.htmlDocument 必须给出完整、可渲染的 html 页面内容；首屏必须直接可见，不能只有空壳背景。',
-      '7. 至少给出一个明确根容器、一个主要视觉区、一个可操作控件和一个操作后的反馈区；点击或切换后要看得出状态变化。',
-      '8. 页面内容仍然必须服务这轮剧情推进，不能脱离当前现场的人设、关系、任务和世界观。',
+      ...pageRuleLines,
       '9. 如果导演指令明确要求了篇幅、互动或视觉结构，以导演指令为准，不要回退到外部默认字数限制。',
       '',
       directorInstructionBlock,
@@ -190,6 +325,7 @@ export function buildGroupOfflineRoundRewritePrompt(
       '',
       '## 当前轮原始数据',
       formatCurrentRound(options.round),
+      options.round.pageEpisode ? `当前页面 JSON：${JSON.stringify(options.round.pageEpisode)}` : '',
       '',
       options.roundPlan?.characterSteps?.length
         ? [
@@ -213,13 +349,7 @@ export function buildGroupOfflineRoundRewritePrompt(
       '    "title": "当前轮标题",',
       '    "sceneText": "当前轮页面内容对应的剧情摘要",',
       ...buildGroupOfflineScenarioSchemaLines(options.session, '    '),
-      '    "pageEpisode": {',
-      `      "pageType": "${htmlRewritePageType}",`,
-      '      "title": "页面标题",',
-      '      "subtitle": "页面副标题",',
-      '      "caption": "页面补充说明，可选",',
-      '      "htmlDocument": "完整 html 或可直接渲染的主体结构"',
-      '    },',
+      ...buildGroupOfflinePageRewriteSchemaLines(pageRewritePlan, '    '),
       '    "characterEntries": []',
       '  }',
       '}',

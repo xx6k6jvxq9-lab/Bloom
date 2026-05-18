@@ -90,6 +90,10 @@ export function MePage({
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userProfile.avatar);
   const userAvatarLibraryCount = appData?.userAvatarLibrary?.entries?.length || 0;
   const relationshipAvatarBindingCount = appData?.relationshipAvatarBindings?.length || 0;
+  const collectedGroupOfflineCount = (appData?.chatGroups || []).reduce(
+    (count: number, group: ChatGroup) => count + (group.collectedOfflineSessions?.length || 0),
+    0,
+  );
   const bgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, 0.85)` } : { backgroundColor: 'white' };
   const containerBgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: 'transparent' } : { backgroundColor: '#fafafa' };
 
@@ -187,7 +191,7 @@ export function MePage({
                 <MenuButton 
                   icon={<Heart className="text-zinc-900" size={20} />} 
                   label="我的收藏" 
-                  subLabel={`${favorites.length + moments.filter(m => m.isCollected).length} 条内容`}
+                  subLabel={`${favorites.length + moments.filter(m => m.isCollected).length + collectedDates.length + collectedGroupOfflineCount} 条内容`}
                   onClick={() => setActiveSection('favorites')}
                 />
                 <MenuButton 
@@ -284,7 +288,10 @@ export function MePage({
             setFavorites={setFavorites}
             moments={moments}
             collectedDates={collectedDates}
+            chatGroups={(appData?.chatGroups || []) as ChatGroup[]}
+            setAppData={setAppData}
             characters={characters}
+            userProfile={userProfile}
             onBack={() => setActiveSection('main')} 
             globalBackground={globalBackground}
           />
@@ -1306,11 +1313,40 @@ function BackupItem({ title, desc, onClick, globalBackground }: { title: string,
   );
 }
 
-function FavoritesManager({ favorites, setFavorites, moments, collectedDates, characters, onBack, globalBackground }: { favorites: FavoriteMessage[], setFavorites?: (favorites: FavoriteMessage[]) => void, moments?: any[], collectedDates?: any[], characters?: any[], onBack: () => void, globalBackground?: string }) {
+function FavoritesManager({
+  favorites,
+  setFavorites,
+  moments,
+  collectedDates,
+  chatGroups,
+  setAppData,
+  characters,
+  userProfile,
+  onBack,
+  globalBackground,
+}: {
+  favorites: FavoriteMessage[],
+  setFavorites?: (favorites: FavoriteMessage[]) => void,
+  moments?: any[],
+  collectedDates?: any[],
+  chatGroups?: ChatGroup[],
+  setAppData?: React.Dispatch<React.SetStateAction<any>>,
+  characters?: any[],
+  userProfile: UserProfileExtended,
+  onBack: () => void,
+  globalBackground?: string,
+}) {
   const [activeCategory, setActiveCategory] = useState('全部');
+  const [selectedGroupOfflineSessionId, setSelectedGroupOfflineSessionId] = useState<string | null>(null);
   const collectedMoments = (moments || []).filter(m => m.isCollected);
-  
-  const categories = ['全部', '约会', '通话', '聊天', '动态'];
+  const collectedGroupOfflineSessions = (chatGroups || [])
+    .flatMap((group) => (group.collectedOfflineSessions || []).map((record) => ({
+      ...record,
+      groupName: record.groupName || group.groupRemark?.trim() || group.name,
+    })));
+  const selectedGroupOfflineSession = collectedGroupOfflineSessions.find((record) => record.sessionId === selectedGroupOfflineSessionId) || null;
+
+  const categories = ['全部', '约会', '群线下', '通话', '聊天', '动态'];
 
   const filteredFavorites = (activeCategory === '全部' || activeCategory === '聊天' || activeCategory === '通话') 
     ? (activeCategory === '全部' 
@@ -1324,6 +1360,10 @@ function FavoritesManager({ favorites, setFavorites, moments, collectedDates, ch
 
   const filteredDates = (activeCategory === '全部' || activeCategory === '约会')
     ? (collectedDates || [])
+    : [];
+
+  const filteredGroupOfflineSessions = (activeCategory === '全部' || activeCategory === '群线下')
+    ? collectedGroupOfflineSessions
     : [];
 
   return (
@@ -1356,7 +1396,7 @@ function FavoritesManager({ favorites, setFavorites, moments, collectedDates, ch
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {filteredFavorites.length === 0 && filteredMoments.length === 0 && filteredDates.length === 0 && (
+        {filteredFavorites.length === 0 && filteredMoments.length === 0 && filteredDates.length === 0 && filteredGroupOfflineSessions.length === 0 && (
           <div className="py-20 text-center text-zinc-300">
             <Heart size={48} className="mx-auto mb-4 opacity-20" />
             <p className="text-[14px]">收藏夹空空如也</p>
@@ -1385,6 +1425,74 @@ function FavoritesManager({ favorites, setFavorites, moments, collectedDates, ch
             </div>
           );
         })}
+
+        {filteredGroupOfflineSessions.map(session => (
+          <div
+            key={session.sessionId}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedGroupOfflineSessionId(session.sessionId)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setSelectedGroupOfflineSessionId(session.sessionId);
+              }
+            }}
+            className={`w-full rounded-2xl p-4 text-left shadow-sm border space-y-2 backdrop-blur-sm cursor-pointer ${
+            globalBackground ? 'bg-white/50 border-white/30' : 'bg-white border-zinc-100'
+          }`}>
+            <div className="flex justify-between items-center">
+              <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded">
+                群线下 · {session.groupName}
+              </span>
+              <span className="text-[10px] text-zinc-400">{new Date(session.updatedAt || session.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div className="text-[14px] font-semibold text-zinc-900">{session.title}</div>
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-500 italic">
+              {session.locationLabel ? <span>📍 {session.locationLabel}</span> : null}
+              {session.timeLabel ? <span>{session.timeLabel}</span> : null}
+              {session.participantLabels?.length > 0 ? <span>在场：{session.participantLabels.join('、')}</span> : null}
+            </div>
+            {session.summaryLines?.length > 0 ? (
+              <div className="space-y-1">
+                {session.summaryLines.map((line: string, index: number) => (
+                  <p key={`${session.sessionId}-summary-${index}`} className="text-[14px] text-zinc-700 leading-relaxed">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[14px] text-zinc-500 leading-relaxed">这场群线下已经收藏，但还没有可展示的摘要。</p>
+            )}
+            <div className="relative z-10 flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!setAppData) return;
+                  setAppData((prev: any) => ({
+                    ...prev,
+                    chatGroups: (prev.chatGroups || []).map((group: ChatGroup) => (
+                      group.id === session.groupId
+                        ? {
+                            ...group,
+                            collectedOfflineSessions: (group.collectedOfflineSessions || []).filter((item: { sessionId: string }) => item.sessionId !== session.sessionId),
+                          }
+                        : group
+                    )),
+                  }));
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full p-1.5 text-zinc-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95"
+                aria-label="删除收藏"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
 
         {/* Render Moments */}
         {filteredMoments.map(moment => {
@@ -1450,6 +1558,105 @@ function FavoritesManager({ favorites, setFavorites, moments, collectedDates, ch
           </div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {selectedGroupOfflineSession ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
+              <button onClick={() => setSelectedGroupOfflineSessionId(null)} className="p-2 -ml-2 text-zinc-400">
+                <X size={24} />
+              </button>
+              <div>
+                <h4 className="text-[17px] font-bold">群线下详情</h4>
+                <p className="mt-0.5 text-[12px] text-zinc-500">
+                  {selectedGroupOfflineSession.groupName}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+                <div className="text-[16px] font-semibold text-zinc-900">{selectedGroupOfflineSession.title}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
+                  {selectedGroupOfflineSession.locationLabel ? <span>地点：{selectedGroupOfflineSession.locationLabel}</span> : null}
+                  {selectedGroupOfflineSession.timeLabel ? <span>时间：{selectedGroupOfflineSession.timeLabel}</span> : null}
+                  {selectedGroupOfflineSession.weatherLabel ? <span>天气：{selectedGroupOfflineSession.weatherLabel}</span> : null}
+                  {selectedGroupOfflineSession.participantLabels.length > 0 ? <span>在场：{selectedGroupOfflineSession.participantLabels.join('、')}</span> : null}
+                </div>
+                {selectedGroupOfflineSession.summaryLines.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {selectedGroupOfflineSession.summaryLines.map((line: string, index: number) => (
+                      <p key={`${selectedGroupOfflineSession.sessionId}-headline-${index}`} className="text-[14px] leading-relaxed text-zinc-700">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {selectedGroupOfflineSession.sessionSnapshot?.generatedContent?.intro ? (
+                <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+                  <div className="mb-2 text-[12px] font-semibold text-zinc-900">开场共景</div>
+                  <div className="whitespace-pre-wrap text-[14px] leading-7 text-zinc-700">
+                    {selectedGroupOfflineSession.sessionSnapshot.generatedContent.intro}
+                  </div>
+                </div>
+              ) : null}
+
+              {!selectedGroupOfflineSession.sessionSnapshot ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] leading-6 text-amber-800 shadow-sm">
+                  这条旧收藏还没有完整回放快照。重新收藏一次新的群线下，才能像约会收藏一样查看完整内容。
+                </div>
+              ) : null}
+
+              {(selectedGroupOfflineSession.sessionSnapshot?.generatedContent?.rounds || []).map((round: any, roundIndex: number) => (
+                <div key={`${selectedGroupOfflineSession.sessionId}-round-${round.id || roundIndex}`} className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-[15px] font-semibold text-zinc-900">
+                      {round.pageEpisode?.title || round.title || `第 ${roundIndex + 1} 轮`}
+                    </div>
+                    <div className="text-[11px] text-zinc-500">
+                      {round.mode === 'page_episode' ? `页面轮 · ${round.pageEpisode?.pageType || 'page'}` : '分块推进'}
+                    </div>
+                  </div>
+
+                  {round.pageEpisode?.caption ? (
+                    <div className="text-[13px] leading-6 text-zinc-500">{round.pageEpisode.caption}</div>
+                  ) : null}
+
+                  {round.sceneText ? (
+                    <div className="rounded-2xl bg-zinc-50 p-3 text-[14px] leading-7 text-zinc-700">
+                      {round.sceneText}
+                    </div>
+                  ) : null}
+
+                  {(round.characterEntries || []).length > 0 ? (
+                    <div className="space-y-3">
+                      {(round.characterEntries || []).map((entry: any, entryIndex: number) => (
+                        <div key={`${selectedGroupOfflineSession.sessionId}-entry-${roundIndex}-${entry.characterId || entryIndex}`} className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-3">
+                          <div className="mb-2 text-[12px] font-semibold text-zinc-900">
+                            {entry.speakerLabel || '角色'}
+                            {entry.target?.label ? <span className="ml-2 text-zinc-400">→ {entry.target.label}</span> : null}
+                          </div>
+                          <div className="whitespace-pre-wrap text-[14px] leading-7 text-zinc-700">{entry.text || '这轮没有保留正文。'}</div>
+                          {entry.highlightText ? (
+                            <div className="mt-2 text-[12px] text-zinc-500">高亮句：{entry.highlightText}</div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

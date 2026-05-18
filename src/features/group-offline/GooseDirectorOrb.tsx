@@ -651,6 +651,18 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
                         );
                       })}
                     </div>
+                    <div className="goose-director-orb__color-field-grid">
+                      <label className="goose-director-orb__color-field">
+                        <span>自定义高亮</span>
+                        <input
+                          type="color"
+                          value={props.highlightColor}
+                          onChange={(event) => props.onHighlightColorChange(event.target.value)}
+                          disabled={props.loading}
+                          aria-label="自定义高亮文字颜色"
+                        />
+                      </label>
+                    </div>
                   </div>
 
                   <div className="goose-director-orb__meta-card">
@@ -671,6 +683,18 @@ export function GooseDirectorOrb(props: GooseDirectorOrbProps) {
                           />
                         );
                       })}
+                    </div>
+                    <div className="goose-director-orb__color-field-grid">
+                      <label className="goose-director-orb__color-field">
+                        <span>自定义正文</span>
+                        <input
+                          type="color"
+                          value={props.bodyTextColor}
+                          onChange={(event) => props.onBodyTextColorChange(event.target.value)}
+                          disabled={props.loading}
+                          aria-label="自定义普通文字颜色"
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>

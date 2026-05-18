@@ -51,53 +51,33 @@ import {
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
-import { persistSceneSettlementBatch } from '../../services/memory/sceneSettlement';
-import { buildGroupOfflineSharedSettlement } from '../../services/group-offline/buildGroupOfflineSharedSettlement';
-import { deriveGroupLongTermMemoryFromHistory } from '../../services/group-chat/groupLongTermMemory';
+import {
+  buildGroupOfflineRecruitStatusSummary,
+} from '../../services/group-offline/recruitState';
 import { buildGroupOfflineRecruitCard } from '../group-offline/sessionUtils';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { splitGroupReplyIntoMessages, useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
-import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
 import {
-  buildGroupSettingsSystemMessages,
-  createAssignDutyAdminSystemMessage,
   createApproveAdminNominationSystemMessage,
   createApproveJoinRequestSystemMessage,
   createActorMuteMemberSystemMessage,
   createActorRemoveMemberSystemMessage,
   createActorUnmuteMemberSystemMessage,
-  createCancelAdminSystemMessage,
-  createClearMemberBadgeSystemMessage,
-  createClearDutyAdminSystemMessage,
   createConsumeTemporaryPermissionSystemMessage,
   createExpireAdminNominationSystemMessage,
   createExpireDutyAdminSystemMessage,
   createExpireJoinRequestSystemMessage,
   createExpireMuteMemberSystemMessage,
   createExpireTemporaryPermissionSystemMessage,
-  createGrantTemporaryPermissionSystemMessage,
-  createInviteMemberSystemMessage,
   createLaunchGroupFeatureSystemMessage,
-  createLeaveGroupSystemMessage,
-  createMuteMemberSystemMessage,
-  createRemoveMemberSystemMessage,
-  createRevealGroupAwarenessSystemMessage,
   createRejectAdminNominationSystemMessage,
   createRejectJoinRequestSystemMessage,
-  createRevokeTemporaryPermissionSystemMessage,
-  createSetAdminSystemMessage,
-  createSetMemberBadgeSystemMessage,
-  createUnmuteMemberSystemMessage,
 } from '../group-settings/groupSystemMessages';
 import {
-  canEditGroupNotice,
   canLaunchManagedGroupFeature,
-  canManageDynamicGroupPermissions,
-  filterGroupSettingsPatchForActor,
-  getGroupNoticePermissionHintForActor,
   getManagedGroupFeaturePermissionHintForActor,
 } from '../group-settings/groupPermissionRules';
 import {
@@ -108,8 +88,6 @@ import {
   getGroupAwarenessEntry,
 } from '../group-settings/groupAwareness';
 import {
-  buildDutyAdminAssignment,
-  buildTemporaryManagedFeatureGrant,
   consumeTemporaryManagedFeatureGrant,
   getActiveDutyAdminAssignment,
   getDynamicPermissionExpiryCleanup,
@@ -120,7 +98,6 @@ import {
   buildAdminNominationCooldownPatch,
   canNominateMember,
   cleanupAdminNominationCooldowns,
-  getAdminNominationCooldownEntry,
   getNearestAdminNominationCooldownExpiryAt,
 } from '../group-settings/groupGovernanceState';
 import {
@@ -133,7 +110,6 @@ import {
   upsertMutedMemberEntry,
 } from '../group-settings/groupMutedMembers';
 import {
-  canManageGroupAdmins,
   canManageGroupMembers,
   getGroupRoleLabel,
   isProtectedGroupMember,
@@ -141,10 +117,10 @@ import {
 } from '../group-settings/groupRoles';
 import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
-import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { GroupChatFunPanel } from './GroupChatFunPanel';
-import { GroupOfflineModal } from '../group-offline/GroupOfflineModal';
+import { GroupSettingsController } from './GroupSettingsController';
+import { useGroupOfflineController } from './useGroupOfflineController';
 import {
   appendGroupRelayEntry,
   appendGroupTaskEntry,
@@ -167,7 +143,6 @@ import {
   resolveGroupGovernanceMessage,
 } from './groupGovernanceCards';
 import {
-  parseModerationDurationMs,
   resolveExplicitModerationCommand,
   resolveRequestedModerationAction,
 } from './groupModerationCommands';
@@ -391,37 +366,6 @@ function extractCandidateJsonObjects(text: string): string[] {
   return candidates;
 }
 
-function parseGroupOfflineReturnReactions(rawText: string) {
-  const candidates = extractCandidateJsonObjects(rawText);
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as {
-        reactions?: Array<{ characterId?: string; text?: string }>;
-      };
-
-      const reactions = Array.isArray(parsed.reactions)
-        ? parsed.reactions
-            .map((item) => {
-              if (!item || typeof item !== 'object') return null;
-              const characterId = typeof item.characterId === 'string' ? item.characterId.trim() : '';
-              const text = typeof item.text === 'string' ? item.text.trim() : '';
-              if (!characterId || !text) return null;
-              return { characterId, text };
-            })
-            .filter((item): item is { characterId: string; text: string } => !!item)
-        : [];
-
-      if (reactions.length > 0) {
-        return reactions;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return [];
-}
-
 type GroupFeatureInitiativePlan =
   | { feature: 'none' }
   | { feature: 'poll'; title: string; options: string[] }
@@ -614,22 +558,6 @@ function pickGovernanceReactionSpeakers(params: {
   });
 
   return selectedMembers;
-}
-
-function resolveMuteDurationDraftMs(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const durationMs = parseModerationDurationMs(trimmed)
-    ?? (/^\d+$/.test(trimmed) ? Number(trimmed) * 60 * 1000 : undefined);
-
-  if (!durationMs || !Number.isFinite(durationMs) || durationMs <= 0) {
-    return null;
-  }
-
-  return durationMs;
 }
 
 function shouldShowChatTimeDivider(
@@ -1013,8 +941,6 @@ export function GroupChatSessionScreen({
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
-  const [offlineModalDraft, setOfflineModalDraft] = useState<GroupOfflineRecruitDraft | null>(null);
-  const [offlineModalDraftMessageTimestamp, setOfflineModalDraftMessageTimestamp] = useState<number | null>(null);
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
@@ -1025,24 +951,11 @@ export function GroupChatSessionScreen({
   const [groupTaskPromptDraft, setGroupTaskPromptDraft] = useState('');
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
-  const [muteDurationSheet, setMuteDurationSheet] = useState<{ memberId: string; memberName: string } | null>(null);
-  const [muteDurationMode, setMuteDurationMode] = useState<'timed' | 'manual'>('timed');
-  const [muteDurationDraft, setMuteDurationDraft] = useState('30m');
-  const [isInvitingMember, setIsInvitingMember] = useState(false);
-  const [isRevealingGroup, setIsRevealingGroup] = useState(false);
-  const [isRemovingMember, setIsRemovingMember] = useState(false);
-  const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false);
-  const [isUpdatingMute, setIsUpdatingMute] = useState(false);
-  const [isUpdatingDynamicPermissions, setIsUpdatingDynamicPermissions] = useState(false);
-  const [isUpdatingBadge, setIsUpdatingBadge] = useState(false);
-  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
     timestamp: number;
     text: string;
   } | null>(null);
-  const [groupSettingsForm, setGroupSettingsForm] = useState(() => createGroupSettingsFormState(group));
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -1057,8 +970,6 @@ export function GroupChatSessionScreen({
   const preservedScrollTopRef = useRef<number | null>(null);
   const didTryOpeningRef = useRef(false);
   const previousSettingsOpenRef = useRef(false);
-  const previousSettingsGroupIdRef = useRef(group.id);
-  const latestGroupBackgroundRef = useRef(group.groupBackground || '');
   const lastProcessedInitiativeTriggerRef = useRef<number | null>(null);
   const lastProcessedGovernanceTriggerRef = useRef<number | null>(null);
   const processedModerationCommandMessageKeysRef = useRef<Set<string>>(new Set());
@@ -1067,7 +978,6 @@ export function GroupChatSessionScreen({
   const lastModerationInitiativeAtRef = useRef(0);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
@@ -1107,16 +1017,12 @@ export function GroupChatSessionScreen({
   const participantCount = members.length + 1;
   const actingRole = resolveGroupMemberRole(group, 'user');
   const canCurrentUserApproveGovernance = actingRole === 'owner';
-  const canCurrentUserManageDynamicPermissions = canManageDynamicGroupPermissions(group, 'user');
-  const canCurrentUserEditGroupNotice = canEditGroupNotice(group, 'user');
   const canCurrentUserLaunchManagedFeatures = canLaunchManagedGroupFeature(group, 'user');
   const managedFeaturePermissionHint = canCurrentUserLaunchManagedFeatures
     ? ''
     : getManagedGroupFeaturePermissionHintForActor(group, 'user');
-  const groupNoticePermissionHint = getGroupNoticePermissionHintForActor(group, 'user');
   const activeDutyAdminAssignment = getActiveDutyAdminAssignment(group);
   const openingSessionKey = `${group.id}:${group.lastTime || 0}`;
-  const hasGroupInfoChanges = hasGroupSettingsChanges(group, groupSettingsForm);
   const groupDisplayName = group.groupRemark?.trim() || group.name;
   const groupUserDisplayName = group.groupNickname?.trim() || userName;
   const groupNotice = group.groupNotice?.trim() || '';
@@ -1124,12 +1030,6 @@ export function GroupChatSessionScreen({
     ? group.temporaryPermissionGrants
     : [];
   const currentMutedMemberEntries = getActiveMutedMemberEntries(group);
-  const currentMemberBadges = Array.isArray(group.memberBadges)
-    ? group.memberBadges
-    : [];
-  const currentMemberBubbleColors = Array.isArray(group.memberBubbleColors)
-    ? group.memberBubbleColors
-    : [];
   const activeGroupWorldBooks = useMemo(() => {
     const activeIds = new Set(group.activeWorldBookIds || []);
     if (activeIds.size === 0) {
@@ -1137,6 +1037,26 @@ export function GroupChatSessionScreen({
     }
     return worldBooks.filter((worldBook) => activeIds.has(worldBook.id));
   }, [group.activeWorldBookIds, worldBooks]);
+  const { openGroupOffline, groupOfflineModal } = useGroupOfflineController({
+    group,
+    members,
+    groupCharacterPool,
+    inviteableCharacters,
+    userName: groupUserDisplayName,
+    activeConfig: activeConfig || null,
+    activeWorldBooks: activeGroupWorldBooks,
+    history,
+    directChatHistory,
+    perception,
+    setHistory,
+    onUpdateGroup,
+    patchCharacter,
+    buildGeneratedGroupReplyMessages,
+    onOpen: () => {
+      setActiveGroupFeatureComposer(null);
+      setShowFunPanel(false);
+    },
+  });
   const { resolvedUrl: resolvedGroupBackgroundUrl } = useResolvedPersistentValue(group.groupBackground);
   const groupBackgroundUrl =
     getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl)
@@ -1236,50 +1156,6 @@ export function GroupChatSessionScreen({
 
     return styleMap;
   }, [groupModelBubbleTextStyle, members]);
-  const groupSettingsMembers = [
-    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole, voiceEnabled: false },
-    ...members.map((member) => {
-      const temporaryGrant = getTemporaryManagedFeatureGrant(group, member.id);
-
-      return {
-        id: member.id,
-        name: member.name,
-        remarkName: member.remarkName,
-        avatar: member.avatar,
-        role: resolveGroupMemberRole(group, member.id),
-        badgeLabel: getGroupMemberBadge(group, member.id)?.label,
-        badgeColor: getGroupMemberBadge(group, member.id)?.color,
-        bubbleColor: getGroupMemberBubbleColor(group, member.id) || undefined,
-        voiceEnabled: member.voiceProfile?.enabled === true,
-        isDutyAdmin: activeDutyAdminAssignment?.memberId === member.id,
-        dutyAdminExpiresAt: activeDutyAdminAssignment?.memberId === member.id ? activeDutyAdminAssignment.expiresAt : undefined,
-        hasTemporaryManagedFeatureGrant: !!temporaryGrant,
-        temporaryManagedFeatureGrantExpiresAt: temporaryGrant?.expiresAt,
-        temporaryManagedFeatureGrantRemainingUses: temporaryGrant?.remainingUses,
-      nominationCooldownUntil: getAdminNominationCooldownEntry(group, member.id)?.cooldownUntil,
-      isMuted: isGroupMemberMuted(group, member.id),
-      mutedAt: getMutedMemberEntry(group, member.id)?.mutedAt,
-      muteExpiresAt: getMutedMemberEntry(group, member.id)?.expiresAt,
-      };
-    }),
-  ];
-  const groupSettingsInviteCandidates = inviteableCharacters.map((character) => {
-    const awarenessEntry = getGroupAwarenessEntry(group, character.id);
-
-    return {
-      id: character.id,
-      name: character.name,
-      remarkName: character.remarkName,
-      avatar: character.avatar,
-      role: 'member' as const,
-      badgeLabel: undefined,
-      badgeColor: undefined,
-      bubbleColor: undefined,
-      knowsGroup: doesCharacterKnowGroup(group, character.id),
-      groupAwarenessSource: awarenessEntry?.source,
-      joinRequestCooldownUntil: awarenessEntry?.joinRequestCooldownUntil,
-    };
-  });
   const resolveGroupManagedMemberName = useCallback((memberId: string) => {
     if (memberId === 'user') {
       return groupUserDisplayName;
@@ -1687,6 +1563,8 @@ export function GroupChatSessionScreen({
       groupShortTermSummary: group.groupShortTermSummary,
       groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
       groupLongTermMemory: group.groupLongTermMemory,
+      relationshipWaves: group.relationshipWaves,
+      factTraces: group.factTraces,
     },
     history,
     setHistory,
@@ -2022,14 +1900,7 @@ export function GroupChatSessionScreen({
   }, [hasUsableConfig, maybeOpenScene, members.length, openingSessionKey]);
 
   useEffect(() => {
-    const didJustOpen = showGroupSettings && !previousSettingsOpenRef.current;
     const didJustClose = !showGroupSettings && previousSettingsOpenRef.current;
-    const switchedGroup = previousSettingsGroupIdRef.current !== group.id;
-
-    if (didJustOpen || switchedGroup) {
-      setGroupSettingsForm(createGroupSettingsFormState(group));
-      latestGroupBackgroundRef.current = group.groupBackground || '';
-    }
 
     if (didJustClose) {
       latestViewReadyRef.current = false;
@@ -2038,8 +1909,7 @@ export function GroupChatSessionScreen({
     }
 
     previousSettingsOpenRef.current = showGroupSettings;
-    previousSettingsGroupIdRef.current = group.id;
-  }, [group, renderedHistory.length, showGroupSettings]);
+  }, [renderedHistory.length, showGroupSettings]);
 
   useEffect(() => {
     if (!groupNotice) {
@@ -2497,24 +2367,6 @@ export function GroupChatSessionScreen({
         console.error('Failed to persist group chat image before sending', error);
       }
     })();
-  };
-
-  const handleGroupAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setGroupSettingsForm((prev) => ({
-        ...prev,
-        avatar: (reader.result as string) || '',
-      }));
-    };
-    reader.readAsDataURL(file);
-
-    if (groupAvatarInputRef.current) {
-      groupAvatarInputRef.current.value = '';
-    }
   };
 
   const handleCustomStickerSend = (sticker: string) => {
@@ -3029,92 +2881,6 @@ export function GroupChatSessionScreen({
     setShowFunPanel(false);
   };
 
-  const runOfflineReturnReactions = useCallback(async (session: GroupOfflineSession) => {
-    if (!activeConfig || !hasUsableConfig) {
-      return;
-    }
-
-    const participantMembers = members.filter((member) => session.participants.some((participant) => participant.characterId === member.id));
-    if (participantMembers.length === 0) {
-      return;
-    }
-
-    const roundsSummary = (session.generatedContent?.rounds || [])
-      .slice(-2)
-      .map((round) => [
-        round.sceneText || '',
-        ...round.characterEntries.map((entry) => `${entry.speakerLabel}：${entry.text}`),
-      ].filter(Boolean).join('\n'))
-      .join('\n\n');
-
-    const prompt = [
-      '一场群聊线下刚刚结束，所有人现在已经回到原群聊线上聊天。',
-      '请生成参与角色回到群聊后的公开反应。',
-      '要求：',
-      '1. 这不是线下现场续写，不要再写现场动作。',
-      '2. 这是回到群聊后的新消息，要像群里真的会发出来的话。',
-      '3. 每个角色一条消息，显示为单独的群消息。',
-      '4. 不要照搬结束收尾原文，要像回到线上后的新反应。',
-      '5. 输出 JSON：{"reactions":[{"characterId":"角色id","text":"消息内容"}]}',
-      '',
-      `局类型：${session.customActivityType?.trim() || session.activityType}`,
-      `地点：${session.location}`,
-      `时间：${session.timeLabel}`,
-      `在场角色：${participantMembers.map((member) => member.name).join('、')}`,
-      '',
-      '刚结束的线下内容摘要：',
-      roundsSummary || '暂无',
-      '',
-      '只输出 JSON。',
-    ].join('\n');
-
-    try {
-      const rawText = await generateTextFromMessagesWithConfig({
-        activeConfig,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const reactions = parseGroupOfflineReturnReactions(rawText);
-      if (reactions.length === 0) {
-        return;
-      }
-
-      const reactionMessages: ChatMessage[] = [];
-      reactions.forEach((reaction) => {
-        const speaker = participantMembers.find((member) => member.id === reaction.characterId);
-        if (!speaker) {
-          return;
-        }
-
-        reactionMessages.push(
-          ...buildGeneratedGroupReplyMessages({
-            speaker,
-            text: reaction.text,
-            baseTimestamp: Date.now() + reactionMessages.length + 1,
-          }),
-        );
-      });
-
-      if (reactionMessages.length === 0) {
-        return;
-      }
-
-      setHistory((prev) => [
-        ...prev,
-        ...reactionMessages,
-      ]);
-    } catch (error) {
-      console.error('[group-chat] Failed to generate offline return reactions', error);
-    }
-  }, [activeConfig, hasUsableConfig, members, setHistory]);
-
-  const handleOpenGroupOffline = (draft?: GroupOfflineRecruitDraft | null, messageTimestamp?: number | null) => {
-    setActiveGroupFeatureComposer(null);
-    setOfflineModalDraft(draft || null);
-    setOfflineModalDraftMessageTimestamp(typeof messageTimestamp === 'number' ? messageTimestamp : null);
-    setShowOfflineModal(true);
-    setShowFunPanel(false);
-  };
-
   const handleVoteOnPoll = (messageTimestamp: number, optionId: string) => {
     setHistory((prev) => prev.map((message) => {
       if (message.timestamp !== messageTimestamp || !message.groupPollCard) {
@@ -3515,74 +3281,6 @@ export function GroupChatSessionScreen({
     setHistory,
   ]);
 
-  const handleSaveGroupInfo = () => {
-    let nextPatch = filterGroupSettingsPatchForActor(group, 'user', buildGroupSettingsPatch({
-      ...groupSettingsForm,
-      groupBackground: latestGroupBackgroundRef.current,
-    }));
-
-    if (nextPatch.awarenessMode === 'public') {
-      let awarenessEntries = group.awarenessEntries;
-      inviteableCharacters.forEach((character) => {
-        if (getGroupAwarenessEntry({ awarenessEntries }, character.id)) {
-          return;
-        }
-        awarenessEntries = buildRevealGroupPatch(
-          { awarenessEntries },
-          character.id,
-          'public_group',
-          Date.now(),
-        ).awarenessEntries;
-      });
-      nextPatch = {
-        ...nextPatch,
-        ...(awarenessEntries ? { awarenessEntries } : {}),
-      };
-    }
-
-    if ('name' in nextPatch && !String(nextPatch.name || '').trim()) {
-      return;
-    }
-
-    const previousNotice = group.groupNotice?.trim() || '';
-    const nextNotice = 'groupNotice' in nextPatch
-      ? (nextPatch.groupNotice?.trim() || '')
-      : previousNotice;
-    const systemMessages = buildGroupSettingsSystemMessages(group, nextPatch, Date.now());
-
-    if (Object.keys(nextPatch).length > 0) {
-      onUpdateGroup(nextPatch);
-    }
-
-    if (systemMessages.length > 0) {
-      setHistory((prev) => [...prev, ...systemMessages]);
-    }
-    if (canCurrentUserEditGroupNotice && nextNotice && nextNotice !== previousNotice) {
-      void reactToNoticeUpdate({
-        noticeText: nextNotice,
-        currentHistory: [...history, ...systemMessages],
-      });
-    }
-  };
-
-  const handleCloseGroupSettings = () => {
-    if (hasGroupInfoChanges) {
-      handleSaveGroupInfo();
-    }
-    setShowGroupSettings(false);
-  };
-
-  const handleUpdateGroupBackground = (value: string) => {
-    latestGroupBackgroundRef.current = value;
-    setGroupSettingsForm((prev) => ({
-      ...prev,
-      groupBackground: value,
-    }));
-    onUpdateGroup({
-      groupBackground: value.trim() ? value : undefined,
-    });
-  };
-
   const runApprovedJoinReaction = useCallback(async (
     invitedCharacter: Character,
     currentHistory: ChatMessage[],
@@ -3873,266 +3571,6 @@ export function GroupChatSessionScreen({
     members,
     perception,
   ]);
-
-  const handleInviteMember = async (memberId: string) => {
-    const invitedCharacter = inviteableCharacters.find((character) => character.id === memberId);
-    if (
-      !invitedCharacter
-      || group.memberIds.includes(memberId)
-      || isInvitingMember
-      || !canManageGroupMembers(group, 'user')
-    ) {
-      return;
-    }
-
-    setIsInvitingMember(true);
-    const invitedName = invitedCharacter.remarkName?.trim() || invitedCharacter.name;
-    const pendingJoinRequest = history.find((message) => (
-      message.groupGovernanceCard?.kind === 'join-request'
-      && message.groupGovernanceCard.targetMemberId === invitedCharacter.id
-      && message.groupGovernanceCard.status === 'pending'
-    ));
-    const resolvedAt = Date.now();
-    const noticeTimestamp = resolvedAt + 1;
-    const resolvedHistory = pendingJoinRequest
-      ? history.map((message) => (
-          message.timestamp === pendingJoinRequest.timestamp
-            ? resolveGroupGovernanceMessage({
-                message,
-                status: 'approved',
-                resolvedById: 'user',
-                resolvedByName: groupUserDisplayName,
-                resolvedAt,
-              })
-            : message
-        ))
-      : history;
-    const noticeMessage = createInviteMemberSystemMessage(invitedName, noticeTimestamp);
-    const nextHistory = [...resolvedHistory, noticeMessage];
-
-    onUpdateGroup({
-      memberIds: Array.from(new Set([...group.memberIds, invitedCharacter.id])),
-      ...buildRevealGroupPatch(group, invitedCharacter.id, 'direct_invite', resolvedAt),
-    });
-    setHistory(nextHistory);
-
-    try {
-      await runApprovedJoinReaction(invitedCharacter, nextHistory, noticeTimestamp);
-    } finally {
-      setIsInvitingMember(false);
-    }
-  };
-
-  const handleRevealGroupToMember = async (memberId: string) => {
-    const targetCharacter = inviteableCharacters.find((character) => character.id === memberId);
-    if (
-      !targetCharacter
-      || isRevealingGroup
-      || !canManageGroupMembers(group, 'user')
-      || doesCharacterKnowGroup(group, memberId)
-    ) {
-      return;
-    }
-
-    setIsRevealingGroup(true);
-    const timestamp = Date.now();
-    onUpdateGroup(buildRevealGroupPatch(group, memberId, 'manual_reveal', timestamp));
-    setHistory((prev) => [
-      ...prev,
-      createRevealGroupAwarenessSystemMessage(targetCharacter.remarkName?.trim() || targetCharacter.name, timestamp),
-    ]);
-    setIsRevealingGroup(false);
-  };
-
-  const handleRemoveMember = async (memberId: string) => {
-    const member = members.find((item) => item.id === memberId);
-    if (!member || isRemovingMember || !canManageGroupMembers(group, 'user') || isProtectedGroupMember(group, memberId)) {
-      return;
-    }
-
-    const memberName = member.remarkName?.trim() || member.name;
-    if (!window.confirm(`确认将 ${memberName} 移出当前群聊吗？`)) {
-      return;
-    }
-
-    setIsRemovingMember(true);
-    lastModerationInitiativeAtRef.current = Date.now();
-
-    onUpdateGroup({
-      memberIds: group.memberIds.filter((id) => id !== memberId),
-      adminIds: (group.adminIds || []).filter((id) => id !== memberId),
-      ...buildRevealGroupPatch(group, memberId, 'former_member', Date.now()),
-      dutyAdminAssignment: group.dutyAdminAssignment?.memberId === memberId ? undefined : group.dutyAdminAssignment,
-      temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId),
-      mutedMemberEntries: currentMutedMemberEntries.filter((entry) => entry.memberId !== memberId),
-      voiceReplyMemberIds: (group.voiceReplyMemberIds || []).filter((id) => id !== memberId),
-    });
-
-    const removalMessage = createRemoveMemberSystemMessage(memberName, Date.now());
-    const nextHistory = [...history, removalMessage];
-    setHistory(nextHistory);
-    void runModerationFollowupReactions({
-      kind: 'remove',
-      targetMemberId: memberId,
-      targetMemberName: memberName,
-      currentHistory: nextHistory,
-      contextMembers: members.filter((item) => item.id !== memberId),
-      groupOverride: {
-        ...group,
-        memberIds: group.memberIds.filter((id) => id !== memberId),
-        mutedMemberEntries: currentMutedMemberEntries.filter((entry) => entry.memberId !== memberId),
-      },
-    });
-
-    setIsRemovingMember(false);
-  };
-
-  const handleToggleAdmin = async (memberId: string) => {
-    const member = members.find((item) => item.id === memberId);
-    if (!member || isUpdatingAdmin || !canManageGroupAdmins(group, 'user') || isProtectedGroupMember(group, memberId)) {
-      return;
-    }
-
-    const memberName = member.remarkName?.trim() || member.name;
-    const isAdmin = (group.adminIds || []).includes(memberId);
-    const pendingNomination = history.find((message) => (
-      message.groupGovernanceCard?.kind === 'admin-nomination'
-      && message.groupGovernanceCard.nomineeId === memberId
-      && message.groupGovernanceCard.status === 'pending'
-    ));
-    setIsUpdatingAdmin(true);
-
-    if (!isAdmin) {
-      const resolvedAt = Date.now();
-      const resolvedHistory = pendingNomination
-        ? history.map((message) => (
-            message.timestamp === pendingNomination.timestamp
-              ? resolveGroupGovernanceMessage({
-                  message,
-                  status: 'approved',
-                  resolvedById: 'user',
-                  resolvedByName: groupUserDisplayName,
-                  resolvedAt,
-                })
-              : message
-          ))
-        : history;
-
-      onUpdateGroup({
-        adminIds: [...new Set([...(group.adminIds || []), memberId])],
-        dutyAdminAssignment: group.dutyAdminAssignment?.memberId === memberId
-          ? undefined
-          : group.dutyAdminAssignment,
-        temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId),
-      });
-
-      setHistory([
-        ...resolvedHistory,
-        createSetAdminSystemMessage(memberName, resolvedAt + 1),
-      ]);
-      setIsUpdatingAdmin(false);
-      return;
-    }
-
-    onUpdateGroup({
-      adminIds: (group.adminIds || []).filter((id) => id !== memberId),
-    });
-
-    setHistory((prev) => [
-      ...prev,
-      createCancelAdminSystemMessage(memberName, Date.now()),
-    ]);
-
-    setIsUpdatingAdmin(false);
-  };
-
-  const handleToggleMute = async (memberId: string) => {
-    const member = members.find((item) => item.id === memberId);
-    if (!member || isUpdatingMute || !canManageGroupMembers(group, 'user') || isProtectedGroupMember(group, memberId)) {
-      return;
-    }
-
-    const memberName = member.remarkName?.trim() || member.name;
-    const mutedEntry = getMutedMemberEntry(group, memberId);
-    const timestamp = Date.now();
-    setIsUpdatingMute(true);
-    lastModerationInitiativeAtRef.current = timestamp;
-
-    if (mutedEntry) {
-      const nextPatch = removeMutedMemberEntry(group, memberId);
-      const systemMessage = createUnmuteMemberSystemMessage(memberName, timestamp);
-      const nextHistory = [...history, systemMessage];
-
-      onUpdateGroup(nextPatch);
-      setHistory(nextHistory);
-      void runModerationFollowupReactions({
-        kind: 'unmute',
-        targetMemberId: memberId,
-        targetMemberName: memberName,
-        currentHistory: nextHistory,
-        groupOverride: {
-          ...group,
-          ...nextPatch,
-        },
-      });
-      setIsUpdatingMute(false);
-      return;
-    }
-
-    setIsUpdatingMute(false);
-    setMuteDurationMode('timed');
-    setMuteDurationDraft('30m');
-    setMuteDurationSheet({ memberId, memberName });
-  };
-
-  const handleConfirmMuteDuration = async () => {
-    if (!muteDurationSheet || isUpdatingMute) {
-      return;
-    }
-
-    const member = members.find((item) => item.id === muteDurationSheet.memberId);
-    if (!member || isGroupMemberMuted(group, muteDurationSheet.memberId)) {
-      setMuteDurationSheet(null);
-      return;
-    }
-
-    const durationMs = muteDurationMode === 'manual'
-      ? undefined
-      : resolveMuteDurationDraftMs(muteDurationDraft);
-
-    if (muteDurationMode === 'timed' && !durationMs) {
-      window.alert('禁言时长格式无效，请输入例如 30m、2h、1d。');
-      return;
-    }
-
-    const timestamp = Date.now();
-    setIsUpdatingMute(true);
-    lastModerationInitiativeAtRef.current = timestamp;
-
-    const nextPatch = upsertMutedMemberEntry(group, {
-      memberId: muteDurationSheet.memberId,
-      mutedById: 'user',
-      mutedAt: timestamp,
-      ...(typeof durationMs === 'number' ? { expiresAt: timestamp + durationMs } : {}),
-    });
-    const systemMessage = createMuteMemberSystemMessage(muteDurationSheet.memberName, timestamp);
-    const nextHistory = [...history, systemMessage];
-
-    onUpdateGroup(nextPatch);
-    setHistory(nextHistory);
-    setMuteDurationSheet(null);
-    void runModerationFollowupReactions({
-      kind: 'mute',
-      targetMemberId: muteDurationSheet.memberId,
-      targetMemberName: muteDurationSheet.memberName,
-      currentHistory: nextHistory,
-      groupOverride: {
-        ...group,
-        ...nextPatch,
-      },
-    });
-    setIsUpdatingMute(false);
-  };
 
   async function applyRoleModerationAction(params: {
     actor: Character;
@@ -4625,180 +4063,6 @@ export function GroupChatSessionScreen({
       proposerId: targetMessage.groupGovernanceCard.proposedById,
       currentHistory: [...resolvedHistory, systemMessage],
     });
-  };
-
-  const handleAssignDutyAdmin = async (memberId: string) => {
-    const member = members.find((item) => item.id === memberId);
-    if (
-      !member
-      || isUpdatingDynamicPermissions
-      || !canCurrentUserManageDynamicPermissions
-      || resolveGroupMemberRole(group, memberId) !== 'member'
-      || activeDutyAdminAssignment?.memberId === memberId
-    ) {
-      return;
-    }
-
-    setIsUpdatingDynamicPermissions(true);
-
-    const timestamp = Date.now();
-    const nextAssignment = buildDutyAdminAssignment({
-      memberId,
-      grantedById: 'user',
-      grantedAt: timestamp,
-    });
-    const nextMessages: ChatMessage[] = [];
-
-    if (activeDutyAdminAssignment) {
-      nextMessages.push(createClearDutyAdminSystemMessage(
-        resolveGroupManagedMemberName(activeDutyAdminAssignment.memberId),
-        timestamp,
-      ));
-    }
-
-    nextMessages.push(createAssignDutyAdminSystemMessage(
-      member.remarkName?.trim() || member.name,
-      timestamp + nextMessages.length,
-    ));
-
-    onUpdateGroup({
-      dutyAdminAssignment: nextAssignment,
-    });
-    setHistory((prev) => [...prev, ...nextMessages]);
-    setIsUpdatingDynamicPermissions(false);
-  };
-
-  const handleClearDutyAdmin = async (memberId: string) => {
-    if (
-      isUpdatingDynamicPermissions
-      || !canCurrentUserManageDynamicPermissions
-      || activeDutyAdminAssignment?.memberId !== memberId
-    ) {
-      return;
-    }
-
-    const memberName = resolveGroupManagedMemberName(memberId);
-    setIsUpdatingDynamicPermissions(true);
-    onUpdateGroup({
-      dutyAdminAssignment: undefined,
-    });
-    setHistory((prev) => [
-      ...prev,
-      createClearDutyAdminSystemMessage(memberName, Date.now()),
-    ]);
-    setIsUpdatingDynamicPermissions(false);
-  };
-
-  const handleGrantTemporaryPermission = async (memberId: string) => {
-    const member = members.find((item) => item.id === memberId);
-    if (
-      !member
-      || isUpdatingDynamicPermissions
-      || !canCurrentUserManageDynamicPermissions
-      || resolveGroupMemberRole(group, memberId) !== 'member'
-      || !!getTemporaryManagedFeatureGrant(group, memberId)
-    ) {
-      return;
-    }
-
-    setIsUpdatingDynamicPermissions(true);
-    const nextGrant = buildTemporaryManagedFeatureGrant({
-      memberId,
-      grantedById: 'user',
-    });
-    const currentGrants = currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId);
-
-    onUpdateGroup({
-      temporaryPermissionGrants: [...currentGrants, nextGrant],
-    });
-    setHistory((prev) => [
-      ...prev,
-      createGrantTemporaryPermissionSystemMessage(member.remarkName?.trim() || member.name, Date.now()),
-    ]);
-    setIsUpdatingDynamicPermissions(false);
-  };
-
-  const handleRevokeTemporaryPermission = async (memberId: string) => {
-    const currentGrant = getTemporaryManagedFeatureGrant(group, memberId);
-    if (
-      isUpdatingDynamicPermissions
-      || !canCurrentUserManageDynamicPermissions
-      || !currentGrant
-    ) {
-      return;
-    }
-
-    setIsUpdatingDynamicPermissions(true);
-    onUpdateGroup({
-      temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.id !== currentGrant.id),
-    });
-    setHistory((prev) => [
-      ...prev,
-      createRevokeTemporaryPermissionSystemMessage(resolveGroupManagedMemberName(memberId), Date.now()),
-    ]);
-    setIsUpdatingDynamicPermissions(false);
-  };
-
-  const handleUpdateBadge = async (memberId: string, payload: { label: string; color: string }) => {
-    const member = members.find((item) => item.id === memberId);
-    if (!member || isUpdatingBadge || !canManageGroupMembers(group, 'user')) {
-      return;
-    }
-
-    const memberName = member.remarkName?.trim() || member.name;
-    const nextLabel = payload.label.trim();
-    const nextColor = payload.color.trim() || '#22c55e';
-    const currentBadges = currentMemberBadges;
-    const nextBadges = nextLabel
-      ? [
-          ...currentBadges.filter((badge) => badge.memberId !== memberId),
-          { memberId, label: nextLabel, color: nextColor },
-        ]
-      : currentBadges.filter((badge) => badge.memberId !== memberId);
-
-    setIsUpdatingBadge(true);
-    onUpdateGroup({ memberBadges: nextBadges });
-    setHistory((prev) => [
-      ...prev,
-      nextLabel
-        ? createSetMemberBadgeSystemMessage(memberName, nextLabel, Date.now())
-        : createClearMemberBadgeSystemMessage(memberName, Date.now()),
-    ]);
-    setIsUpdatingBadge(false);
-  };
-
-  const handleUpdateBubbleColor = async (memberId: string, color: string | null) => {
-    const isUserMember = memberId === 'user';
-    const member = members.find((item) => item.id === memberId);
-    if (!isUserMember && !member) {
-      return;
-    }
-
-    const currentColors = currentMemberBubbleColors;
-    const nextColors = color
-      ? [
-          ...currentColors.filter((item) => item.memberId !== memberId),
-          { memberId, color },
-        ]
-      : currentColors.filter((item) => item.memberId !== memberId);
-
-    onUpdateGroup({ memberBubbleColors: nextColors });
-  };
-
-  const handleLeaveCurrentGroup = () => {
-    if (isLeavingGroup) {
-      return;
-    }
-
-    setIsLeavingGroup(true);
-    setHistory((prev) => [
-      ...prev,
-      createLeaveGroupSystemMessage(Date.now()),
-    ]);
-
-    window.setTimeout(() => {
-      onLeaveGroup();
-    }, 280);
   };
 
   const renderTextWithMentions = useCallback((text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
@@ -5361,37 +4625,29 @@ export function GroupChatSessionScreen({
             const offlineCard = msg.groupOfflineCard;
             const isRecruitingCard = offlineCard.status === 'recruiting';
             const recruitDraft = msg.groupOfflineDraft;
-            const signupCount = Array.isArray(recruitDraft?.signedUpParticipantIds)
-              ? recruitDraft!.signedUpParticipantIds!.length
-              : (offlineCard.signupCount || 0);
-            const confirmedCount = Array.isArray(recruitDraft?.confirmedParticipantIds)
-              ? recruitDraft!.confirmedParticipantIds!.length
-              : (offlineCard.confirmedCount || 0);
-            const rosterLockedAt = typeof recruitDraft?.rosterLockedAt === 'number'
-              ? recruitDraft.rosterLockedAt
-              : offlineCard.rosterLockedAt;
-            const confirmedParticipantLabels = Array.isArray(recruitDraft?.confirmedParticipantIds)
-              ? recruitDraft.confirmedParticipantIds
-                  .map((characterId) => (
-                    groupCharacterPool.find((member) => member.id === characterId)?.remarkName?.trim()
-                    || groupCharacterPool.find((member) => member.id === characterId)?.name
-                    || ''
-                  ))
-                  .filter(Boolean)
-              : [];
+            const recruitStatusSummary = recruitDraft
+              ? buildGroupOfflineRecruitStatusSummary({
+                  draft: recruitDraft,
+                  fallbackCandidateIds: recruitDraft.selectedParticipantIds,
+                  members: groupCharacterPool,
+                })
+              : undefined;
+            const signupCount = recruitStatusSummary?.joinedCount ?? offlineCard.signupCount ?? 0;
+            const declinedCount = recruitStatusSummary?.declinedCount ?? offlineCard.declinedCount ?? 0;
+            const pendingCount = recruitStatusSummary?.pendingCount ?? offlineCard.pendingCount ?? 0;
             const canResumeRecruitDraft = isRecruitingCard && !!recruitDraft && !group.activeOfflineSession;
             const offlineStatus = isRecruitingCard
-              ? (rosterLockedAt
-                  ? '名单已锁定'
-                  : confirmedCount > 0
-                    ? '待开局'
-                    : signupCount > 0
-                      ? '待确认'
-                      : '征集中')
+              ? (signupCount > 0 ? '待开局' : pendingCount > 0 ? '征集中' : '本轮无人接局')
               : offlineCard.status === 'ended'
                 ? '已结束'
                 : '进行中';
             const compactTaskLabel = offlineCard.taskLabel || (!offlineCard.taskLabel ? offlineCard.objectiveLabel : '');
+            const recruitParticipantLabel = signupCount > 0 ? '已报名' : '待表态';
+            const recruitParticipantValue = offlineCard.participantLabels.length > 0
+              ? offlineCard.participantLabels.join('、')
+              : (isRecruitingCard
+                ? (pendingCount > 0 ? '还没人公开接话' : '这轮还没人接局')
+                : '待征集');
 
             return (
               <div key={messageKey}>
@@ -5428,19 +4684,13 @@ export function GroupChatSessionScreen({
                       <div><span className="mr-2 text-zinc-500/86">时间</span>{offlineCard.timeLabel}</div>
                       <div><span className="mr-2 text-zinc-500/86">地点</span>{offlineCard.locationLabel}</div>
                       <div>
-                        <span className="mr-2 text-zinc-500/86">{isRecruitingCard ? '拟邀' : '在场'}</span>
-                        {offlineCard.participantLabels.length > 0 ? offlineCard.participantLabels.join('、') : '待征集'}
+                        <span className="mr-2 text-zinc-500/86">{isRecruitingCard ? recruitParticipantLabel : '在场'}</span>
+                        {isRecruitingCard ? recruitParticipantValue : (offlineCard.participantLabels.length > 0 ? offlineCard.participantLabels.join('、') : '待征集')}
                       </div>
                       {isRecruitingCard ? (
                         <div>
                           <span className="mr-2 text-zinc-500/86">征集</span>
-                          已报名 {signupCount} 人 · 已确认 {confirmedCount} 人
-                        </div>
-                      ) : null}
-                      {isRecruitingCard && confirmedParticipantLabels.length > 0 ? (
-                        <div>
-                          <span className="mr-2 text-zinc-500/86">确认名单</span>
-                          {confirmedParticipantLabels.join('、')}
+                          已报名 {signupCount} 人 · 已婉拒 {declinedCount} 人 · 待表态 {pendingCount} 人
                         </div>
                       ) : null}
                       {compactTaskLabel ? <div><span className="mr-2 text-zinc-500/86">任务</span>{compactTaskLabel}</div> : null}
@@ -5456,10 +4706,10 @@ export function GroupChatSessionScreen({
                       <div className="mt-4 flex justify-end">
                         <button
                           type="button"
-                          onClick={() => handleOpenGroupOffline(msg.groupOfflineDraft || null, msg.timestamp)}
+                          onClick={() => openGroupOffline(msg.groupOfflineDraft || null, msg.timestamp)}
                           className="rounded-full border border-white/30 bg-white/35 px-3 py-1.5 text-[12px] font-medium text-zinc-800 transition hover:bg-white/55"
                         >
-                          {rosterLockedAt && confirmedCount > 0 ? '按名单开局' : '管理征集'}
+                          {pendingCount > 0 ? '管理征集' : signupCount > 0 ? '按报名开局' : '查看结果'}
                         </button>
                       </div>
                     ) : null}
@@ -6152,7 +5402,7 @@ export function GroupChatSessionScreen({
                   setActiveGroupFeatureComposer(null);
                   setShowFunPanel(false);
                 }}
-                onOpenGroupOffline={handleOpenGroupOffline}
+                onOpenGroupOffline={openGroupOffline}
                 onSelectFeature={(feature) => {
                   if (!canCurrentUserLaunchManagedFeatures) {
                     window.alert(managedFeaturePermissionHint);
@@ -6200,416 +5450,31 @@ export function GroupChatSessionScreen({
         onSend={sendLocationMessage}
       />
 
-      <AnimatePresence>
-        {muteDurationSheet ? (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                if (!isUpdatingMute) {
-                  setMuteDurationSheet(null);
-                }
-              }}
-              className="absolute inset-0 z-[122] bg-black/28 backdrop-blur-[2px]"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 24 }}
-              className="absolute inset-x-0 bottom-0 z-[123] mx-auto w-full max-w-[430px] rounded-t-[32px] border border-zinc-200 bg-white px-5 pb-6 pt-5 shadow-2xl"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-[18px] font-semibold text-zinc-900">设置禁言时长</div>
-                  <div className="mt-1 text-[13px] leading-5 text-zinc-500">
-                    给 {muteDurationSheet.memberName} 选择一个禁言时长，或者保持到手动解除。
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isUpdatingMute}
-                  onClick={() => setMuteDurationSheet(null)}
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 disabled:cursor-not-allowed"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+      {groupOfflineModal}
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                {[
-                  { label: '10分钟', value: '10m' },
-                  { label: '30分钟', value: '30m' },
-                  { label: '1小时', value: '1h' },
-                  { label: '1天', value: '1d' },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={isUpdatingMute}
-                    onClick={() => {
-                      setMuteDurationMode('timed');
-                      setMuteDurationDraft(option.value);
-                    }}
-                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
-                      muteDurationMode === 'timed' && muteDurationDraft === option.value
-                        ? 'bg-zinc-200 text-zinc-800'
-                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-                  <button
-                    type="button"
-                    disabled={isUpdatingMute}
-                    onClick={() => setMuteDurationMode('manual')}
-                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
-                      muteDurationMode === 'manual'
-                        ? 'bg-zinc-200 text-zinc-800'
-                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                    }`}
-                  >
-                    直到解除
-                </button>
-              </div>
-
-              <div className="mt-4">
-                <div className="mb-2 text-[12px] text-zinc-500">自定义时长</div>
-                <input
-                  value={muteDurationDraft}
-                  disabled={muteDurationMode === 'manual' || isUpdatingMute}
-                  onChange={(event) => {
-                    setMuteDurationMode('timed');
-                    setMuteDurationDraft(event.target.value);
-                  }}
-                  placeholder="例如：45m / 2h / 1d"
-                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] text-zinc-900 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:text-zinc-400"
-                />
-              </div>
-
-              <div className="mt-5 flex gap-3">
-                <button
-                  type="button"
-                  disabled={isUpdatingMute}
-                  onClick={() => setMuteDurationSheet(null)}
-                  className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-400"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  disabled={isUpdatingMute}
-                  onClick={() => void handleConfirmMuteDuration()}
-                  className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-800 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-400"
-                >
-                  {isUpdatingMute ? '处理中...' : '确认禁言'}
-                </button>
-              </div>
-            </motion.div>
-          </>
-        ) : null}
-      </AnimatePresence>
-
-      <GroupOfflineModal
-        isOpen={showOfflineModal}
+      <GroupSettingsController
+        isOpen={showGroupSettings}
         group={group}
         members={members}
         inviteableCharacters={inviteableCharacters}
-        userName={groupUserDisplayName}
-        activeConfig={activeConfig || null}
-        activeWorldBooks={activeGroupWorldBooks}
         history={history}
-        directChatHistory={directChatHistory}
-        perception={perception}
-        initialSession={group.activeOfflineSession || null}
-        initialDraft={offlineModalDraft}
-        onClose={() => {
-          setShowOfflineModal(false);
-          setOfflineModalDraft(null);
-          setOfflineModalDraftMessageTimestamp(null);
-        }}
-        onRecruitDraftUpdate={(draft) => {
-          setOfflineModalDraft(draft);
-          if (offlineModalDraftMessageTimestamp === null) {
-            return;
-          }
-
-          setHistory((prev) => prev.map((message) => {
-            if (message.timestamp !== offlineModalDraftMessageTimestamp) {
-              return message;
-            }
-
-            const createdBy = message.groupOfflineCard?.createdBy || groupUserDisplayName;
-            return {
-              ...message,
-              groupOfflineDraft: draft,
-              groupOfflineCard: buildGroupOfflineRecruitCard({
-                draft,
-                createdBy,
-                timestamp: message.timestamp,
-                status: 'recruiting',
-              }),
-            };
-          }));
-        }}
-        onSessionStart={(session, startMessage) => {
-          if (offlineModalDraftMessageTimestamp !== null) {
-            const launchedParticipantIds = session.participants.map((participant) => participant.characterId);
-            const launchedParticipantLabels = groupCharacterPool
-              .filter((member) => launchedParticipantIds.includes(member.id))
-              .map((member) => member.remarkName?.trim() || member.name);
-            setHistory((prev) => prev.map((message) => {
-              if (message.timestamp !== offlineModalDraftMessageTimestamp) {
-                return message;
-              }
-
-              const existingDraft = message.groupOfflineDraft || offlineModalDraft;
-              const nextDraft = existingDraft
-                ? {
-                    ...existingDraft,
-                    selectedParticipantIds: launchedParticipantIds,
-                    participantLabels: launchedParticipantLabels,
-                    signedUpParticipantIds: launchedParticipantIds,
-                    confirmedParticipantIds: launchedParticipantIds,
-                    rosterLockedAt: existingDraft.rosterLockedAt || session.createdAt,
-                    launchedAt: session.createdAt,
-                    recruitCardSessionId: existingDraft.recruitCardSessionId || message.groupOfflineCard?.sessionId,
-                  }
-                : undefined;
-              return {
-                ...message,
-                groupOfflineDraft: nextDraft,
-                groupOfflineCard: nextDraft
-                  ? buildGroupOfflineRecruitCard({
-                      draft: nextDraft,
-                      createdBy: message.groupOfflineCard?.createdBy || groupUserDisplayName,
-                      timestamp: message.timestamp,
-                      status: 'active',
-                      participantLabelsOverride: launchedParticipantLabels,
-                      summaryLinesOverride: ['已按锁定名单发起群线下。'],
-                    })
-                  : message.groupOfflineCard
-                    ? {
-                        ...message.groupOfflineCard,
-                        status: 'active' as const,
-                        participantLabels: launchedParticipantLabels,
-                        statusLabel: '已开局',
-                        summaryLines: ['已发起群线下。'],
-                      }
-                    : message.groupOfflineCard,
-              };
-            }));
-          }
-          onUpdateGroup({ activeOfflineSession: session });
-          setHistory((prev) => [...prev, startMessage]);
-          setOfflineModalDraft(null);
-          setOfflineModalDraftMessageTimestamp(null);
-        }}
-        onSessionUpdate={(nextSession) => {
-          onUpdateGroup({ activeOfflineSession: nextSession });
-        }}
-        onPublishRecruitCard={(draft, cardMessage) => {
-          setHistory((prev) => [...prev, cardMessage]);
-          setOfflineModalDraft(draft);
-          setOfflineModalDraftMessageTimestamp(null);
-          setShowOfflineModal(false);
-        }}
-        onSessionComplete={({ archivedSession, endMessage, followupMessages }) => {
-          const settledParticipantIds = archivedSession.participants.map((participant) => participant.characterId);
-          const settledParticipantLabels = groupCharacterPool
-            .filter((member) => settledParticipantIds.includes(member.id))
-            .map((member) => member.remarkName?.trim() || member.name);
-          const historyWithRecruitCardState = archivedSession.sourceRecruitCardSessionId
-            ? history.map((message) => {
-                if (message.groupOfflineCard?.sessionId !== archivedSession.sourceRecruitCardSessionId) {
-                  return message;
-                }
-
-                const existingDraft = message.groupOfflineDraft;
-                const nextDraft = existingDraft
-                  ? {
-                      ...existingDraft,
-                      selectedParticipantIds: settledParticipantIds,
-                      participantLabels: settledParticipantLabels,
-                      signedUpParticipantIds: settledParticipantIds,
-                      confirmedParticipantIds: settledParticipantIds,
-                      launchedAt: archivedSession.endedAt || Date.now(),
-                    }
-                  : undefined;
-
-                return {
-                  ...message,
-                  groupOfflineDraft: nextDraft,
-                  groupOfflineCard: nextDraft
-                    ? buildGroupOfflineRecruitCard({
-                        draft: nextDraft,
-                        createdBy: message.groupOfflineCard?.createdBy || groupUserDisplayName,
-                        timestamp: message.timestamp,
-                        status: 'ended',
-                        participantLabelsOverride: settledParticipantLabels,
-                        summaryLinesOverride: [
-                          '这张征集卡对应的群线下已结束。',
-                          ...(archivedSession.summaryCard?.lines?.slice(0, 1) || []),
-                        ],
-                      })
-                    : message.groupOfflineCard
-                      ? {
-                          ...message.groupOfflineCard,
-                          status: 'ended' as const,
-                          participantLabels: settledParticipantLabels,
-                          statusLabel: '已结束',
-                          summaryLines: ['这张征集卡对应的群线下已结束。'],
-                        }
-                      : message.groupOfflineCard,
-                };
-              })
-            : history;
-          const nextHistory = [...historyWithRecruitCardState, endMessage, ...followupMessages];
-          onUpdateGroup({
-            activeOfflineSession: null,
-            currentScene: archivedSession.location,
-          });
-          setHistory(nextHistory);
-          void (async () => {
-            const participantMembers = groupCharacterPool.filter((member) => (
-              archivedSession.participants.some((participant) => participant.characterId === member.id)
-            ));
-            if (participantMembers.length === 0) {
-              return;
-            }
-
-            try {
-              const results = await persistSceneSettlementBatch(
-                participantMembers.map((member) => ({
-                  characterId: member.id,
-                  sourceScene: 'group_offline',
-                  sourceSessionType: 'group',
-                  sourceSessionId: archivedSession.id,
-                  settlement: buildGroupOfflineSharedSettlement(member, archivedSession),
-                  timestamp: archivedSession.endedAt || Date.now(),
-                })),
-              );
-
-              results.forEach((result, index) => {
-                const member = participantMembers[index];
-                if (!member) return;
-                patchCharacter(member.id, result.characterPatch);
-              });
-
-              const groupShortTermSummary = archivedSession.summaryCard?.lines
-                ?.map((line) => line.trim())
-                .filter(Boolean)
-                .join('\n');
-              const groupMemberPerspectiveSummaries = Object.fromEntries(
-                participantMembers.map((member, index) => {
-                  const result = results[index];
-                  return [member.id, result?.characterPatch.shortTermSummary || ''] as const;
-                })
-                  .filter((entry) => entry[1].trim().length > 0),
-              );
-              const memberNames = Object.fromEntries(
-                groupCharacterPool.map((member) => [member.id, member.remarkName?.trim() || member.name] as const),
-              );
-              const nextGroupLongTermMemory = deriveGroupLongTermMemoryFromHistory({
-                history: nextHistory,
-                memberIds: group.memberIds,
-                memberNames,
-                previous: group.groupLongTermMemory,
-                backgroundSummary: group.backgroundSummary,
-                publicFacts: group.publicFacts,
-              });
-
-              onUpdateGroup({
-                ...(groupShortTermSummary ? { groupShortTermSummary } : {}),
-                ...(Object.keys(groupMemberPerspectiveSummaries).length > 0
-                  ? {
-                      groupMemberPerspectiveSummaries: {
-                        ...(group.groupMemberPerspectiveSummaries || {}),
-                        ...groupMemberPerspectiveSummaries,
-                      },
-                    }
-                  : {}),
-                ...(nextGroupLongTermMemory ? { groupLongTermMemory: nextGroupLongTermMemory } : {}),
-              });
-            } catch (error) {
-              console.error('[group-chat] Failed to persist group offline settlement memory snapshots', error);
-            }
-          })();
-        }}
+        worldBooks={worldBooks}
+        userName={userName}
+        userAvatar={userAvatar}
+        setHistory={setHistory}
+        onUpdateGroup={onUpdateGroup}
+        onClearHistory={onClearHistory}
+        onLeaveGroup={onLeaveGroup}
+        onRequestClose={() => setShowGroupSettings(false)}
+        onJumpToMessage={setHighlightedMessageTarget}
+        resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
+          userName: groupUserDisplayName,
+          getCharacterById,
+        })}
+        reactToNoticeUpdate={reactToNoticeUpdate}
+        runApprovedJoinReaction={runApprovedJoinReaction}
+        runModerationFollowupReactions={runModerationFollowupReactions}
       />
-
-      <AnimatePresence>
-        {showGroupSettings && (
-          <>
-            <input
-              ref={groupAvatarInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleGroupAvatarUpload}
-            />
-              <GroupSettingsScreen
-                groupName={groupDisplayName}
-                formState={groupSettingsForm}
-                actingRole={actingRole}
-                canEditNotice={canCurrentUserEditGroupNotice}
-                noticePermissionHint={groupNoticePermissionHint}
-                canManageDynamicPermissions={canCurrentUserManageDynamicPermissions}
-                memberCount={participantCount}
-                members={groupSettingsMembers}
-                inviteCandidates={groupSettingsInviteCandidates}
-                worldBooks={worldBooks}
-                messages={history}
-                groupShortTermSummary={group.groupShortTermSummary}
-                groupMemberPerspectiveSummaries={group.groupMemberPerspectiveSummaries}
-                groupLongTermMemory={group.groupLongTermMemory}
-                onChange={(patch) => setGroupSettingsForm((prev) => ({ ...prev, ...patch }))}
-                onClearMemory={(patch) => onUpdateGroup(patch)}
-                onUpdateGroupBackground={handleUpdateGroupBackground}
-                onAvatarPick={() => groupAvatarInputRef.current?.click()}
-                onBack={handleCloseGroupSettings}
-                onJumpToMessage={(target) => {
-                  setShowGroupSettings(false);
-                  setHighlightedMessageTarget(target);
-                }}
-                onInviteMember={handleInviteMember}
-                onRevealGroupToMember={handleRevealGroupToMember}
-                onRemoveMember={handleRemoveMember}
-                onToggleAdmin={handleToggleAdmin}
-                onToggleMute={handleToggleMute}
-                onAssignDutyAdmin={handleAssignDutyAdmin}
-                onClearDutyAdmin={handleClearDutyAdmin}
-                onGrantTemporaryPermission={handleGrantTemporaryPermission}
-                onRevokeTemporaryPermission={handleRevokeTemporaryPermission}
-                onUpdateBadge={handleUpdateBadge}
-                onUpdateBubbleColor={handleUpdateBubbleColor}
-                resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
-                  userName: groupUserDisplayName,
-                  getCharacterById,
-                })}
-                isInvitingMember={isInvitingMember}
-                isRevealingGroup={isRevealingGroup}
-                isRemovingMember={isRemovingMember}
-                isUpdatingAdmin={isUpdatingAdmin}
-                isUpdatingMute={isUpdatingMute}
-                isUpdatingDynamicPermissions={isUpdatingDynamicPermissions}
-                isUpdatingBadge={isUpdatingBadge}
-                onClearHistory={() => {
-                  if (!window.confirm('确认清空当前群聊记录吗？')) return;
-                  onClearHistory();
-                  setShowGroupSettings(false);
-                }}
-                onLeaveGroup={() => {
-                  if (!window.confirm('确认退出当前群聊吗？')) return;
-                  setShowGroupSettings(false);
-                  handleLeaveCurrentGroup();
-                }}
-              />
-          </>
-        )}
-      </AnimatePresence>
 
       {contextMenu && contextMenuMessage && (
         <>

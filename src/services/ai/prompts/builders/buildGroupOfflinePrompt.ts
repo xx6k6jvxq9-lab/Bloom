@@ -18,16 +18,13 @@ import {
   buildGroupOfflineScenarioSchemaLines,
   formatGroupOfflineScenarioBrief,
 } from './groupOfflineScenarioPrompt';
-import {
-  compileSpecialDirective,
-  type CompiledSpecialDirective,
-} from '../../../special-directives/compileSpecialDirective';
+import { compileSpecialDirective } from '../../../special-directives/compileSpecialDirective';
 
 type GroupOfflinePromptPhase = 'intro' | 'round';
 type GroupOfflineDirectorMode = 'start' | 'rewrite' | 'next_round';
-type GroupOfflineHtmlPagePlan = {
-  pageType: 'micro_app' | 'custom_html';
-  compiled: CompiledSpecialDirective;
+type GroupOfflinePagePlan = {
+  pageType: NonNullable<NonNullable<GroupOfflineRound['pageEpisode']>['pageType']>;
+  platform?: NonNullable<GroupOfflineRound['pageEpisode']>['platform'];
 };
 
 type BuildGroupOfflinePromptOptions = {
@@ -42,6 +39,7 @@ type BuildGroupOfflinePromptOptions = {
   dispatchMode?: GroupOfflineRoundDispatchMode;
   directorInstructionOverride?: string;
   directorMode?: GroupOfflineDirectorMode;
+  directorPagePlanOverride?: GroupOfflinePagePlan;
 };
 
 function formatExistingRounds(rounds: GroupOfflineRound[] | undefined): string {
@@ -96,7 +94,7 @@ function buildParticipantNames(options: BuildGroupOfflinePromptOptions): string[
     .filter(Boolean);
 }
 
-function resolveDirectorInstruction(options: BuildGroupOfflinePromptOptions): string {
+function resolveRawDirectorInstruction(options: BuildGroupOfflinePromptOptions): string {
   const override = options.directorInstructionOverride?.trim();
   if (override) {
     return override;
@@ -105,6 +103,10 @@ function resolveDirectorInstruction(options: BuildGroupOfflinePromptOptions): st
     return options.session.directorInstruction?.trim() || '';
   }
   return '';
+}
+
+function resolveDirectorInstruction(options: BuildGroupOfflinePromptOptions): string {
+  return resolveRawDirectorInstruction(options);
 }
 
 function hasExplicitLengthDirective(text: string): boolean {
@@ -135,7 +137,7 @@ function buildDirectorInstructionBlock(options: BuildGroupOfflinePromptOptions):
         : options.directorMode === 'start'
           ? '这次要先按这条导演指令生成开场和第一轮，而不是按默认方式开局。'
           : '这是用户当前手动输入的导演指令。只要不违背角色设定、世界观和硬边界，就按高优先级执行。',
-    hasExplicitLengthDirective(instruction)
+    hasExplicitLengthDirective(resolveRawDirectorInstruction(options))
       ? '如果这条特殊指令明确要求了篇幅或字数，以这条特殊指令为准；外部默认字数上限只在特殊指令没提篇幅时兜底。'
       : '如果这条特殊指令没有明确要求篇幅，再回退到外部默认字数设置。',
     '优先级顺序：角色设定 / 世界观 / 不在场约束 > 设定局任务 > 调度顺序 > 导演指令 > 文风。',
@@ -145,23 +147,133 @@ function buildDirectorInstructionBlock(options: BuildGroupOfflinePromptOptions):
   ].join('\n');
 }
 
-function resolveHtmlPagePlan(options: BuildGroupOfflinePromptOptions): GroupOfflineHtmlPagePlan | undefined {
-  const instruction = resolveDirectorInstruction(options);
+function resolvePagePlan(options: BuildGroupOfflinePromptOptions): GroupOfflinePagePlan | undefined {
+  if (options.directorPagePlanOverride) {
+    return options.directorPagePlanOverride;
+  }
+
+  const instruction = resolveRawDirectorInstruction(options);
   if (!instruction) {
     return undefined;
   }
 
   const compiled = compileSpecialDirective(instruction);
-  if (!compiled || (compiled.pageType !== 'micro_app' && compiled.pageType !== 'custom_html')) {
+  if (!compiled || !compiled.pageType || compiled.outputKind === 'narrative_episode') {
     return undefined;
   }
 
   return {
     pageType: compiled.pageType,
-    compiled,
+    ...(compiled.platform ? { platform: compiled.platform } : {}),
   };
 }
 
+function buildGroupOfflinePageRuleLines(pagePlan: GroupOfflinePagePlan): string[] {
+  if (pagePlan.pageType === 'wechat_chat') {
+    return [
+      '7. round.pageEpisode.chat.messages 必须给出完整聊天记录；用 message 数组拆开时间戳、系统提示、转账卡片和普通消息，不要把整页聊天揉成一段说明文。',
+      '8. 如果导演要求隐藏状态栏或自定义状态栏，把 round.pageEpisode.statusBar 一起写出来；如果没要求，就按正常微信聊天页处理。',
+      '9. 聊天内容必须服务这一轮推进，不能只做 UI 壳子或空白占位。',
+    ];
+  }
+
+  if (pagePlan.pageType === 'feed_post') {
+    return [
+      '7. 如果导演要求的是多条动态/多条帖子，不要把编号硬塞进一个 body；要拆成 round.pageEpisode.feed.items 里的多条独立动态卡片。',
+      '8. round.pageEpisode.feed 要把 authorName、headline、body、comments 等字段拆开；微博/小红书/网易云/校园墙这类平台页，不要把标题、来源、地点、标签全糊进正文。',
+      '9. 除微信和朋友圈外，社交媒体页默认要有评论区；如果导演要求评论条数，要补足对应数量。',
+    ];
+  }
+
+  if (pagePlan.pageType === 'document_page') {
+    return [
+      '7. round.pageEpisode.document 必须给出完整文档结构：title、subtitle、intro、sections，以及需要的话 primaryActionLabel / secondaryActionLabel。',
+      '8. sections 要拆成多段信息块，不要把所有内容塞成一整段说明文。',
+      '9. 文档页也必须服务这一轮推进，像调查页、通知页、报名页或现场记录页，而不是脱离剧情的模板空壳。',
+    ];
+  }
+
+  return [
+    '7. round.pageEpisode.htmlDocument 必须给出完整、可独立渲染的 html 页面内容；可以是完整文档，也可以是可直接包进页面容器的主体结构。',
+    '8. 如果页面类型是 custom_html / micro_app，首屏必须直接可见，不要整页只有背景、空壳容器或必须点很多次才出现正文。',
+    '9. 至少给出一个明确根容器、一个主要视觉区、一个可操作控件和一个操作后的反馈区；点击或切换后要看得出状态变化。',
+    '10. 不要把整页内容塞进一大段说明文；把标题、说明、状态、按钮、反馈节点拆开，像一个真的可玩的页面。',
+  ];
+}
+
+function buildGroupOfflinePageSchemaLines(pagePlan: GroupOfflinePagePlan, indent = '      '): string[] {
+  const lines = [
+    `${indent}"pageEpisode": {`,
+    `${indent}  "pageType": "${pagePlan.pageType}",`,
+    ...(pagePlan.platform ? [`${indent}  "platform": "${pagePlan.platform}",`] : []),
+    `${indent}  "title": "页面标题",`,
+    `${indent}  "subtitle": "页面副标题",`,
+    `${indent}  "caption": "页面补充说明，可选",`,
+  ];
+
+  if (pagePlan.pageType === 'wechat_chat') {
+    return [
+      ...lines,
+      `${indent}  "statusBar": { "mode": "auto|hidden|custom", "time": "22:18", "carrier": "中国移动", "network": "5G", "battery": 86 },`,
+      `${indent}  "chat": {`,
+      `${indent}    "headerTitle": "聊天页顶部标题",`,
+      `${indent}    "headerSubtitle": "聊天页副标题，可选",`,
+      `${indent}    "inputPlaceholder": "输入框提示，可选",`,
+      `${indent}    "messages": [`,
+      `${indent}      { "sender": "system|user|character", "kind": "text|timestamp|system|transfer", "text": "消息正文", "timestampLabel": "22:18", "amountLabel": "¥520.00", "note": "可选备注" }`,
+      `${indent}    ]`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  if (pagePlan.pageType === 'feed_post') {
+    return [
+      ...lines,
+      `${indent}  "feed": {`,
+      `${indent}    "authorName": "主发帖人",`,
+      `${indent}    "authorBadge": "身份标记，可选",`,
+      `${indent}    "headline": "动态标题，可选",`,
+      `${indent}    "body": "主动态正文",`,
+      `${indent}    "sourceLabel": "来源，可选",`,
+      `${indent}    "timestampLabel": "时间，可选",`,
+      `${indent}    "locationLabel": "地点，可选",`,
+      `${indent}    "topics": ["标签1", "标签2"],`,
+      `${indent}    "likeCountLabel": "99+",`,
+      `${indent}    "commentCountLabel": "12",`,
+      `${indent}    "repostCountLabel": "8",`,
+      `${indent}    "comments": [{ "authorName": "评论人", "authorRole": "character|user|other", "text": "评论正文", "badge": "可选" }],`,
+      `${indent}    "items": [`,
+      `${indent}      { "authorName": "动态作者", "headline": "单条动态标题，可选", "body": "单条动态正文", "comments": [] }`,
+      `${indent}    ]`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  if (pagePlan.pageType === 'document_page') {
+    return [
+      ...lines,
+      `${indent}  "document": {`,
+      `${indent}    "title": "文档标题",`,
+      `${indent}    "subtitle": "文档副标题，可选",`,
+      `${indent}    "intro": "文档导语，可选",`,
+      `${indent}    "sections": [`,
+      `${indent}      { "heading": "分节标题，可选", "body": "分节正文" }`,
+      `${indent}    ],`,
+      `${indent}    "primaryActionLabel": "主按钮文案，可选",`,
+      `${indent}    "secondaryActionLabel": "次按钮文案，可选"`,
+      `${indent}  }`,
+      `${indent}}`,
+    ];
+  }
+
+  return [
+    ...lines,
+    `${indent}  "htmlDocument": "完整 html 或可直接渲染的主体结构"`,
+    `${indent}}`,
+  ];
+}
 function buildCommonInfoSections(options: BuildGroupOfflinePromptOptions): string[] {
   const groupStateSummary = formatProjectionGroupState(options.runtimeProjection);
   const scenarioBrief = formatGroupOfflineScenarioBrief(options.session);
@@ -256,16 +368,17 @@ function buildIntroPrompt(options: BuildGroupOfflinePromptOptions): string {
   ].filter(Boolean).join('\n');
 }
 
-function buildHtmlRoundPrompt(
+function buildPageRoundPrompt(
   options: BuildGroupOfflinePromptOptions,
-  pagePlan: GroupOfflineHtmlPagePlan,
+  pagePlan: GroupOfflinePagePlan,
 ): string {
   const selectedCharacters = pickProjectionCharacters(options.runtimeProjection, options.selectedCharacterIds);
   const selectedNames = selectedCharacters.map((character) => character.identity.displayName);
   const scenarioRuleLines = buildGroupOfflineScenarioRoundRuleLines(options.session);
+  const pageRuleLines = buildGroupOfflinePageRuleLines(pagePlan);
 
   return [
-    '你现在要为一个“群聊线下场景页”生成下一轮内容，但这一次输出协议不是普通正文轮，而是独立 HTML 页面轮。',
+    '你现在要为一个“群聊线下场景页”生成下一轮内容，但这一次输出协议不是普通正文轮，而是独立 `page_episode` 页面轮。',
     '这不是普通群聊，也不是单人约会，而是多人在同一现场的线下局。',
     '',
     '硬性要求：',
@@ -275,12 +388,10 @@ function buildHtmlRoundPrompt(
     `4. 本轮仍然只围绕被调度到的角色推进：${selectedNames.join('、') || '暂无'}。页面内容必须服务这一轮的同场推进，不能脱离当前现场。`,
     `5. 本轮调度方式：${options.dispatchMode === 'manual' ? '手动选人' : options.dispatchMode === 'random' ? '随机出场' : '系统推荐'}。如给了多个角色，顺序必须遵守：${selectedNames.join(' -> ') || '暂无'}。`,
     options.roundPlan ? '5.5. 下面会给你本轮调度。它只约束谁先出场、对谁出声，不替角色决定语气、主动性、占有欲、亲密尺度或表演力度。' : '',
+    selectedNames.length > 1 ? '5.6. 这一轮如果调度到多个角色，不要擅自把页面写成只剩一个人的单人主页、单人独白或单人自说自话；至少要让其他在场角色通过动态、评论、回复、并列节点或同页互动被看见。' : '',
     ...scenarioRuleLines,
     '6. round.sceneText 仍然必须写，而且它不再是普通共景正文，而是这一轮页面内容的剧情摘要，用来让主线继续衔接。',
-    '7. round.pageEpisode.htmlDocument 必须给出完整、可独立渲染的 html 页面内容；可以是完整文档，也可以是可直接包进页面容器的主体结构。',
-    '8. 如果页面类型是 custom_html / micro_app，首屏必须直接可见，不要整页只有背景、空壳容器或必须点很多次才出现正文。',
-    '9. 至少给出一个明确根容器、一个主要视觉区、一个可操作控件和一个操作后的反馈区；点击或切换后要看得出状态变化。',
-    '10. 不要把整页内容塞进一大段说明文；把标题、说明、状态、按钮、反馈节点拆开，像一个真的可玩的页面。',
+    ...pageRuleLines,
     '11. 不要把不在场的人写进页面，不要推翻当前任务目标，也不要脱离当前局的人设、关系、世界观和硬边界。',
     '12. 如果这条特殊指令明确要求了篇幅、互动或视觉结构，以特殊指令为准；普通外层字数设置在这一轮只当兜底参考。',
     '',
@@ -326,24 +437,17 @@ function buildHtmlRoundPrompt(
     '      "title": "本轮标题",',
     '      "sceneText": "这轮页面内容对应的剧情摘要，用于主线衔接",',
     ...buildGroupOfflineScenarioSchemaLines(options.session, '      '),
-    '      "pageEpisode": {',
-    `        "pageType": "${pagePlan.pageType}",`,
-    '        "title": "页面标题",',
-    '        "subtitle": "页面副标题",',
-    '        "caption": "页面补充说明，可选",',
-    '        "htmlDocument": "完整 html 或可直接渲染的主体结构"',
-    '      },',
+    ...buildGroupOfflinePageSchemaLines(pagePlan, '      '),
     '      "characterEntries": []',
     '    }',
     '  ]',
     '}',
   ].filter(Boolean).join('\n');
 }
-
 function buildRoundPrompt(options: BuildGroupOfflinePromptOptions): string {
-  const htmlPagePlan = resolveHtmlPagePlan(options);
-  if (htmlPagePlan) {
-    return buildHtmlRoundPrompt(options, htmlPagePlan);
+  const pagePlan = resolvePagePlan(options);
+  if (pagePlan) {
+    return buildPageRoundPrompt(options, pagePlan);
   }
 
   const selectedCharacters = pickProjectionCharacters(options.runtimeProjection, options.selectedCharacterIds);

@@ -359,7 +359,7 @@ function buildPageEpisodeInstructionBlock(plan: CompiledSpecialDirective | undef
   }
 
   const pageTypeLabel = describeCompiledDirective(plan);
-  const canonLabel = plan.writebackPolicy === 'mainline' ? '允许把这次页面内容并入主线。' : '默认作为番外，不主动写回主线。';
+  const canonLabel = '默认作为番外，不主动写回主线。';
   const statusBarLabel = plan.chrome.statusBarMode === 'hidden'
     ? '隐藏状态栏'
     : plan.chrome.statusBarMode === 'custom'
@@ -542,9 +542,7 @@ function buildTask(options: BuildDatingSceneInputOptions): string {
   if (normalizedDirectorInstruction) {
     if (compiledSpecialDirective && compiledSpecialDirective.outputKind !== 'narrative_episode') {
       const pageTypeLabel = describeCompiledDirective(compiledSpecialDirective);
-      const canonLabel = compiledSpecialDirective.writebackPolicy === 'mainline'
-        ? '允许把这次页面内容并入主线。'
-        : '默认把这次内容当作不主动写回主线的番外。';
+      const canonLabel = '默认把这次内容当作不主动写回主线的番外。';
 
       if (options.directorMode === 'rewrite') {
         return truncateFromStart(
@@ -783,7 +781,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
         outputKind: compiledSpecialDirective.outputKind,
         statusBarMode: compiledSpecialDirective.chrome.statusBarMode,
         statusBarInstruction: compiledSpecialDirective.chrome.statusBarInstruction,
-        canonMode: compiledSpecialDirective.writebackPolicy,
+        canonMode: 'side_story',
       } satisfies DatingPageEpisodeIntent
     : undefined;
   const directorInstructionBlock = truncateFromStart(

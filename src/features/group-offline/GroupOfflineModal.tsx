@@ -26,6 +26,8 @@ import type {
   DateWritingPreset,
   DateWritingReference,
   GroupOfflineMode,
+  GroupOfflineMemoryWritebackPolicy,
+  GroupOfflineRecruitResponseRecord,
   GroupOfflineRecruitDraft,
   GroupOfflineSession,
   PerceptionSettings,
@@ -53,6 +55,10 @@ import {
   buildGroupOfflineWorldBookSnapshot,
   resolveGroupOfflineWorldBookSnapshot,
 } from '../../services/group-offline/worldBookSnapshot';
+import {
+  buildGroupOfflineRecruitStatusSummary,
+  normalizeGroupOfflineRecruitResponses,
+} from '../../services/group-offline/recruitState';
 
 type GroupOfflineModalProps = {
   isOpen: boolean;
@@ -72,6 +78,7 @@ type GroupOfflineModalProps = {
   onSessionUpdate: (session: GroupOfflineSession | null) => void;
   onPublishRecruitCard: (draft: GroupOfflineRecruitDraft, cardMessage: ChatMessage) => void;
   onRecruitDraftUpdate: (draft: GroupOfflineRecruitDraft) => void;
+  onContinueRecruitRound?: (draft: GroupOfflineRecruitDraft) => void;
   onSessionComplete: (payload: {
     archivedSession: GroupOfflineSession;
     endMessage: ChatMessage;
@@ -395,6 +402,12 @@ function buildRecruitDraftSnapshotKey(draft: GroupOfflineRecruitDraft | null | u
     vibe: draft.vibe,
     selectedParticipantIds: dedupeIds(draft.selectedParticipantIds),
     participantLabels: dedupeIds(draft.participantLabels),
+    recruitResponses: normalizeGroupOfflineRecruitResponses(draft.recruitResponses).map((item) => ({
+      characterId: item.characterId,
+      decision: item.decision,
+      text: item.text,
+      respondedAt: item.respondedAt,
+    })),
     signedUpParticipantIds: dedupeIds(draft.signedUpParticipantIds),
     confirmedParticipantIds: dedupeIds(draft.confirmedParticipantIds),
     rosterLockedAt: draft.rosterLockedAt ?? null,
@@ -570,6 +583,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
   onSessionUpdate,
   onPublishRecruitCard,
   onRecruitDraftUpdate,
+  onContinueRecruitRound,
   onSessionComplete,
 }) => {
   const initializationKeyRef = useRef('closed');
@@ -585,9 +599,8 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
   const [scenarioHandoffOrExitPrompt, setScenarioHandoffOrExitPrompt] = useState('');
   const [scenarioFailureConditionPrompt, setScenarioFailureConditionPrompt] = useState('');
   const [scenarioTaskPrompt, setScenarioTaskPrompt] = useState('');
+  const [recruitResponses, setRecruitResponses] = useState<GroupOfflineRecruitResponseRecord[]>([]);
   const [signedUpParticipantIds, setSignedUpParticipantIds] = useState<string[]>([]);
-  const [confirmedParticipantIds, setConfirmedParticipantIds] = useState<string[]>([]);
-  const [rosterLockedAt, setRosterLockedAt] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [timeLabel, setTimeLabel] = useState('');
   const [weatherLabel, setWeatherLabel] = useState('');
@@ -631,18 +644,27 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       ? selectedParticipantIds
       : sceneMemberPool.map((member) => member.id)
   ), [sceneMemberPool, selectedParticipantIds]);
-  const recruitCandidateMembers = useMemo(() => (
-    sceneMemberPool.filter((member) => recruitCandidateIds.includes(member.id))
-  ), [recruitCandidateIds, sceneMemberPool]);
   const recruitSignedUpIds = useMemo(
     () => dedupeIds(signedUpParticipantIds).filter((id) => recruitCandidateIds.includes(id)),
     [recruitCandidateIds, signedUpParticipantIds],
   );
-  const recruitConfirmedIds = useMemo(
-    () => dedupeIds(confirmedParticipantIds).filter((id) => recruitSignedUpIds.includes(id)),
-    [confirmedParticipantIds, recruitSignedUpIds],
+  const recruitResponseByCharacterId = useMemo(
+    () => new Map(normalizeGroupOfflineRecruitResponses(recruitResponses).map((item) => [item.characterId, item] as const)),
+    [recruitResponses],
   );
-  const recruitLockActive = typeof rosterLockedAt === 'number' && Number.isFinite(rosterLockedAt);
+  const recruitStatusSummary = useMemo(
+    () => buildGroupOfflineRecruitStatusSummary({
+      draft: {
+        selectedParticipantIds: recruitCandidateIds,
+        signedUpParticipantIds: recruitSignedUpIds,
+        recruitResponses,
+      } as Pick<GroupOfflineRecruitDraft, 'selectedParticipantIds' | 'signedUpParticipantIds' | 'recruitResponses'>,
+      fallbackCandidateIds: recruitCandidateIds,
+      members: sceneMemberPool,
+    }),
+    [recruitCandidateIds, recruitResponses, recruitSignedUpIds, sceneMemberPool],
+  );
+  const recruitPendingIds = recruitStatusSummary.pendingIds;
 
   useEffect(() => {
     const initializationKey = isOpen
@@ -655,9 +677,8 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       setCurrentSession(null);
       setDirectorLaunchToken(0);
       setInitialDirectorSection(undefined);
+      setRecruitResponses([]);
       setSignedUpParticipantIds([]);
-      setConfirmedParticipantIds([]);
-      setRosterLockedAt(null);
       lastRecruitDraftSnapshotRef.current = '';
       setExpandedField(null);
       setSceneDetailsOpen(false);
@@ -733,9 +754,17 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       );
       setScenarioFailureConditionPrompt(safeText(initialDraft.scenarioState?.failureCondition));
       setScenarioTaskPrompt(safeText(initialDraft.scenarioState?.currentTask));
-      setSignedUpParticipantIds(Array.isArray(initialDraft.signedUpParticipantIds) ? initialDraft.signedUpParticipantIds : []);
-      setConfirmedParticipantIds(Array.isArray(initialDraft.confirmedParticipantIds) ? initialDraft.confirmedParticipantIds : []);
-      setRosterLockedAt(typeof initialDraft.rosterLockedAt === 'number' ? initialDraft.rosterLockedAt : null);
+      const normalizedRecruitResponses = normalizeGroupOfflineRecruitResponses(initialDraft.recruitResponses);
+      setRecruitResponses(normalizedRecruitResponses);
+      setSignedUpParticipantIds(
+        normalizedRecruitResponses.filter((item) => item.decision === 'join').map((item) => item.characterId).length > 0
+          ? normalizedRecruitResponses.filter((item) => item.decision === 'join').map((item) => item.characterId)
+          : Array.isArray(initialDraft.signedUpParticipantIds) && initialDraft.signedUpParticipantIds.length > 0
+          ? initialDraft.signedUpParticipantIds
+          : Array.isArray(initialDraft.confirmedParticipantIds)
+            ? initialDraft.confirmedParticipantIds
+            : [],
+      );
       lastRecruitDraftSnapshotRef.current = buildRecruitDraftSnapshotKey(initialDraft);
       setLocation(safeText(initialDraft.location));
       setTimeLabel(safeText(initialDraft.timeLabel));
@@ -774,9 +803,8 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     setScenarioHandoffOrExitPrompt('');
     setScenarioFailureConditionPrompt('');
     setScenarioTaskPrompt('');
+    setRecruitResponses([]);
     setSignedUpParticipantIds([]);
-    setConfirmedParticipantIds([]);
-    setRosterLockedAt(null);
     lastRecruitDraftSnapshotRef.current = '';
     setLocation('');
     setTimeLabel('');
@@ -807,9 +835,15 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       const next = dedupeIds(previous).filter((id) => recruitCandidateIds.includes(id));
       return sameIds(previous, next) ? previous : next;
     });
-    setConfirmedParticipantIds((previous) => {
-      const next = dedupeIds(previous).filter((id) => recruitCandidateIds.includes(id));
-      return sameIds(previous, next) ? previous : next;
+  }, [recruitCandidateIds]);
+
+  useEffect(() => {
+    setRecruitResponses((previous) => {
+      const next = normalizeGroupOfflineRecruitResponses(previous)
+        .filter((item) => recruitCandidateIds.includes(item.characterId));
+      return JSON.stringify(previous) === JSON.stringify(next)
+        ? previous
+        : next;
     });
   }, [recruitCandidateIds]);
 
@@ -867,37 +901,6 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     ));
   };
 
-  const toggleRecruitSignup = (characterId: string) => {
-    if (recruitLockActive) return;
-    setSignedUpParticipantIds((previous) => (
-      previous.includes(characterId)
-        ? previous.filter((id) => id !== characterId)
-        : [...previous, characterId]
-    ));
-    setConfirmedParticipantIds((previous) => previous.filter((id) => id !== characterId));
-  };
-
-  const toggleRecruitConfirm = (characterId: string) => {
-    if (recruitLockActive) return;
-    setSignedUpParticipantIds((previous) => (
-      previous.includes(characterId) ? previous : [...previous, characterId]
-    ));
-    setConfirmedParticipantIds((previous) => (
-      previous.includes(characterId)
-        ? previous.filter((id) => id !== characterId)
-        : [...previous, characterId]
-    ));
-  };
-
-  const handleLockRecruitRoster = () => {
-    if (recruitConfirmedIds.length === 0) return;
-    setRosterLockedAt(Date.now());
-  };
-
-  const handleUnlockRecruitRoster = () => {
-    setRosterLockedAt(null);
-  };
-
   const sceneDetailsSummary = [
     safeText(customActivityType).trim() || activityType || '沿用开局标签',
     safeText(location).trim() || '地点随机',
@@ -906,8 +909,11 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     selectedScenarioBlueprint ? `${selectedScenarioBlueprint.roundLimit} 轮任务局` : '',
   ].filter(Boolean).join(' · ');
   const participantSettingsSummary = isRecruitDraftFlow
-    ? `${selectedParticipantIds.length > 0 ? `${selectedParticipantIds.length} 人候选` : '开放报名'} · 已报名 ${recruitSignedUpIds.length} · 已确认 ${recruitConfirmedIds.length}`
+    ? `${recruitStatusSummary.invitedCount > 0 ? `${recruitStatusSummary.invitedCount} 人候选` : '开放报名'} · 已报名 ${recruitStatusSummary.joinedCount} 人 · 已婉拒 ${recruitStatusSummary.declinedCount} 人 · 待表态 ${recruitStatusSummary.pendingCount} 人`
     : `${selectedParticipantIds.length > 0 ? `${selectedParticipantIds.length} 人参与` : '待征集'} · ${vibe}`;
+  const displayedParticipantMembers = isRecruitDraftFlow
+    ? members.filter((member) => recruitCandidateIds.includes(member.id))
+    : members;
 
   const buildPreparedDraft = (createdAt = Date.now(), options?: { allowEmptyParticipants?: boolean }): GroupOfflineRecruitDraft | null => {
     if (!options?.allowEmptyParticipants && selectedParticipantIds.length === 0) {
@@ -928,8 +934,9 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     const resolvedWeather = safeText(weatherLabel).trim() || pickRandomWeather(mode);
     const participantSourceIds = selectedParticipantIds.length > 0
       ? selectedParticipantIds
-      : (isRecruitDraftFlow ? recruitConfirmedIds : []);
+      : [];
     const participantMembers = sceneMemberPool.filter((member) => participantSourceIds.includes(member.id));
+    const signedUpMembers = sceneMemberPool.filter((member) => recruitSignedUpIds.includes(member.id));
     const scenarioState = mode === 'scenario' && isGroupOfflineScenarioType(activityType)
       ? buildGroupOfflineScenarioState({
           type: activityType,
@@ -969,7 +976,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       highlightColor,
       bodyTextColor,
       selectedParticipantIds: [...selectedParticipantIds],
-      participantLabels: participantMembers.map((member) => member.remarkName?.trim() || member.name),
+      participantLabels: signedUpMembers.map((member) => member.remarkName?.trim() || member.name),
       selectedWorldBookIds: worldBookSnapshot.map((entry) => entry.id),
       worldBookSnapshot,
       backgroundImage: group.groupBackground,
@@ -982,10 +989,15 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       writingStyleCustom: safeText(writingStyleCustom).trim() || undefined,
       ...(safeText(initialDraft?.recruitCardSessionId).trim() ? { recruitCardSessionId: safeText(initialDraft?.recruitCardSessionId).trim() } : {}),
       ...(safeText(initialDraft?.directorInstruction).trim() ? { directorInstruction: safeText(initialDraft?.directorInstruction).trim() } : {}),
+      ...(initialDraft?.directorInstructionOutputMode ? { directorInstructionOutputMode: initialDraft.directorInstructionOutputMode } : {}),
+      ...(initialDraft?.memoryWritebackPolicy === 'allow' || initialDraft?.memoryWritebackPolicy === 'block'
+        ? { memoryWritebackPolicy: initialDraft.memoryWritebackPolicy }
+        : {}),
       ...(initialDraft?.awaitingDirectorInstruction ? { awaitingDirectorInstruction: true } : {}),
+      ...(normalizeGroupOfflineRecruitResponses(recruitResponses).length > 0
+        ? { recruitResponses: normalizeGroupOfflineRecruitResponses(recruitResponses) }
+        : {}),
       ...(recruitSignedUpIds.length > 0 ? { signedUpParticipantIds: recruitSignedUpIds } : {}),
-      ...(recruitConfirmedIds.length > 0 ? { confirmedParticipantIds: recruitConfirmedIds } : {}),
-      ...(recruitLockActive && rosterLockedAt ? { rosterLockedAt } : {}),
       ...(typeof initialDraft?.launchedAt === 'number' && Number.isFinite(initialDraft.launchedAt)
         ? { launchedAt: initialDraft.launchedAt }
         : {}),
@@ -1028,7 +1040,6 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
   }, [
     activityType,
     bodyTextColor,
-    confirmedParticipantIds,
     customActivityType,
     descriptionDensity,
     dialogueFormat,
@@ -1043,7 +1054,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     mode,
     narrativePerspective,
     onRecruitDraftUpdate,
-    rosterLockedAt,
+    recruitResponses,
     scenarioFailureConditionPrompt,
     scenarioHandoffOrExitPrompt,
     scenarioIdentityPairPrompt,
@@ -1068,11 +1079,13 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     createdAt: number,
     options?: {
       awaitingDirectorInstruction?: boolean;
+      memoryWritebackPolicy?: GroupOfflineMemoryWritebackPolicy;
+      launchFromSignups?: boolean;
     },
   ): GroupOfflineSession => {
-    const lockedConfirmedIds = dedupeIds(preparedDraft.confirmedParticipantIds || []);
-    const launchParticipantIds = lockedConfirmedIds.length > 0
-      ? lockedConfirmedIds
+    const launchSignedUpIds = dedupeIds(preparedDraft.signedUpParticipantIds || []);
+    const launchParticipantIds = options?.launchFromSignups && launchSignedUpIds.length > 0
+      ? launchSignedUpIds
       : preparedDraft.selectedParticipantIds;
 
     return {
@@ -1100,6 +1113,8 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       descriptionDensity: preparedDraft.descriptionDensity,
       writingStyleCustom: preparedDraft.writingStyleCustom,
       directorInstruction: preparedDraft.directorInstruction,
+      directorInstructionOutputMode: preparedDraft.directorInstructionOutputMode,
+      memoryWritebackPolicy: options?.memoryWritebackPolicy || preparedDraft.memoryWritebackPolicy || 'allow',
       awaitingDirectorInstruction: options?.awaitingDirectorInstruction ? true : undefined,
       sourceRecruitCardSessionId: preparedDraft.recruitCardSessionId,
       maxGeneratedChars: preparedDraft.maxGeneratedChars,
@@ -1118,17 +1133,18 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     };
   };
 
-  const canLaunchRecruitDraft = !isRecruitDraftFlow
-    || (recruitLockActive && recruitConfirmedIds.length > 0);
-  const launchParticipantCount = isRecruitDraftFlow
-    ? recruitConfirmedIds.length
-    : selectedParticipantIds.length;
+  const canLaunchDirectStart = selectedParticipantIds.length > 0;
+  const canLaunchRecruitStart = recruitSignedUpIds.length > 0;
+  const canContinueRecruitRound = isRecruitDraftFlow && recruitPendingIds.length > 0 && !!onContinueRecruitRound;
+  const canEnterSpecialInstruction = isRecruitDraftFlow
+    ? canLaunchRecruitStart
+    : canLaunchDirectStart;
 
   const handleStart = () => {
     const createdAt = Date.now();
-    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: isRecruitDraftFlow });
+    const preparedDraft = buildPreparedDraft(createdAt);
     if (!preparedDraft) return;
-    if (!canLaunchRecruitDraft) return;
+    if (!canLaunchDirectStart) return;
 
     const nextSession = buildSessionFromPreparedDraft(preparedDraft, createdAt);
 
@@ -1147,14 +1163,40 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     onSessionUpdate(nextSession);
   };
 
+  const handleStartFromSignups = () => {
+    const createdAt = Date.now();
+    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: true });
+    if (!preparedDraft) return;
+    if (!canLaunchRecruitStart) return;
+
+    const nextSession = buildSessionFromPreparedDraft(preparedDraft, createdAt, {
+      launchFromSignups: true,
+    });
+
+    const launchParticipantIds = nextSession.participants.map((participant) => participant.characterId);
+    const participantMembers = sceneMemberPool.filter((member) => launchParticipantIds.includes(member.id));
+    const startMessage = createGroupOfflineStartMessage({
+      session: nextSession,
+      members: participantMembers,
+    });
+
+    setDirectorLaunchToken(0);
+    setInitialDirectorSection(undefined);
+    setCurrentSession(nextSession);
+    setShowScene(true);
+    onSessionStart(nextSession, startMessage);
+    onSessionUpdate(nextSession);
+  };
+
   const handleOpenSpecialInstructionEntry = () => {
     const createdAt = Date.now();
-    const preparedDraft = buildPreparedDraft(createdAt, { allowEmptyParticipants: isRecruitDraftFlow });
+    const preparedDraft = buildPreparedDraft(createdAt, isRecruitDraftFlow ? { allowEmptyParticipants: true } : undefined);
     if (!preparedDraft) return;
-    if (!canLaunchRecruitDraft) return;
+    if (!canEnterSpecialInstruction) return;
 
     const nextSession = buildSessionFromPreparedDraft(preparedDraft, createdAt, {
       awaitingDirectorInstruction: true,
+      ...(isRecruitDraftFlow ? { launchFromSignups: true } : {}),
     });
     const launchParticipantIds = nextSession.participants.map((participant) => participant.characterId);
     const participantMembers = sceneMemberPool.filter((member) => launchParticipantIds.includes(member.id));
@@ -1180,7 +1222,6 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
       ...preparedDraft,
       recruitCardSessionId,
       signedUpParticipantIds: [],
-      confirmedParticipantIds: [],
     };
     const cardMessage = createGroupOfflineRecruitMessage({
       draft: nextDraft,
@@ -1189,6 +1230,19 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
     });
     onPublishRecruitCard(nextDraft, cardMessage);
     onClose();
+  };
+
+  const handleContinueRecruitRound = () => {
+    if (!initialDraft || !onContinueRecruitRound) {
+      return;
+    }
+
+    const nextDraft = buildRecruitDraftSnapshot();
+    if (!nextDraft) {
+      return;
+    }
+
+    onContinueRecruitRound(nextDraft);
   };
 
   if (!isOpen) {
@@ -1542,21 +1596,29 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                     rows={4}
                   />
 
-                  <FieldShell label={<span className="inline-flex items-center gap-2"><Users size={12} />参与角色</span>}>
+                  <FieldShell label={<span className="inline-flex items-center gap-2"><Users size={12} />{isRecruitDraftFlow ? '征集名单' : '参与角色'}</span>}>
                     <div className="space-y-2">
-                      {members.map((member) => {
+                      {displayedParticipantMembers.map((member) => {
                         const selected = selectedParticipantIds.includes(member.id);
+                        const recruitResponse = recruitResponseByCharacterId.get(member.id);
+                        const recruitStatusLabel = recruitResponse?.decision === 'join'
+                          ? '已报名'
+                          : recruitResponse?.decision === 'decline'
+                            ? '已婉拒'
+                            : isRecruitDraftFlow
+                              ? '待表态'
+                              : '';
                         return (
                           <button
                             key={member.id}
                             type="button"
                             onClick={() => toggleParticipant(member.id)}
-                            disabled={isRecruitDraftFlow && recruitLockActive}
+                            disabled={isRecruitDraftFlow}
                             className={`flex w-full items-center gap-3 rounded-[20px] border px-3 py-3 text-left transition ${
                               selected
                                 ? 'border-zinc-300 bg-zinc-100'
                                 : 'border-zinc-200 bg-white hover:bg-zinc-50'
-                            } disabled:cursor-not-allowed disabled:opacity-45`}
+                            } disabled:cursor-not-allowed disabled:opacity-55`}
                           >
                             <ResolvedOfflineAvatar
                               value={member.avatar}
@@ -1566,92 +1628,29 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                             />
                             <div className="min-w-0">
                               <div className="truncate text-[14px] font-medium text-zinc-900">{member.remarkName?.trim() || member.name}</div>
-                              <div className="truncate text-[12px] text-zinc-500">{member.signature?.trim() || '加入这次群线下'}</div>
+                              <div className="truncate text-[12px] text-zinc-500">
+                                {isRecruitDraftFlow
+                                  ? (recruitResponse?.text || `${recruitStatusLabel} · ${member.signature?.trim() || '等群里公开表态'}`)
+                                  : (member.signature?.trim() || '加入这次群线下')}
+                              </div>
                             </div>
+                            {isRecruitDraftFlow ? (
+                              <div className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+                                recruitResponse?.decision === 'join'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : recruitResponse?.decision === 'decline'
+                                    ? 'bg-zinc-100 text-zinc-600'
+                                    : 'bg-amber-50 text-amber-700'
+                              }`}>
+                                {recruitStatusLabel}
+                              </div>
+                            ) : null}
                           </button>
                         );
                       })}
                     </div>
                   </FieldShell>
 
-                  {isRecruitDraftFlow ? (
-                    <FieldShell label="征集流程">
-                      <div className="space-y-3">
-                        <div className="rounded-[18px] border border-zinc-200 bg-zinc-50/80 px-3 py-3 text-[12px] leading-6 text-zinc-600">
-                          <div>{selectedParticipantIds.length > 0 ? `当前候选 ${selectedParticipantIds.length} 人` : '当前为开放报名'}</div>
-                          <div>已报名 {recruitSignedUpIds.length} 人 · 已确认 {recruitConfirmedIds.length} 人</div>
-                          <div>{recruitLockActive ? '名单已锁定，开局会按确认名单发起。' : '先报名，再确认，最后锁定名单。'}</div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={handleLockRecruitRoster}
-                            disabled={recruitLockActive || recruitConfirmedIds.length === 0}
-                            className="rounded-full border border-zinc-300 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-800 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
-                          >
-                            锁定名单
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleUnlockRecruitRoster}
-                            disabled={!recruitLockActive}
-                            className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-35"
-                          >
-                            解除锁定
-                          </button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {recruitCandidateMembers.map((member) => {
-                            const isSignedUp = recruitSignedUpIds.includes(member.id);
-                            const isConfirmed = recruitConfirmedIds.includes(member.id);
-                            return (
-                              <div
-                                key={`recruit-${member.id}`}
-                                className="flex items-center gap-3 rounded-[18px] border border-zinc-200 bg-white px-3 py-3"
-                              >
-                                <ResolvedOfflineAvatar
-                                  value={member.avatar}
-                                  alt={member.name}
-                                  containerClassName="h-10 w-10 overflow-hidden rounded-full border border-zinc-200 bg-zinc-100"
-                                  fallbackClassName="text-[13px] text-zinc-700"
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-[13px] font-medium text-zinc-900">{member.remarkName?.trim() || member.name}</div>
-                                  <div className="truncate text-[11px] text-zinc-500">
-                                    {isConfirmed ? '已确认参与' : isSignedUp ? '已报名待确认' : '尚未报名'}
-                                  </div>
-                                </div>
-                                <div className="flex shrink-0 gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleRecruitSignup(member.id)}
-                                    disabled={recruitLockActive}
-                                    className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-35"
-                                  >
-                                    {isSignedUp ? '取消报名' : '报名'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleRecruitConfirm(member.id)}
-                                    disabled={recruitLockActive}
-                                    className={`rounded-full border px-3 py-1.5 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-35 ${
-                                      isConfirmed
-                                        ? 'border-zinc-300 bg-zinc-100 text-zinc-800'
-                                        : 'border-zinc-900 bg-zinc-900 text-white hover:bg-black'
-                                    }`}
-                                  >
-                                    {isConfirmed ? '取消确认' : '确认参与'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </FieldShell>
-                  ) : null}
                 </CollapsibleSection>
 
                 <section className="border-t border-zinc-200 pt-5">
@@ -1822,7 +1821,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
                     <button
                       type="button"
                       onClick={handleOpenSpecialInstructionEntry}
-                      disabled={launchParticipantCount === 0 || !canLaunchRecruitDraft}
+                      disabled={!canEnterSpecialInstruction}
                       className="shrink-0 rounded-[14px] border border-zinc-200 bg-zinc-100 px-3.5 py-2 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
                     >
                       进入
@@ -1832,28 +1831,51 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
               </div>
 
               <div className="mt-6 flex flex-col gap-3 md:flex-row">
-                <button
-                  type="button"
-                  disabled={launchParticipantCount === 0 || !canLaunchRecruitDraft}
-                  onClick={handleStart}
-                  className="flex-1 rounded-[22px] border border-zinc-300 bg-zinc-100 px-4 py-3 text-[15px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  {isRecruitDraftFlow ? '按锁定名单开局' : '直接开始'}
-                </button>
-                {!isRecruitDraftFlow ? (
-                  <button
-                    type="button"
-                    onClick={handlePublishRecruitCard}
-                    className="flex-1 rounded-[22px] border border-zinc-300 bg-white px-4 py-3 text-[15px] font-medium text-zinc-800 transition hover:bg-zinc-50"
-                  >
-                    发征集卡
-                  </button>
-                ) : null}
+                {isRecruitDraftFlow ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!canContinueRecruitRound}
+                      onClick={handleContinueRecruitRound}
+                      className="flex-1 rounded-[22px] border border-zinc-300 bg-white px-4 py-3 text-[15px] font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      继续征集
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canLaunchRecruitStart}
+                      onClick={handleStartFromSignups}
+                      className="flex-1 rounded-[22px] border border-zinc-300 bg-zinc-100 px-4 py-3 text-[15px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      按报名名单开局
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!canLaunchDirectStart}
+                      onClick={handleStart}
+                      className="flex-1 rounded-[22px] border border-zinc-300 bg-zinc-100 px-4 py-3 text-[15px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      直接开始
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePublishRecruitCard}
+                      className="flex-1 rounded-[22px] border border-zinc-300 bg-white px-4 py-3 text-[15px] font-medium text-zinc-800 transition hover:bg-zinc-50"
+                    >
+                      发征集卡
+                    </button>
+                  </>
+                )}
               </div>
 
-              {isRecruitDraftFlow && !canLaunchRecruitDraft ? (
+              {isRecruitDraftFlow ? (
                 <div className="mt-4 text-[12px] leading-6 text-zinc-500">
-                  先让人报名并确认，再锁定名单；锁定后才能按这张征集卡开局。
+                  {recruitStatusSummary.pendingCount > 0
+                    ? '这张征集卡已经发到群里了。你可以继续征集还没表态的人；参加的人会自动写进卡片，不参加的人会在群里说明原因。'
+                    : '这轮征集已经收过一遍口了。现在可以直接按报名名单开局，或者改候选后重新发一张新卡。'}
                 </div>
               ) : null}
 

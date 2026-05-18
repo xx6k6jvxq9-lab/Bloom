@@ -134,7 +134,7 @@ test('createGroupOfflineRecruitMessage supports an empty invite list for pre-rec
   assert.deepEqual(message.groupOfflineCard?.participantLabels, []);
 });
 
-test('buildGroupOfflineRecruitCard reflects signup, confirmation, and roster lock state', () => {
+test('buildGroupOfflineRecruitCard reflects signup-only recruit state', () => {
   const card = buildGroupOfflineRecruitCard({
     createdBy: 'User',
     draft: {
@@ -150,8 +150,6 @@ test('buildGroupOfflineRecruitCard reflects signup, confirmation, and roster loc
       selectedParticipantIds: ['a', 'b'],
       participantLabels: ['A', 'B'],
       signedUpParticipantIds: ['a', 'b'],
-      confirmedParticipantIds: ['a'],
-      rosterLockedAt: 11,
     },
     status: 'recruiting',
     timestamp: 10,
@@ -159,6 +157,5 @@ test('buildGroupOfflineRecruitCard reflects signup, confirmation, and roster loc
 
   assert.equal(card.status, 'recruiting');
   assert.equal(card.signupCount, 2);
-  assert.equal(card.confirmedCount, 1);
-  assert.equal(card.statusLabel, '名单已锁定');
+  assert.equal(card.statusLabel, '待开局');
 });

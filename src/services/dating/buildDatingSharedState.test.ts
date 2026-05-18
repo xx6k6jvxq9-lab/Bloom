@@ -58,6 +58,17 @@ test('buildActiveDatingSharedState skips special directive sessions so they do n
   assert.equal(buildActiveDatingSharedState(session), undefined);
 });
 
+test('buildActiveDatingSharedState still blocks special directives even when the raw text says to merge back', () => {
+  const session = createSession({
+    directorInstruction: '暂停主线，生成一个番外小剧场，但这次内容计入主线。',
+    generatedContent: createGeneratedContent({
+      appliedDirectorInstruction: '暂停主线，生成一个番外小剧场，但这次内容计入主线。',
+    }),
+  });
+
+  assert.equal(buildActiveDatingSharedState(session), undefined);
+});
+
 test('buildActiveDatingSharedState also respects an explicit block tag on generated content', () => {
   const session = createSession({
     generatedContent: createGeneratedContent({

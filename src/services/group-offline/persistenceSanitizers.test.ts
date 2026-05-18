@@ -83,7 +83,7 @@ test('sanitizeGroupOfflineSession drops unsupported legacy ensemble payloads', (
   assert.equal(session, undefined);
 });
 
-test('sanitizeGroupOfflineSession drops unsupported articleParagraphs rounds', () => {
+test('sanitizeGroupOfflineSession drops unsupported articleParagraphs rounds but keeps the session shell', () => {
   const session = sanitizeGroupOfflineSession({
     mode: 'daily',
     activityType: '娣卞缁憡',
@@ -113,7 +113,8 @@ test('sanitizeGroupOfflineSession drops unsupported articleParagraphs rounds', (
     },
   });
 
-  assert.equal(session, undefined);
+  assert.equal(session?.generatedContent?.rounds?.length || 0, 0);
+  assert.equal(session?.generatedContent?.intro, '');
 });
 
 test('sanitizeGroupOfflineRecruitDraft keeps recruit flow fields when valid', () => {
@@ -129,6 +130,10 @@ test('sanitizeGroupOfflineRecruitDraft keeps recruit flow fields when valid', ()
     vibe: '慢热开场',
     selectedParticipantIds: ['a', 'b'],
     participantLabels: ['A', 'B'],
+    recruitResponses: [
+      { characterId: 'a', decision: 'join', text: '我去。', respondedAt: 18 },
+      { characterId: 'b', decision: 'decline', text: '我不去。', respondedAt: 19 },
+    ],
     signedUpParticipantIds: ['a'],
     confirmedParticipantIds: ['a'],
     rosterLockedAt: 20,
@@ -136,8 +141,56 @@ test('sanitizeGroupOfflineRecruitDraft keeps recruit flow fields when valid', ()
   });
 
   assert.equal(draft?.recruitCardSessionId, 'group-offline-recruit-12');
+  assert.equal(draft?.recruitResponses?.length, 2);
   assert.deepEqual(draft?.signedUpParticipantIds, ['a']);
   assert.deepEqual(draft?.confirmedParticipantIds, ['a']);
   assert.equal(draft?.rosterLockedAt, 20);
   assert.equal(draft?.launchedAt, 30);
+});
+
+test('sanitizeGroupOfflineSession keeps page-episode rounds and applied director instruction', () => {
+  const session = sanitizeGroupOfflineSession({
+    mode: 'daily',
+    activityType: '深夜续摊',
+    location: '街角小馆',
+    timeLabel: '今晚 20:30',
+    weatherLabel: '晚风偏凉',
+    vibe: '慢热开场',
+    participants: [
+      { characterId: 'a', presence: 'arrived' },
+    ],
+    messages: [],
+    status: 'active',
+    generatedContent: {
+      card: {
+        timeLabel: '今晚 20:30',
+        locationLabel: '街角小馆',
+        weatherLabel: '晚风偏凉',
+        participantLabels: ['A'],
+      },
+      intro: '',
+      lines: [],
+      characterBlocks: [],
+      rounds: [{
+        id: 'round-1',
+        mode: 'page_episode',
+        appliedDirectorInstruction: '暂停主线，改成一个微信聊天页面。',
+        pageEpisode: {
+          pageType: 'wechat_chat',
+          platform: 'wechat',
+          title: '临时聊天页',
+          chat: {
+            headerTitle: '沈星回',
+            messages: [{ sender: 'character', text: '先别走。' }],
+          },
+        },
+        characterEntries: [],
+        sceneText: '这一轮改成了页面承接。',
+      }],
+    },
+  });
+
+  assert.equal(session?.generatedContent?.rounds?.[0]?.mode, 'page_episode');
+  assert.equal(session?.generatedContent?.rounds?.[0]?.pageEpisode?.pageType, 'wechat_chat');
+  assert.equal(session?.generatedContent?.rounds?.[0]?.appliedDirectorInstruction, '暂停主线，改成一个微信聊天页面。');
 });

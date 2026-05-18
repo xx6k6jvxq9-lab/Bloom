@@ -14,6 +14,7 @@ import {
   buildGroupOfflineScenarioCardFields,
   getGroupOfflineScenarioRemainingRounds,
 } from '../../services/group-offline/scenarioTasks';
+import { buildGroupOfflineRecruitStatusSummary } from '../../services/group-offline/recruitState';
 
 export type GroupOfflineContentPhase = 'intro' | 'round';
 
@@ -135,30 +136,58 @@ type BuildGroupOfflineRecruitCardParams = {
 export function buildGroupOfflineRecruitCard(params: BuildGroupOfflineRecruitCardParams): GroupOfflineCard {
   const createdAt = params.timestamp ?? params.draft.createdAt;
   const signupCount = normalizeRecruitParticipantIds(params.draft.signedUpParticipantIds).length;
-  const confirmedCount = normalizeRecruitParticipantIds(params.draft.confirmedParticipantIds).length;
-  const rosterLockedAt = typeof params.draft.rosterLockedAt === 'number' && Number.isFinite(params.draft.rosterLockedAt)
-    ? params.draft.rosterLockedAt
-    : undefined;
+  const invitedCount = normalizeRecruitParticipantIds(params.draft.selectedParticipantIds).length;
   const status = params.status || 'recruiting';
   const participantLabels = params.participantLabelsOverride || params.draft.participantLabels;
+  const recruitStatusSummary = buildGroupOfflineRecruitStatusSummary({
+    draft: params.draft,
+  });
+  const declinedCount = recruitStatusSummary.declinedCount;
+  const pendingCount = recruitStatusSummary.pendingCount;
+  const recruitSummaryLines = [
+    invitedCount > 0 ? `拟邀 ${invitedCount} 人` : '开放报名中',
+    `已报名 ${signupCount} 人`,
+    signupCount > 0 && participantLabels.length > 0
+      ? `当前报名：${participantLabels.join('、')}` : '',
+    signupCount > 0
+      ? '已有角色公开报名，可以按名单直接开局。'
+      : '等待群里的角色公开表态。',
+  ].filter(Boolean);
   const defaultStatusLabel = status === 'active'
     ? '已开局'
     : status === 'ended'
       ? '已结束'
-      : rosterLockedAt
-        ? '名单已锁定'
-        : confirmedCount > 0
-          ? '待开局'
-          : signupCount > 0
-            ? '待确认'
-            : '征集中';
+      : signupCount > 0
+        ? '待开局'
+        : '征集中';
   const defaultSummaryLines = status === 'recruiting'
     ? [
         participantLabels.length > 0 ? `拟邀 ${participantLabels.length} 人` : '开放报名中',
-        `已报名 ${signupCount} 人 · 已确认 ${confirmedCount} 人`,
-        rosterLockedAt ? '名单已锁定，开局会按确认名单发起。' : '',
+        `已报名 ${signupCount} 人`,
+        signupCount > 0 ? '有角色报名后就可以直接开局。' : '',
       ].filter(Boolean)
     : [];
+  const effectiveStatusLabel = status === 'active'
+    ? '已开局'
+    : status === 'ended'
+      ? '已结束'
+      : signupCount > 0
+        ? '待开局'
+        : pendingCount > 0
+          ? '征集中'
+          : '本轮无人接局';
+  const effectiveRecruitSummaryLines = [
+    recruitStatusSummary.invitedCount > 0 ? `拟邀 ${recruitStatusSummary.invitedCount} 人` : '开放报名中',
+    `已报名 ${signupCount} 人`,
+    declinedCount > 0 ? `已婉拒 ${declinedCount} 人` : '',
+    pendingCount > 0 ? `待表态 ${pendingCount} 人` : '',
+    signupCount > 0 && participantLabels.length > 0 ? `当前报名：${participantLabels.join('、')}` : '',
+    pendingCount > 0
+      ? '还可以继续征集剩下没表态的人。'
+      : signupCount > 0
+        ? '这轮征集已经有名单，可以直接按报名名单开局。'
+        : '这轮征集已经收口，但还没人公开接局。',
+  ].filter(Boolean);
 
   return {
     kind: 'offline',
@@ -172,12 +201,12 @@ export function buildGroupOfflineRecruitCard(params: BuildGroupOfflineRecruitCar
     timeLabel: params.draft.timeLabel,
     weatherLabel: params.draft.weatherLabel,
     participantLabels,
-    statusLabel: defaultStatusLabel,
+    statusLabel: effectiveStatusLabel,
     signupCount,
-    confirmedCount,
-    ...(rosterLockedAt ? { rosterLockedAt } : {}),
-    ...(((params.summaryLinesOverride || defaultSummaryLines).length > 0)
-      ? { summaryLines: params.summaryLinesOverride || defaultSummaryLines }
+    declinedCount,
+    pendingCount,
+    ...(((params.summaryLinesOverride || (status === 'recruiting' ? effectiveRecruitSummaryLines : defaultSummaryLines)).length > 0)
+      ? { summaryLines: params.summaryLinesOverride || (status === 'recruiting' ? effectiveRecruitSummaryLines : defaultSummaryLines) }
       : {}),
     ...(params.draft.mode === 'scenario' && params.draft.scenarioState
       ? {

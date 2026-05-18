@@ -9,6 +9,7 @@ type GroupOfflineRoundEntryProps = {
   entry: GroupOfflineRoundCharacterEntry;
   avatarValue?: string;
   statusKey: string;
+  readOnly?: boolean;
   isEditing: boolean;
   actionLoading: boolean;
   displayBlocks: DisplayBlock[];
@@ -31,6 +32,7 @@ export function GroupOfflineRoundEntry(props: GroupOfflineRoundEntryProps) {
     entry,
     avatarValue,
     statusKey,
+    readOnly = false,
     isEditing,
     actionLoading,
     displayBlocks,
@@ -67,35 +69,37 @@ export function GroupOfflineRoundEntry(props: GroupOfflineRoundEntryProps) {
             </div>
           ) : null}
         </div>
-        <div className="group-offline-scene__entry-tools">
-          <button
-            type="button"
-            className="group-offline-scene__entry-tool"
-            onClick={onStartEdit}
-            disabled={controlsDisabled}
-          >
-            <Pencil size={13} />
-            编辑
-          </button>
-          <button
-            type="button"
-            className="group-offline-scene__entry-tool"
-            onClick={onRetry}
-            disabled={controlsDisabled}
-          >
-            <RefreshCw size={13} />
-            重试本块
-          </button>
-          <button
-            type="button"
-            className="group-offline-scene__entry-tool"
-            onClick={onPolish}
-            disabled={controlsDisabled}
-          >
-            <Sparkles size={13} />
-            只润色
-          </button>
-        </div>
+        {!readOnly ? (
+          <div className="group-offline-scene__entry-tools">
+            <button
+              type="button"
+              className="group-offline-scene__entry-tool"
+              onClick={onStartEdit}
+              disabled={controlsDisabled}
+            >
+              <Pencil size={13} />
+              编辑
+            </button>
+            <button
+              type="button"
+              className="group-offline-scene__entry-tool"
+              onClick={onRetry}
+              disabled={controlsDisabled}
+            >
+              <RefreshCw size={13} />
+              重试本块
+            </button>
+            <button
+              type="button"
+              className="group-offline-scene__entry-tool"
+              onClick={onPolish}
+              disabled={controlsDisabled}
+            >
+              <Sparkles size={13} />
+              只润色
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {isEditing ? (

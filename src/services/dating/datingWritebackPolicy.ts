@@ -26,6 +26,15 @@ function isDatingMemoryWritebackPolicy(value: unknown): value is DatingMemoryWri
   return value === 'allow' || value === 'block';
 }
 
+function resolveDirectiveCanonMode(directiveText: string): DatingPageEpisodeCanonMode | undefined {
+  const compiled = compileSpecialDirective(directiveText);
+  return compiled?.writebackPolicy;
+}
+
+function resolveDirectiveMemoryWritebackPolicy(directiveText: string): DatingMemoryWritebackPolicy | undefined {
+  return resolveDirectiveCanonMode(directiveText) ? 'block' : undefined;
+}
+
 export function hasDatingSpecialDirectiveContent(session: DateSession): boolean {
   return Boolean(compileSpecialDirective(getAppliedDirectorInstruction(session)));
 }
@@ -35,24 +44,33 @@ export function resolveDatingGeneratedMemoryWritebackPolicy(input: {
   generatedContent?: Partial<Pick<DatingGeneratedContent, 'appliedDirectorInstruction' | 'memoryWritebackPolicy'>> | null;
 }): DatingMemoryWritebackPolicy {
   const explicitPolicy = input.generatedContent?.memoryWritebackPolicy;
+  const directiveText = input.generatedContent?.appliedDirectorInstruction?.trim() || getAppliedDirectorInstruction(input.session);
+  const directivePolicy = resolveDirectiveMemoryWritebackPolicy(directiveText);
+  if (directivePolicy) {
+    return directivePolicy;
+  }
+
   if (isDatingMemoryWritebackPolicy(explicitPolicy)) {
     return explicitPolicy;
   }
 
-  const directiveText = input.generatedContent?.appliedDirectorInstruction?.trim() || getAppliedDirectorInstruction(input.session);
-  return compileSpecialDirective(directiveText) ? 'block' : 'allow';
+  return 'allow';
 }
 
 export function resolveDatingWritebackPolicy(session: DateSession): DatingPageEpisodeCanonMode {
   const latestGeneratedContent = getLatestGeneratedContent(session);
-  if (resolveDatingGeneratedMemoryWritebackPolicy({
-    session,
-    generatedContent: latestGeneratedContent,
-  }) === 'block') {
+  const directiveCanonMode = resolveDirectiveCanonMode(getAppliedDirectorInstruction(session));
+  if (directiveCanonMode) {
+    return 'side_story';
+  }
+
+  const explicitPolicy = latestGeneratedContent?.memoryWritebackPolicy;
+  if (explicitPolicy === 'block') {
     return 'side_story';
   }
 
   const explicitCanonMode = latestGeneratedContent?.pageEpisode?.canonMode;
+
   if (explicitCanonMode === 'mainline' || explicitCanonMode === 'side_story') {
     return explicitCanonMode;
   }

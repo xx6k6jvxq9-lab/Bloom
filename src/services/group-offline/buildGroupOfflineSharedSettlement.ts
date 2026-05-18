@@ -18,10 +18,14 @@ import {
   normalizeSettlementText,
   summarizeSettlementText,
 } from '../memory/sceneSettlementItems';
+import {
+  buildGroupOfflineWritebackPlan,
+  type GroupOfflineWritebackPlan,
+} from './groupOfflineWritebackPlan';
 
 type GroupOfflineSharedSettlementResult = SceneSettlementResult;
 
-const TASK_MARKERS = /(答应|约定|确认|回复|处理|完成|安排|计划|改天|下次|补上|兑现|去做|办完|一起|记得|要去|要做)/;
+const TASK_MARKERS = /(promise|plan|handle|finish|next time|remember|follow up|\u7ea6\u5b9a|\u786e\u8ba4|\u5904\u7406|\u5b8c\u6210|\u5b89\u6392|\u8ba1\u5212|\u4e0b\u6b21|\u8bb0\u5f97|\u8981\u53bb|\u8981\u505a)/i;
 
 function getRecentRounds(session: GroupOfflineSession): GroupOfflineRound[] {
   return (session.generatedContent?.rounds || []).slice(-3);
@@ -33,41 +37,46 @@ function getCharacterRoundEntries(session: GroupOfflineSession, characterId: str
       round,
       entry: round.characterEntries.find((item) => item.characterId === characterId) || null,
     }))
-    .filter((item) => !!item.entry)
-    .map((item) => ({
-      round: item.round,
-      entry: item.entry!,
-    }));
+    .filter((item): item is { round: GroupOfflineRound; entry: NonNullable<typeof item.entry> } => !!item.entry);
 }
 
-function buildCharacterOfflineSummary(session: GroupOfflineSession, character: Character): string {
+function buildCharacterOfflineSummary(
+  session: GroupOfflineSession,
+  character: Character,
+  writebackPlan: GroupOfflineWritebackPlan,
+): string {
   const recentEntries = getCharacterRoundEntries(session, character.id);
-  const latestEntry = recentEntries[recentEntries.length - 1];
-  const location = normalizeSettlementText(session.location);
-  const activity = normalizeSettlementText(session.customActivityType || session.activityType);
+  const latestEntry = recentEntries[recentEntries.length - 1]?.entry;
+  const evidence = writebackPlan.participantEvidenceByCharacterId[character.id];
+  const activity = normalizeSettlementText(session.customActivityType || session.activityType) || '群线下';
+  const location = normalizeSettlementText(session.location) || '现场';
+  const carryoverSeed = evidence?.latestLongTerm
+    || evidence?.latestShortTerm[0]
+    || evidence?.latestEntryText
+    || summarizeSettlementText(latestEntry?.text, 88);
 
-  const snippets = [
-    latestEntry?.entry.target?.label
-      ? `${character.name}这场里主要把注意力放在了${latestEntry.entry.target.label}身上。`
-      : '',
-    ...recentEntries.slice(-2).map(({ entry }) => summarizeSettlementText(entry.text, 60)),
+  const parts = [
+    `刚结束的${activity}（${location}）`,
+    carryoverSeed,
+    evidence?.latestTargetLabel ? `注意力还留在${evidence.latestTargetLabel}身上` : '',
   ].filter(Boolean);
 
-  if (snippets.length === 0) {
-    return `${character.name}刚结束了一场${activity || '群线下'}，场上的余温还没完全散掉。`;
+  if (parts.length > 0) {
+    return parts.join('；');
   }
 
-  return `${character.name}刚在${location || '线下现场'}结束了一场${activity || '群线下'}，${snippets.join('；')}`;
+  return `${character.name}刚从${activity}里出来，余温还没散。`;
 }
 
 function buildRelationshipResidue(
   session: GroupOfflineSession,
   character: Character,
+  writebackPlan: GroupOfflineWritebackPlan,
 ): RelationshipResidueItem[] {
   const now = session.endedAt || Date.now();
-  const summary = buildCharacterOfflineSummary(session, character);
+  const summary = buildCharacterOfflineSummary(session, character, writebackPlan);
   const item = createRelationshipResidueItem({
-    summary: `群线下结束后留下的关系余波：${summarizeSettlementText(summary, 96)}`,
+    summary: summarizeSettlementText(summary, 96),
     sourceScene: 'group_offline',
     timestamp: now,
     decay: 'medium',
@@ -79,20 +88,19 @@ function buildRelationshipResidue(
 function buildSceneResidue(
   session: GroupOfflineSession,
   character: Character,
+  writebackPlan: GroupOfflineWritebackPlan,
 ): SceneResidueItem[] {
   const latestRound = (session.generatedContent?.rounds || []).slice(-1)[0];
-  const location = normalizeSettlementText(session.location);
-  const activity = normalizeSettlementText(session.customActivityType || session.activityType);
+  const fallback = `${character.name} finished the latest group offline beat.`;
   const sceneSummary = summarizeSettlementText(
-    latestRound?.sceneText
-      || `${character.name}在${location || '线下现场'}结束了${activity || '群线下'}的当前推进。`,
+    writebackPlan.sharedEventSummary || latestRound?.sceneText || fallback,
     96,
   );
   if (!sceneSummary) return [];
 
   return [{
     type: 'scene_residue',
-    summary: `群线下推进到的阶段：${sceneSummary}`,
+    summary: sceneSummary,
     sourceScene: 'group_offline',
     timestamp: session.endedAt || Date.now(),
     decay: 'medium',
@@ -117,7 +125,7 @@ function buildTopicAnchors(
     entryTexts
       .map((text) => createTopicAnchorItemFromText({
         content: text,
-        summaryPrefix: '群线下里刚碰过的话题或没说透的点：',
+        summaryPrefix: '群线下里刚碰过的话头：',
         maxChars: 80,
         sourceScene: 'group_offline',
         timestamp: now,
@@ -145,7 +153,7 @@ function buildTaskResidue(
     candidateTexts
       .map((text) => createTaskResidueItemFromText({
         content: text,
-        summaryPrefix: '群线下结束后还可能算数的约定或待办：',
+        summaryPrefix: '群线下结束后还挂着的后续：',
         maxChars: 80,
         sourceScene: 'group_offline',
         timestamp: now,
@@ -159,6 +167,7 @@ function buildTaskResidue(
 function buildSceneProgressRecords(
   session: GroupOfflineSession,
   character: Character,
+  writebackPlan: GroupOfflineWritebackPlan,
 ): SceneProgressMemoryRecordDraft[] {
   const rounds = session.generatedContent?.rounds || [];
   if (rounds.length === 0) {
@@ -166,27 +175,29 @@ function buildSceneProgressRecords(
   }
 
   const latestRound = rounds[rounds.length - 1];
+  const evidence = writebackPlan.participantEvidenceByCharacterId[character.id];
   const latestCharacterEntry = latestRound.characterEntries.find((entry) => entry.characterId === character.id);
-  const stageLabel = '群线下分块推进阶段';
-  const currentSignature = '分块推进 / 角色轮次';
+  const stageLabel = '群线下收尾阶段';
+  const currentSignature = '分块推进 / 散场收口';
+  const summarySeed = evidence?.preferredCarryoverText
+    || latestCharacterEntry?.text
+    || latestRound.sceneText
+    || `${character.name}把这场线下的最后一口气收住了。`;
 
   return [{
-    summary: `群线下推进到${stageLabel}：${summarizeSettlementText(
-      latestCharacterEntry?.text || latestRound.sceneText || `${character.name}完成了这一场群线下的收尾。`,
-      88,
-    )}`,
+    summary: `群线下推进到${stageLabel}：${summarizeSettlementText(summarySeed, 88)}`,
     stageLabel,
     currentBeat: latestRound.sceneText
       ? summarizeSettlementText(latestRound.sceneText, 80)
-      : `${character.name}在线下最后一轮留下了新的公开余波。`,
+      : `${character.name}带着还没散掉的余波离开了现场。`,
     currentSignature,
     completedActions: [
-      '群线下完成了一轮角色分块推进',
+      '把这场群线下的收尾推进完了一轮。',
     ],
-    unresolvedTension: '这场线下已经结束，但回到群聊后的余波和关系变化还会继续发酵。',
+    unresolvedTension: '场子已经散了，但公开余波和关系变化还会继续发酵。',
     nextStepOptions: [
-      '把线下余波延续到回群后的公开消息',
-      '在下次群线下或单聊里继续承接这场关系变化',
+      '让这场余波继续出现在后续群消息里。',
+      '把没说完的话带进后面的群聊线下或单聊里。',
     ],
     visibility: 'cross_scene_readable',
     stability: 'situational',
@@ -197,12 +208,20 @@ function buildSceneProgressRecords(
 export function buildGroupOfflineSharedSettlement(
   character: Pick<Character, 'id' | 'name' | 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry' | 'presenceState' | 'sharedState'>,
   session: GroupOfflineSession,
+  options?: {
+    writebackPlan?: GroupOfflineWritebackPlan;
+  },
 ): GroupOfflineSharedSettlementResult {
-  const relationshipResidue = dedupeSettlementItemsBySummary(buildRelationshipResidue(session, character as Character));
-  const sceneResidue = dedupeSettlementItemsBySummary(buildSceneResidue(session, character as Character));
+  const writebackPlan = options?.writebackPlan || buildGroupOfflineWritebackPlan(session, [{ id: character.id }]);
+  const relationshipResidue = dedupeSettlementItemsBySummary(
+    buildRelationshipResidue(session, character as Character, writebackPlan),
+  );
+  const sceneResidue = dedupeSettlementItemsBySummary(
+    buildSceneResidue(session, character as Character, writebackPlan),
+  );
   const topicAnchors = buildTopicAnchors(session, character as Character);
   const taskResidue = buildTaskResidue(session, character as Character);
-  const sceneProgressRecords = buildSceneProgressRecords(session, character as Character);
+  const sceneProgressRecords = buildSceneProgressRecords(session, character as Character, writebackPlan);
 
   return buildSceneSettlementResult({
     character,
@@ -217,8 +236,8 @@ export function buildGroupOfflineSharedSettlement(
     },
     openLoop: {
       idPrefix: 'group-offline',
-      taskResumeHint: '这是群线下结束后仍可能算数的约定或待办，只有当前相关时再恢复。',
-      topicResumeHint: '这是群线下里刚碰过的话题锚点，只有当前真的碰到时再带回。',
+      taskResumeHint: '只有当前对话真的碰到这条没收完的后续时，才把它重新带回来。',
+      topicResumeHint: '只有群里自然又回到这个话头时，才把它重新接上。',
       limit: 10,
       enabled: false,
     },

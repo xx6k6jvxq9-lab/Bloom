@@ -39,7 +39,11 @@ import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeCli
 import { buildGroupOfflinePrompt } from '../../services/ai/prompts/builders/buildGroupOfflinePrompt';
 import { buildGroupOfflineEntryRewritePrompt } from '../../services/ai/prompts/builders/buildGroupOfflineEntryRewritePrompt';
 import { buildGroupOfflineRoundRewritePrompt } from '../../services/ai/prompts/builders/buildGroupOfflineRoundRewritePrompt';
-import { buildCustomPageEpisodeSrcDoc, normalizePageEpisodeHtmlDocument } from '../../services/dating/pageEpisodeHtml';
+import {
+  buildPageEpisodeSrcDoc,
+  normalizePageEpisode,
+  resolvePageEpisodeSandbox,
+} from '../../services/dating/pageEpisodeRuntime';
 import {
   buildGroupOfflineStylePresetInstruction,
   GROUP_OFFLINE_STYLE_PRESET_OPTIONS,
@@ -48,6 +52,7 @@ import { buildGroupWorldBookPrompt } from '../group-world-book/buildGroupWorldBo
 import { buildGroupWorldBookRetrievalOptions } from '../group-world-book/groupWorldBookRetrieval';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
+import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
 import { buildGroupOfflineRoundPlan } from '../../services/group-offline/buildGroupOfflineRoundPlan';
 import { buildGroupOfflineRuntimeProjection } from '../../services/group-offline/buildGroupOfflineRuntimeProjection';
 import {
@@ -60,6 +65,14 @@ import {
 } from '../../services/group-offline/scenarioTasks';
 import { resolveGroupOfflineWorldBookSnapshot } from '../../services/group-offline/worldBookSnapshot';
 import {
+  buildDerivedGroupOfflineEndingPayload,
+  buildGroupOfflineEndingReactionPlan,
+} from '../../services/group-offline/endingPayload';
+import {
+  resolveGroupOfflineDirectorPagePlan,
+} from '../../services/group-offline/directorInstructionOutputMode';
+import { buildGroupOfflineWritebackPlan } from '../../services/group-offline/groupOfflineWritebackPlan';
+import {
   buildGroupOfflineRoundPlanSnapshot,
   buildGroupOfflineRoundRuntimeProjectionSnapshot,
   resolveRoundPlannerSnapshot,
@@ -68,7 +81,6 @@ import {
 import { ResolvedOfflineAvatar } from './ResolvedOfflineAvatar';
 import {
   GooseDirectorOrb,
-  type GooseDirectorInstructionMode,
   type GooseDirectorSection,
 } from './GooseDirectorOrb';
 import { GroupOfflineSongBoard, type SongBoardItem } from './GroupOfflineSongBoard';
@@ -120,7 +132,7 @@ type EndingPayload = {
 };
 
 type EntryActionKind = 'retry' | 'polish';
-type GroupOfflineDirectorMode = GooseDirectorInstructionMode;
+type GroupOfflineDirectorMode = 'start' | 'rewrite' | 'next_round';
 type RoundRewriteMode = 'style_preset' | 'custom_style' | 'retry_round' | 'director_instruction';
 
 type GenerateContentOptions = {
@@ -188,6 +200,23 @@ function buildCharacterAliases(member: Pick<Character, 'name' | 'remarkName'>): 
   return [member.name, member.remarkName?.trim()]
     .map((value) => normalizeString(value))
     .filter(Boolean);
+}
+
+function buildGroupOfflinePageAvatarNameMap(
+  members: Character[],
+  resolvedAvatarUrlById: Record<string, string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  members.forEach((member) => {
+    const avatarUrl = resolvedAvatarUrlById[member.id]
+      || getDisplayableAssetValue(resolveCharacterAvatarValue(member), null)
+      || '';
+    if (!avatarUrl) return;
+    buildCharacterAliases(member).forEach((alias) => {
+      result[alias] = avatarUrl;
+    });
+  });
+  return result;
 }
 
 function buildOffstageAliases(allMembers: Character[], sceneMembers: Character[]): string[] {
@@ -535,58 +564,145 @@ function normalizeGeneratedContentForDisplay(content: GroupOfflineGeneratedConte
   });
 }
 
-type GroupOfflineHtmlPageEpisode = Pick<DatingPageEpisode, 'title' | 'subtitle' | 'caption' | 'htmlDocument'> & {
-  pageType: 'micro_app' | 'custom_html';
-};
+function resolveGroupOfflinePageEpisodeFallbackCharacter(
+  members: Character[],
+  options?: {
+    selectedCharacterIds?: string[];
+    characterEntries?: Array<Pick<GroupOfflineRoundCharacterEntry, 'characterId'>>;
+  },
+): Character | undefined {
+  const candidateIds = [
+    ...(options?.selectedCharacterIds || []),
+    ...((options?.characterEntries || []).map((entry) => entry.characterId)),
+  ];
+  for (const characterId of candidateIds) {
+    const matchedMember = members.find((member) => member.id === characterId);
+    if (matchedMember) {
+      return matchedMember;
+    }
+  }
+
+  return members[0];
+}
 
 function normalizeGroupOfflinePageEpisode(
   value: unknown,
   fallbackTitle: string,
-): GroupOfflineHtmlPageEpisode | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-  const payload = value as Partial<DatingPageEpisode>;
-  const pageType = payload.pageType === 'micro_app' || payload.pageType === 'custom_html'
-    ? payload.pageType
-    : undefined;
-  if (!pageType) {
+  members: Character[],
+  options?: {
+    selectedCharacterIds?: string[];
+    characterEntries?: Array<Pick<GroupOfflineRoundCharacterEntry, 'characterId'>>;
+    instructionText?: string;
+    fallbackPageType?: DatingPageEpisode['pageType'];
+    fallbackPlatform?: DatingPageEpisode['platform'];
+  },
+): DatingPageEpisode | undefined {
+  const fallbackCharacter = resolveGroupOfflinePageEpisodeFallbackCharacter(members, options);
+  if (!fallbackCharacter) {
     return undefined;
   }
 
+  return normalizePageEpisode(
+    value,
+    fallbackTitle,
+    fallbackCharacter,
+    options?.fallbackPlatform,
+    options?.fallbackPageType,
+    options?.instructionText,
+  );
+}
+
+function isGroupOfflinePageEpisode(pageEpisode: DatingPageEpisode | undefined): pageEpisode is DatingPageEpisode {
+  return Boolean(pageEpisode);
+}
+
+function getGroupOfflinePageEpisodeModeLabel(pageEpisode: DatingPageEpisode | undefined): string {
+  if (!pageEpisode) {
+    return '页面轮';
+  }
+
+  if (pageEpisode.pageType === 'wechat_chat') {
+    return '微信页面轮';
+  }
+
+  if (pageEpisode.pageType === 'feed_post') {
+    return pageEpisode.platform === 'moments'
+      ? '朋友圈页面轮'
+      : pageEpisode.platform === 'weibo'
+        ? '微博页面轮'
+        : pageEpisode.platform === 'xiaohongshu'
+          ? '小红书页面轮'
+          : pageEpisode.platform === 'netease'
+            ? '网易云页面轮'
+            : pageEpisode.platform === 'campus'
+              ? '校园页面轮'
+              : '动态页面轮';
+  }
+
+  if (pageEpisode.pageType === 'document_page') {
+    return '文档页面轮';
+  }
+
+  if (pageEpisode.pageType === 'micro_app') {
+    return '互动页面轮';
+  }
+
+  return 'HTML页面轮';
+}
+
+function isUncollectableGroupOfflinePageEpisode(pageEpisode: DatingPageEpisode | undefined): boolean {
+  return pageEpisode?.pageType === 'custom_html' || pageEpisode?.pageType === 'micro_app';
+}
+
+function resolveGroupOfflinePageEpisodeRenderContext(
+  pageEpisode: DatingPageEpisode | undefined,
+  round: Pick<GroupOfflineRound, 'selectedCharacterIds' | 'characterEntries'>,
+  members: Character[],
+  userName: string,
+  avatarUrlByName: Record<string, string>,
+  resolvedAvatarUrlById: Record<string, string>,
+): {
+  userAvatarUrl: string;
+  characterAvatarUrl: string;
+  userName: string;
+  characterName: string;
+  characterAvatarUrlByName?: Record<string, string>;
+} {
+  const fallbackCharacter = resolveGroupOfflinePageEpisodeFallbackCharacter(members, {
+    selectedCharacterIds: round.selectedCharacterIds,
+    characterEntries: round.characterEntries,
+  });
+  const feedSeed = pageEpisode?.feed?.items?.[0] || pageEpisode?.feed;
+  const characterName = fallbackCharacter?.remarkName?.trim()
+    || fallbackCharacter?.name
+    || pageEpisode?.chat?.headerTitle
+    || feedSeed?.authorName
+    || pageEpisode?.title
+    || '角色';
+
   return {
-    pageType,
-    title: normalizeString(payload.title) || fallbackTitle,
-    subtitle: normalizeString(payload.subtitle) || undefined,
-    caption: normalizeString(payload.caption) || undefined,
-    htmlDocument: normalizePageEpisodeHtmlDocument(payload.htmlDocument) || undefined,
+    userAvatarUrl: '',
+    characterAvatarUrl: (fallbackCharacter ? resolvedAvatarUrlById[fallbackCharacter.id] : '')
+      || getDisplayableAssetValue(resolveCharacterAvatarValue(fallbackCharacter), null)
+      || '',
+    userName,
+    characterName,
+    characterAvatarUrlByName: avatarUrlByName,
   };
 }
 
-function isGroupOfflineHtmlPageEpisode(
-  pageEpisode: DatingPageEpisode | undefined,
-): pageEpisode is GroupOfflineHtmlPageEpisode {
-  return Boolean(pageEpisode && (pageEpisode.pageType === 'micro_app' || pageEpisode.pageType === 'custom_html'));
+function resolveGroupOfflinePageEpisodeDirectivePlan(
+  instructionText: string | undefined,
+  _outputMode?: GroupOfflineSession['directorInstructionOutputMode'],
+) {
+  return resolveGroupOfflineDirectorPagePlan(instructionText, undefined) || null;
 }
 
-function buildGroupOfflinePageEpisodeSrcDoc(pageEpisode: GroupOfflineHtmlPageEpisode | undefined): string {
-  if (!pageEpisode) {
-    return '';
-  }
-
-  return buildCustomPageEpisodeSrcDoc({
-    pageType: pageEpisode.pageType,
-    title: pageEpisode.title,
-    subtitle: pageEpisode.subtitle,
-    caption: pageEpisode.caption,
-    htmlDocument: pageEpisode.htmlDocument,
-  });
-}
-
-function resolveGroupOfflinePageEpisodeSandbox(pageEpisode: GroupOfflineHtmlPageEpisode | undefined): string {
-  if (!pageEpisode) {
-    return 'allow-same-origin';
-  }
-
-  return 'allow-scripts';
+function resolveRuntimeDirectorInstructionText(
+  instructionText: string | undefined,
+  _outputMode: GroupOfflineSession['directorInstructionOutputMode'],
+): string | undefined {
+  return instructionText?.trim() || undefined;
 }
 
 function normalizeTarget(value: unknown): GroupOfflineRoundCharacterEntry['target'] | undefined {
@@ -832,7 +948,7 @@ function hasMeaningfulGeneratedContent(content: GroupOfflineGeneratedContent, ph
   if (!latestRound) return false;
   return Boolean(
     normalizeString(latestRound.sceneText)
-    || isGroupOfflineHtmlPageEpisode(latestRound.pageEpisode)
+    || (latestRound.mode === 'page_episode' && latestRound.pageEpisode)
     || latestRound.characterEntries.some((entry) => normalizeString(entry.text)),
   );
 }
@@ -843,6 +959,8 @@ function coerceGeneratedContent(
   session: GroupOfflineSession,
   members: Character[],
   allMembers: Character[],
+  pageEpisodeInstructionText?: string,
+  directorInstructionOutputMode?: GroupOfflineSession['directorInstructionOutputMode'],
 ): GroupOfflineGeneratedContent {
   if (!parsed || typeof parsed !== 'object') return fallback;
   const candidate = parsed as {
@@ -854,6 +972,10 @@ function coerceGeneratedContent(
   };
   const offstageAliases = buildOffstageAliases(allMembers, members);
   const fallbackRounds = fallback.rounds || [];
+  const directivePagePlan = resolveGroupOfflinePageEpisodeDirectivePlan(
+    pageEpisodeInstructionText,
+    directorInstructionOutputMode,
+  );
   const rounds = Array.isArray(candidate.rounds)
     ? candidate.rounds
         .map((round, roundIndex) => {
@@ -863,6 +985,14 @@ function coerceGeneratedContent(
           const pageEpisode = normalizeGroupOfflinePageEpisode(
             (round as { pageEpisode?: unknown }).pageEpisode,
             title,
+            members,
+            {
+              selectedCharacterIds: fallbackRound?.selectedCharacterIds,
+              characterEntries: fallbackRound?.characterEntries,
+              instructionText: session.directorInstruction,
+              fallbackPageType: directivePagePlan?.pageType,
+              fallbackPlatform: directivePagePlan?.platform,
+            },
           );
           const rawEntries = Array.isArray((round as { characterEntries?: unknown[] }).characterEntries)
             ? ((round as { characterEntries?: unknown[] }).characterEntries || [])
@@ -961,11 +1091,21 @@ function parseGeneratedContent(
   session: GroupOfflineSession,
   members: Character[],
   allMembers: Character[],
+  pageEpisodeInstructionText?: string,
+  directorInstructionOutputMode?: GroupOfflineSession['directorInstructionOutputMode'],
 ): GroupOfflineGeneratedContent {
   const candidates = extractCandidateJsonObjects(rawText);
   for (const candidate of candidates) {
     try {
-      return coerceGeneratedContent(JSON.parse(candidate), fallback, session, members, allMembers);
+      return coerceGeneratedContent(
+        JSON.parse(candidate),
+        fallback,
+        session,
+        members,
+        allMembers,
+        pageEpisodeInstructionText,
+        directorInstructionOutputMode,
+      );
     } catch {
       continue;
     }
@@ -1011,7 +1151,13 @@ function parseSingleEntryRewrite(rawText: string, fallback: GroupOfflineRoundCha
   return fallback;
 }
 
-function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): GroupOfflineRound {
+function parseRoundRewrite(
+  rawText: string,
+  fallbackRound: GroupOfflineRound,
+  members: Character[],
+  instructionText?: string,
+  directorInstructionOutputMode?: GroupOfflineSession['directorInstructionOutputMode'],
+): GroupOfflineRound {
   const candidates = extractCandidateJsonObjects(rawText);
   for (const candidate of candidates) {
     try {
@@ -1023,6 +1169,11 @@ function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): G
         scenarioUpdate?: unknown;
       };
       const roundCandidate = parsed.round || parsed;
+      const resolvedInstructionText = instructionText?.trim() || fallbackRound.appliedDirectorInstruction;
+      const directivePagePlan = resolveGroupOfflinePageEpisodeDirectivePlan(
+        resolvedInstructionText,
+        directorInstructionOutputMode,
+      );
       const nextEntriesById = new Map<string, GroupOfflineRoundCharacterEntry>();
       if (Array.isArray(roundCandidate.characterEntries)) {
         roundCandidate.characterEntries.forEach((entry) => {
@@ -1036,6 +1187,14 @@ function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): G
       const pageEpisode = normalizeGroupOfflinePageEpisode(
         (roundCandidate as { pageEpisode?: unknown }).pageEpisode,
         normalizeString(roundCandidate.title) || fallbackRound.title || '当前轮',
+        members,
+        {
+          selectedCharacterIds: fallbackRound.selectedCharacterIds,
+          characterEntries: fallbackRound.characterEntries,
+          instructionText: resolvedInstructionText,
+          fallbackPageType: directivePagePlan?.pageType || fallbackRound.pageEpisode?.pageType,
+          fallbackPlatform: directivePagePlan?.platform || fallbackRound.pageEpisode?.platform,
+        },
       );
       const nextRound: GroupOfflineRound = {
         ...fallbackRound,
@@ -1060,49 +1219,17 @@ function parseRoundRewrite(rawText: string, fallbackRound: GroupOfflineRound): G
   return fallbackRound;
 }
 
-function buildDerivedEndingPayload(session: GroupOfflineSession, members: Character[]): EndingPayload {
-  const participantMembers = session.participants
-    .map((participant) => members.find((member) => member.id === participant.characterId))
-    .filter((member): member is Character => !!member);
-  const rounds = session.generatedContent?.rounds || [];
-  const latestRound = rounds[rounds.length - 1];
-  const leadSummary = normalizeString(latestRound?.sceneText)
-    || normalizeString(session.generatedContent?.intro)
-    || normalizeString(session.scenePrompt)
-    || `${session.customActivityType?.trim() || session.activityType}先收在这里了。`;
-  const condensedSummary = leadSummary.length > 48 ? `${leadSummary.slice(0, 47).trim()}…` : leadSummary;
-  return {
-    summaryLines: [
-      `${session.customActivityType?.trim() || session.activityType}先收在这里了。`,
-      condensedSummary,
-    ],
-    endingVoices: participantMembers.map((member) => {
-      const latestEntry = [...rounds]
-        .reverse()
-        .map((round) => round.characterEntries.find((entry) => entry.characterId === member.id))
-        .find((entry) => !!entry);
-      const quote = normalizeDialogueCore(latestEntry?.highlightText).slice(0, 18);
-      const targetLabel = normalizeString(latestEntry?.target?.label);
-
-      return {
-        characterId: member.id,
-        characterName: member.name,
-        text: quote
-          ? `我到了。刚才${targetLabel ? `对${targetLabel}` : ''}那句“${quote}”我还记着，回头再说。`
-          : targetLabel
-            ? `我到了。刚才和${targetLabel}那点话头我先记着，回群慢慢接。`
-            : '我到了。刚才那轮我先记着，回群再慢慢接。',
-      };
-    }),
-  };
-}
-
 async function generateEndingPayload(params: {
   session: GroupOfflineSession;
   members: Character[];
   activeConfig: ApiConfig | null;
 }): Promise<EndingPayload> {
-  if (!params.activeConfig?.apiKey?.trim()) return buildDerivedEndingPayload(params.session, params.members);
+  const writebackPlan = buildGroupOfflineWritebackPlan(params.session, params.members);
+  const reactionPlan = buildGroupOfflineEndingReactionPlan(params.session, params.members, {
+    writebackPlan,
+  });
+  const fallbackPayload = buildDerivedGroupOfflineEndingPayload(params.session, params.members);
+  if (!params.activeConfig?.apiKey?.trim()) return fallbackPayload;
   const roundsSummary = (params.session.generatedContent?.rounds || [])
     .slice(-3)
     .map((round) => [
@@ -1121,13 +1248,26 @@ async function generateEndingPayload(params: {
     '4. text 里不要写旁白、动作描写、角色名前缀，也不要写“他说”“她想”，只保留角色真正发出来的群消息内容。',
     '5. characterId 必须严格使用下面参与人列表里的真实 id，不要自己编，不要写名字代替 id。',
     '6. 风格要像有余温的回群消息，不要太 AI 腔。',
-    '7. 输出 JSON：{"summaryLines":["..."],"endingVoices":[{"characterId":"...","characterName":"...","text":"..."}]}',
+    '7. 反应要顺着每个角色自己的后劲来写：有人会点用户，有人会盯着另一个角色，有人只会留半句，不要平均用力。',
+    '8. 如果是特殊指令/番外散场，只演眼下这一下的回群反应，不要把它写成长期主线结论。',
+    '9. 输出 JSON：{"summaryLines":["..."],"endingVoices":[{"characterId":"...","characterName":"...","text":"..."}]}',
     '',
     `局类型：${params.session.customActivityType?.trim() || params.session.activityType}`,
     `地点：${params.session.location}`,
     `时间：${params.session.timeLabel}`,
+    reactionPlan.sharedEventSummary ? `共享事件：${reactionPlan.sharedEventSummary}` : '',
+    reactionPlan.isSpecialDirectiveSession ? '这场属于特殊指令/番外散场。' : '',
     '参与人：',
     ...params.members.map((member) => `- ${member.id} :: ${member.remarkName?.trim() || member.name}`),
+    '',
+    '角色反应线索：',
+    ...reactionPlan.cues.map((cue) => [
+      `- ${cue.characterId} :: ${cue.characterName}`,
+      `  reactionKind: ${cue.kind}`,
+      cue.targetLabel ? `  target: ${cue.targetLabel}` : '',
+      cue.highlightText ? `  quote: ${cue.highlightText}` : '',
+      `  evidence: ${cue.evidenceSummary}`,
+    ].filter(Boolean).join('\n')),
     '',
     '最近几轮内容：',
     roundsSummary || '暂无',
@@ -1165,7 +1305,7 @@ async function generateEndingPayload(params: {
         : [];
       if (endingVoices.length > 0) {
         return {
-          summaryLines: summaryLines.length > 0 ? summaryLines : buildDerivedEndingPayload(params.session, params.members).summaryLines,
+          summaryLines: summaryLines.length > 0 ? summaryLines : fallbackPayload.summaryLines,
           endingVoices,
         };
       }
@@ -1173,7 +1313,7 @@ async function generateEndingPayload(params: {
       continue;
     }
   }
-  return buildDerivedEndingPayload(params.session, params.members);
+  return fallbackPayload;
 }
 
 function dispatchLabel(dispatchMode: GroupOfflineRoundDispatchMode | undefined) {
@@ -1227,6 +1367,7 @@ export function GroupOfflineScene({
   const [queuedCharacterIds, setQueuedCharacterIds] = useState<string[]>([]);
   const [expandedStatusKeys, setExpandedStatusKeys] = useState<Record<string, boolean>>({});
   const [expandedSideSectionKeys, setExpandedSideSectionKeys] = useState<Record<string, boolean>>({});
+  const [expandedPageStoryKeys, setExpandedPageStoryKeys] = useState<Record<string, boolean>>({});
   const [selectedInspectorEntryByRoundId, setSelectedInspectorEntryByRoundId] = useState<Record<string, string>>({});
   const [editingEntryKey, setEditingEntryKey] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState('');
@@ -1234,6 +1375,7 @@ export function GroupOfflineScene({
   const [entryActionKey, setEntryActionKey] = useState<string | null>(null);
   const [endingState, setEndingState] = useState<'idle' | 'generating' | 'ready'>('idle');
   const [endingPayload, setEndingPayload] = useState<EndingPayload | null>(null);
+  const [resolvedMemberAvatarUrlById, setResolvedMemberAvatarUrlById] = useState<Record<string, string>>({});
   const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(currentSession.backgroundImage || group.groupBackground);
   const backgroundImage = getDisplayableAssetValue(currentSession.backgroundImage || group.groupBackground, resolvedBackgroundUrl) || '';
 
@@ -1253,6 +1395,34 @@ export function GroupOfflineScene({
       setCustomStyleDraft(session.writingStyleCustom || '');
     }
   }, [session.writingStyleCustom, showCustomStyleSheet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveAvatarUrls = async () => {
+      const entries = await Promise.all(members.map(async (member) => {
+        const avatarValue = resolveCharacterAvatarValue(member);
+        if (!avatarValue) {
+          return [member.id, ''] as const;
+        }
+        const directDisplay = getDisplayableAssetValue(avatarValue, null);
+        if (directDisplay) {
+          return [member.id, directDisplay] as const;
+        }
+        const resolvedDisplay = await resolveValueToDisplayUrl(avatarValue).catch(() => null);
+        return [member.id, resolvedDisplay || ''] as const;
+      }));
+      if (cancelled) {
+        return;
+      }
+      setResolvedMemberAvatarUrlById(Object.fromEntries(entries));
+    };
+
+    void resolveAvatarUrls();
+    return () => {
+      cancelled = true;
+    };
+  }, [members]);
 
   const memberMap = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
   const sessionWorldBooks = useMemo(
@@ -1282,6 +1452,10 @@ export function GroupOfflineScene({
       .map((participant) => memberMap.get(participant.characterId))
       .filter((member): member is Character => !!member),
     [currentSession.participants, memberMap],
+  );
+  const pageAvatarUrlByName = useMemo(
+    () => buildGroupOfflinePageAvatarNameMap(participantMembers, resolvedMemberAvatarUrlById),
+    [participantMembers, resolvedMemberAvatarUrlById],
   );
   const addableGroupMembers = useMemo(
     () => members.filter((member) => (
@@ -1315,6 +1489,9 @@ export function GroupOfflineScene({
     const rounds = currentSession.generatedContent?.rounds || [];
     return rounds.length > 0 ? rounds[rounds.length - 1] : null;
   }, [currentSession.generatedContent]);
+  const collectBlockedReason = !currentSession.isCollected && isUncollectableGroupOfflinePageEpisode(latestRound?.pageEpisode)
+    ? 'HTML页不可收藏'
+    : '';
   const awaitingDirectorInstruction = Boolean(currentSession.awaitingDirectorInstruction);
   const scenarioCardFields = useMemo(
     () => buildGroupOfflineScenarioCardFields(currentSession),
@@ -1362,6 +1539,29 @@ export function GroupOfflineScene({
       lockReason: dispatchDisabledReason,
     };
   }, [currentSession, dispatchDisabledReason, latestRound, participantMembers, scenarioCardFields.roundLabel]);
+  const renderNarrativeParagraph = (
+    keyPrefix: string,
+    paragraph: string,
+    paragraphIndex: number,
+  ) => (
+    <p key={`${keyPrefix}-${paragraphIndex}`} className="group-offline-scene__entry-paragraph">
+      {splitDialogueSegments(paragraph).map((segment, segmentIndex) => (
+        segment.type === 'dialogue' ? (
+          <span
+            key={`${keyPrefix}-dialogue-${paragraphIndex}-${segmentIndex}`}
+            className="group-offline-scene__entry-dialogue-inline"
+            style={highlightStyle}
+          >
+            {segment.text}
+          </span>
+        ) : (
+          <React.Fragment key={`${keyPrefix}-body-${paragraphIndex}-${segmentIndex}`}>
+            {segment.text}
+          </React.Fragment>
+        )
+      ))}
+    </p>
+  );
   const pendingUserMessages = useMemo(() => {
     const sentMessages = currentSession.messages.filter((message) => message.role === 'user');
     const attachedCount = (currentSession.generatedContent?.rounds || [])
@@ -1450,7 +1650,7 @@ export function GroupOfflineScene({
 
   const generateContent = async (options: GenerateContentOptions): Promise<GroupOfflineSession | undefined> => {
     const baseSession = options.baseSession ?? currentSession;
-    const appliedDirectorInstruction = options.directorInstructionOverride?.trim() || undefined;
+    const rawAppliedDirectorInstruction = options.directorInstructionOverride?.trim() || undefined;
     const workingSession: GroupOfflineSession = {
       ...baseSession,
       generationMode: 'blocks',
@@ -1459,6 +1659,14 @@ export function GroupOfflineScene({
         : baseSession.currentRound,
       updatedAt: Date.now(),
     };
+    const runtimeDirectorInstruction = resolveRuntimeDirectorInstructionText(
+      rawAppliedDirectorInstruction,
+      workingSession.directorInstructionOutputMode,
+    );
+    const directorPagePlan = resolveGroupOfflineDirectorPagePlan(
+      rawAppliedDirectorInstruction,
+      workingSession.directorInstructionOutputMode,
+    );
     const workingRuntimeProjection = buildRuntimeProjectionForSession(workingSession);
     const workingRoundPlan = options.phase === 'round'
       ? buildGroupOfflineRoundPlan({
@@ -1518,12 +1726,25 @@ export function GroupOfflineScene({
             phase: options.phase,
             selectedCharacterIds: options.selectedCharacterIds,
             dispatchMode: options.dispatchMode,
-            directorInstructionOverride: appliedDirectorInstruction,
+            directorInstructionOverride: runtimeDirectorInstruction,
             directorMode: options.directorMode,
+            directorPagePlanOverride: directorPagePlan,
           }),
         }],
       });
-      let nextContent = parseGeneratedContent(rawText, shell, workingSession, sessionMembers, members);
+      let nextContent = parseGeneratedContent(
+        rawText,
+        shell,
+        workingSession,
+        sessionMembers,
+        members,
+        rawAppliedDirectorInstruction || (
+          workingSession.awaitingDirectorInstruction
+            ? workingSession.directorInstruction
+            : undefined
+        ),
+        workingSession.directorInstructionOutputMode,
+      );
       if (!hasMeaningfulGeneratedContent(nextContent, options.phase)) {
         throw new Error(options.phase === 'intro' ? 'AI 返回的开局内容不完整。' : 'AI 返回的轮次内容不完整。');
       }
@@ -1533,7 +1754,7 @@ export function GroupOfflineScene({
           dispatchMode: options.dispatchMode,
           selectedCharacterIds: options.selectedCharacterIds,
           userMessageText: options.userMessageText,
-          appliedDirectorInstruction,
+          appliedDirectorInstruction: rawAppliedDirectorInstruction,
           runtimeProjectionSnapshot: buildGroupOfflineRoundRuntimeProjectionSnapshot(workingRuntimeProjection),
           plannerSnapshot: workingRoundPlan ? buildGroupOfflineRoundPlanSnapshot(workingRoundPlan) : undefined,
         });
@@ -1823,8 +2044,24 @@ export function GroupOfflineScene({
       ...currentSession,
       writingStyleCustom: nextWritingStyleCustom?.trim() || undefined,
       directorInstruction: nextDirectorInstruction,
+      memoryWritebackPolicy: params.mode === 'director_instruction'
+        ? undefined
+        : currentSession.memoryWritebackPolicy,
       updatedAt: Date.now(),
     };
+    const runtimeDirectorInstructionText = params.mode === 'director_instruction'
+      ? resolveRuntimeDirectorInstructionText(
+          params.directorInstructionText,
+          workingSession.directorInstructionOutputMode,
+        )
+      : undefined;
+    const directorPagePlanOverride = params.mode === 'director_instruction'
+      ? resolveGroupOfflineDirectorPagePlan(
+          params.directorInstructionText,
+          workingSession.directorInstructionOutputMode,
+        )
+      : undefined;
+    const sessionMembers = resolveSessionMembers(workingSession);
     const liveWorkingRuntimeProjection = buildRuntimeProjectionForSession(workingSession);
     const workingRuntimeProjection = resolveRoundRuntimeProjection(latestRound, workingSession, liveWorkingRuntimeProjection);
     const workingRoundPlan = resolveRoundPlannerSnapshot(latestRound, workingSession);
@@ -1842,12 +2079,21 @@ export function GroupOfflineScene({
             previousRounds: currentSession.generatedContent.rounds,
             stylePresetId: params.stylePresetId,
             customStyleText: params.customStyleText,
-            directorInstructionText: params.directorInstructionText,
+            directorInstructionText: runtimeDirectorInstructionText,
             roundPlan: workingRoundPlan,
+            directorPagePlanOverride,
           }),
         }],
       });
-      const rewrittenRound = parseRoundRewrite(rawText, latestRound);
+      const rewrittenRound = parseRoundRewrite(
+        rawText,
+        latestRound,
+        sessionMembers,
+        params.mode === 'director_instruction'
+          ? params.directorInstructionText
+          : undefined,
+        workingSession.directorInstructionOutputMode,
+      );
       const nextContent = updateRoundInContent(currentSession.generatedContent, latestRound.id, (round) => {
         const finalMode = rewrittenRound.mode || round.mode || 'scene';
         const finalPageEpisode = rewrittenRound.pageEpisode || (
@@ -1950,6 +2196,17 @@ export function GroupOfflineScene({
   const handleApplyDirectorInstruction = async (text: string, mode: GroupOfflineDirectorMode) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    const {
+      directorInstructionOutputMode: _directorInstructionOutputMode,
+      memoryWritebackPolicy: _memoryWritebackPolicy,
+      ...sessionWithoutDirectorOverrides
+    } = currentSession;
+    const draftSession: GroupOfflineSession = {
+      ...sessionWithoutDirectorOverrides,
+      directorInstruction: trimmed,
+      updatedAt: Date.now(),
+    };
+    saveSession(draftSession);
 
     if (mode === 'rewrite') {
       await handleRoundRewrite({
@@ -1958,13 +2215,6 @@ export function GroupOfflineScene({
       });
       return;
     }
-
-    const draftSession: GroupOfflineSession = {
-      ...currentSession,
-      directorInstruction: trimmed,
-      updatedAt: Date.now(),
-    };
-    saveSession(draftSession);
 
     if (mode === 'start') {
       const hasGeneratedIntro = Boolean(draftSession.generatedContent);
@@ -2024,7 +2274,7 @@ export function GroupOfflineScene({
       setEndingState('ready');
     } catch (endingError) {
       console.error('[group-offline] ending generation failed', endingError);
-      setEndingPayload(buildDerivedEndingPayload(currentSession, participantMembers));
+      setEndingPayload(buildDerivedGroupOfflineEndingPayload(currentSession, participantMembers));
       setEndingState('ready');
     }
   };
@@ -2073,6 +2323,13 @@ export function GroupOfflineScene({
 
   const toggleSideSection = (key: string) => {
     setExpandedSideSectionKeys((previous) => ({
+      ...previous,
+      [key]: !(previous[key] ?? false),
+    }));
+  };
+
+  const togglePageStory = (key: string) => {
+    setExpandedPageStoryKeys((previous) => ({
       ...previous,
       [key]: !(previous[key] ?? false),
     }));
@@ -2195,12 +2452,17 @@ export function GroupOfflineScene({
                       type="button"
                       className={`group-offline-scene__menu-item ${currentSession.isCollected ? 'group-offline-scene__menu-item--active' : ''}`}
                       onClick={() => {
+                        if (collectBlockedReason) {
+                          setMenuOpen(false);
+                          return;
+                        }
                         setMenuOpen(false);
                         saveSession({ ...currentSession, isCollected: !currentSession.isCollected });
                       }}
+                      disabled={Boolean(collectBlockedReason)}
                     >
                       <Star size={14} />
-                      {currentSession.isCollected ? '已收藏' : '收藏'}
+                      {currentSession.isCollected ? '已收藏' : (collectBlockedReason || '收藏')}
                     </button>
                     <button
                       type="button"
@@ -2212,8 +2474,8 @@ export function GroupOfflineScene({
                     </button>
                   </motion.div>
                 </>
-              ) : null}
-            </AnimatePresence>
+                ) : null}
+              </AnimatePresence>
           </div>
         </div>
 
@@ -2310,7 +2572,7 @@ export function GroupOfflineScene({
             setCustomStyleDraft(currentSession.writingStyleCustom || '');
             setShowCustomStyleSheet(true);
           }}
-          onApplyDirectorInstruction={(text: string, mode: GooseDirectorInstructionMode) => (
+          onApplyDirectorInstruction={(text: string, mode: GroupOfflineDirectorMode) => (
             void handleApplyDirectorInstruction(text, mode)
           )}
           onRetryRound={latestRound ? () => void handleRoundRewrite({ mode: 'retry_round' }) : undefined}
@@ -2503,7 +2765,7 @@ export function GroupOfflineScene({
           {currentSession.generatedContent?.intro ? (
             <div className="group-offline-scene__intro" style={bodyTextStyle}>
               {splitNarrativeParagraphs(currentSession.generatedContent.intro).map((paragraph, index) => (
-                <p key={`intro-${index}`} className="group-offline-scene__entry-paragraph">{paragraph}</p>
+                renderNarrativeParagraph('intro', paragraph, index)
               ))}
             </div>
           ) : null}
@@ -2527,10 +2789,25 @@ export function GroupOfflineScene({
               <section key={round.id} className="group-offline-scene__round">
                 <>
                 {(() => {
-                  const pageEpisode = isGroupOfflineHtmlPageEpisode(round.pageEpisode) ? round.pageEpisode : undefined;
+                  const pageEpisode = round.pageEpisode;
                   const isPageEpisodeRound = round.mode === 'page_episode' && !!pageEpisode;
-                  const pageEpisodeSrcDoc = buildGroupOfflinePageEpisodeSrcDoc(pageEpisode);
-                  const pageEpisodeSandbox = resolveGroupOfflinePageEpisodeSandbox(pageEpisode);
+                  const pageStoryKey = `${round.id}:page-story`;
+                  const pageStoryExpanded = expandedPageStoryKeys[pageStoryKey] ?? false;
+                  const pageRouteLabel = getGroupOfflinePageEpisodeModeLabel(pageEpisode);
+                  const pageEpisodeSrcDoc = isPageEpisodeRound
+                    ? buildPageEpisodeSrcDoc(
+                        pageEpisode,
+                        resolveGroupOfflinePageEpisodeRenderContext(
+                          pageEpisode,
+                          round,
+                          participantMembers,
+                          userName,
+                          pageAvatarUrlByName,
+                          resolvedMemberAvatarUrlById,
+                        ),
+                      )
+                    : '';
+                  const pageEpisodeSandbox = resolvePageEpisodeSandbox(pageEpisode);
 
                   return (
                     <>
@@ -2547,7 +2824,7 @@ export function GroupOfflineScene({
                     </div>
                     <div className="group-offline-scene__round-mode">
                       {isPageEpisodeRound
-                        ? (pageEpisode?.pageType === 'micro_app' ? '互动页面轮' : 'HTML页面轮')
+                        ? getGroupOfflinePageEpisodeModeLabel(pageEpisode)
                         : (
                           <>
                             分块推进
@@ -2578,19 +2855,36 @@ export function GroupOfflineScene({
                         sandbox={pageEpisodeSandbox}
                       />
                     ) : null}
+                    <div className="group-offline-scene__page-tools">
+                      <div className="group-offline-scene__page-tags">
+                        <span className="group-offline-scene__chip">{pageRouteLabel}</span>
+                        <span className="group-offline-scene__chip group-offline-scene__chip--muted">{pageEpisode?.pageType}</span>
+                      </div>
+                      <div>
+                        {round.sceneText ? (
+                          <button
+                            type="button"
+                            className="group-offline-scene__page-toggle"
+                            onClick={() => togglePageStory(pageStoryKey)}
+                          >
+                            {pageStoryExpanded ? '收起剧情摘要' : '查看剧情摘要'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                     {pageEpisode?.caption ? (
                       <div className="group-offline-scene__page-caption">{pageEpisode.caption}</div>
                     ) : null}
                   </div>
                 ) : null}
 
-                {round.sceneText ? (
+                {round.sceneText && (!isPageEpisodeRound || pageStoryExpanded) ? (
                   <div className="group-offline-scene__round-scene" style={bodyTextStyle}>
                     {isPageEpisodeRound ? (
                       <div className="group-offline-scene__page-story-title">剧情摘要</div>
                     ) : null}
                     {splitNarrativeParagraphs(round.sceneText).map((paragraph, index) => (
-                      <p key={`${round.id}-scene-${index}`} className="group-offline-scene__entry-paragraph">{paragraph}</p>
+                      renderNarrativeParagraph(`${round.id}-scene`, paragraph, index)
                     ))}
                   </div>
                 ) : null}
@@ -2599,7 +2893,7 @@ export function GroupOfflineScene({
                   const member = resolveMemberForEntry(entry);
                   const statusKey = `${round.id}:${entry.characterId}`;
                   const isEditing = editingEntryKey === statusKey;
-                  const actionLoading = entryActionKey?.endsWith(statusKey);
+                  const actionLoading = Boolean(entryActionKey?.endsWith(statusKey));
                   const displayBlocks = splitBodyAndHighlight(entry.text, entry.highlightText);
 
                   return (

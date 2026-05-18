@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { Character, GroupOfflineSession } from '../../types';
 import {
   buildDerivedGroupOfflineEndingPayload,
+  buildGroupOfflineEndingReactionPlan,
   buildUserAnchoredGroupOfflineEndingVoices,
 } from './endingPayload';
 
@@ -22,12 +23,12 @@ function createSession(overrides?: Partial<GroupOfflineSession>): GroupOfflineSe
     groupId: 'group-1',
     mode: 'daily',
     generationMode: 'blocks',
-    activityType: '临时碰头',
-    location: '旧城区入口',
-    scenePrompt: '风从旧城区入口吹过来。',
-    timeLabel: '今晚 21:30',
-    weatherLabel: '风很大',
-    vibe: '收束',
+    activityType: 'Temporary Collision',
+    location: 'Old City Entrance',
+    scenePrompt: 'Wind moves through the old entrance.',
+    timeLabel: 'Tonight 21:30',
+    weatherLabel: 'Windy',
+    vibe: 'cooling down',
     participants: [
       { characterId: 'alpha', joinedAt: 1, presence: 'arrived' },
       { characterId: 'beta', joinedAt: 1, presence: 'arrived' },
@@ -37,43 +38,51 @@ function createSession(overrides?: Partial<GroupOfflineSession>): GroupOfflineSe
     currentRound: 1,
     messages: [],
     status: 'active',
+    summaryCard: {
+      title: 'Temporary Collision ended',
+      lines: ['The group went home, but the unfinished line was still hanging there.'],
+    },
     ...overrides,
   } as GroupOfflineSession;
 }
 
-test('buildUserAnchoredGroupOfflineEndingVoices only keeps explicit user-targeted continuity', () => {
+test('buildGroupOfflineEndingReactionPlan marks user-followup cues from user-targeted evidence', () => {
   const members = [
-    createCharacter('alpha', '阿青'),
-    createCharacter('beta', '小白'),
+    createCharacter('alpha', 'Alpha'),
+    createCharacter('beta', 'Beta'),
   ];
   const session = createSession({
     generatedContent: {
       card: {
-        timeLabel: '今晚 21:30',
-        locationLabel: '旧城区入口',
-        weatherLabel: '风很大',
-        participantLabels: ['阿青', '小白'],
+        timeLabel: 'Tonight 21:30',
+        locationLabel: 'Old City Entrance',
+        weatherLabel: 'Windy',
+        participantLabels: ['Alpha', 'Beta'],
       },
-      intro: '风从旧城区入口吹散了刚才那点紧绷。',
+      intro: 'The wind cooled the scene but not fully.',
       lines: [],
       characterBlocks: [],
       rounds: [{
         id: 'round-1',
-        userMessageText: '别散，先把刚才那句说完。',
+        userMessageText: 'Do not let that last line die here.',
         characterEntries: [
           {
             characterId: 'alpha',
-            speakerLabel: '阿青',
-            target: { type: 'user', label: '你' },
-            text: '他看着你，还是把声音压低了些。“别急，跟我走。”',
-            highlightText: '别急，跟我走',
+            speakerLabel: 'Alpha',
+            target: { type: 'user', label: 'User' },
+            text: 'Alpha still looked back at the user before leaving.',
+            highlightText: 'Do not go back into the wind yet.',
             statusFields: [],
+            memoryPanel: {
+              shortTerm: ['He still checked whether the user got home first.'],
+              longTerm: [],
+            },
           },
           {
             characterId: 'beta',
-            speakerLabel: '小白',
-            target: { type: 'character', label: '阿青', characterId: 'alpha' },
-            text: '他只回头看了阿青一眼，没有接你的话。',
+            speakerLabel: 'Beta',
+            target: { type: 'character', label: 'Alpha', characterId: 'alpha' },
+            text: 'Beta only threw the last look back at Alpha.',
             statusFields: [],
           },
         ],
@@ -81,37 +90,38 @@ test('buildUserAnchoredGroupOfflineEndingVoices only keeps explicit user-targete
     },
   });
 
-  const voices = buildUserAnchoredGroupOfflineEndingVoices(session, members);
+  const plan = buildGroupOfflineEndingReactionPlan(session, members);
 
-  assert.equal(voices.length, 1);
-  assert.equal(voices[0]?.characterId, 'alpha');
-  assert.match(voices[0]?.text || '', /回去|跟我说完|跟我说清楚/u);
-  assert.doesNotMatch(voices[0]?.text || '', /回群|我到了|撤了/u);
+  assert.equal(plan.cues.length, 2);
+  assert.equal(plan.cues[0]?.kind, 'user_followup');
+  assert.equal(plan.cues[0]?.characterId, 'alpha');
+  assert.equal(plan.cues[1]?.kind, 'pair_aftertaste');
+  assert.equal(plan.cues[1]?.targetLabel, 'Alpha');
 });
 
-test('buildUserAnchoredGroupOfflineEndingVoices can continue a character explicitly mentioned by the user', () => {
-  const members = [createCharacter('alpha', '阿青')];
+test('buildUserAnchoredGroupOfflineEndingVoices keeps reactions grounded in each character cue', () => {
+  const members = [createCharacter('alpha', 'Alpha')];
   const session = createSession({
     participants: [{ characterId: 'alpha', joinedAt: 1, presence: 'arrived' }],
     generatedContent: {
       card: {
-        timeLabel: '今晚 21:30',
-        locationLabel: '旧城区入口',
-        weatherLabel: '风很大',
-        participantLabels: ['阿青'],
+        timeLabel: 'Tonight 21:30',
+        locationLabel: 'Old City Entrance',
+        weatherLabel: 'Windy',
+        participantLabels: ['Alpha'],
       },
-      intro: '场子刚要散。',
+      intro: 'The scene is about to scatter.',
       lines: [],
       characterBlocks: [],
       rounds: [{
         id: 'round-1',
-        userMessageText: '阿青你先别躲，把刚才那句说完。',
+        userMessageText: 'Alpha, do not leave yet.',
         characterEntries: [{
           characterId: 'alpha',
-          speakerLabel: '阿青',
-          target: { type: 'group', label: '全场' },
-          text: '他终于抬眼，像是松了半口气。“我没躲。”',
-          highlightText: '我没躲',
+          speakerLabel: 'Alpha',
+          target: { type: 'user', label: 'User' },
+          text: 'He still held back half a sentence.',
+          highlightText: 'Do not make me drop this yet.',
           statusFields: [],
         }],
       }],
@@ -121,41 +131,45 @@ test('buildUserAnchoredGroupOfflineEndingVoices can continue a character explici
   const voices = buildUserAnchoredGroupOfflineEndingVoices(session, members);
 
   assert.equal(voices.length, 1);
-  assert.match(voices[0]?.text || '', /刚才我都点到你了|既然刚才都点到你了|刚才我都点你了/u);
+  assert.match(voices[0]?.text || '', /还记着|没翻篇|先别让我就这么放掉/u);
 });
 
-test('buildDerivedGroupOfflineEndingPayload leaves ending voices empty when there was no user-facing continuity', () => {
+test('buildDerivedGroupOfflineEndingPayload can still produce group-facing voices without explicit user-only continuity', () => {
   const members = [
-    createCharacter('alpha', '阿青'),
-    createCharacter('beta', '小白'),
+    createCharacter('alpha', 'Alpha'),
+    createCharacter('beta', 'Beta'),
   ];
   const session = createSession({
     generatedContent: {
       card: {
-        timeLabel: '今晚 21:30',
-        locationLabel: '旧城区入口',
-        weatherLabel: '风很大',
-        participantLabels: ['阿青', '小白'],
+        timeLabel: 'Tonight 21:30',
+        locationLabel: 'Old City Entrance',
+        weatherLabel: 'Windy',
+        participantLabels: ['Alpha', 'Beta'],
       },
-      intro: '风从旧城区入口吹散了刚才那点紧绷。',
+      intro: 'The scene is over, but not fully cooled.',
       lines: [],
       characterBlocks: [],
       rounds: [{
         id: 'round-1',
-        sceneText: '两个人都在收各自的尾。',
+        sceneText: 'Both of them were still carrying the aftertaste out of the gate.',
         characterEntries: [
           {
             characterId: 'alpha',
-            speakerLabel: '阿青',
-            target: { type: 'character', label: '小白', characterId: 'beta' },
-            text: '他只是在和小白对最后那一下眼色。',
+            speakerLabel: 'Alpha',
+            target: { type: 'character', label: 'Beta', characterId: 'beta' },
+            text: 'He was still watching Beta even after the scene broke apart.',
             statusFields: [],
+            memoryPanel: {
+              shortTerm: ['He still kept his attention on Beta.'],
+              longTerm: [],
+            },
           },
           {
             characterId: 'beta',
-            speakerLabel: '小白',
-            target: { type: 'group', label: '全场' },
-            text: '他没再把话往你这边接。',
+            speakerLabel: 'Beta',
+            target: { type: 'group', label: 'Whole Group' },
+            text: 'He did not let the mood go completely light again.',
             statusFields: [],
           },
         ],
@@ -166,5 +180,6 @@ test('buildDerivedGroupOfflineEndingPayload leaves ending voices empty when ther
   const payload = buildDerivedGroupOfflineEndingPayload(session, members);
 
   assert.equal(payload.summaryLines.length > 0, true);
-  assert.deepEqual(payload.endingVoices, []);
+  assert.equal(payload.endingVoices.length, 2);
+  assert.match(payload.endingVoices[0]?.text || '', /@Beta|话头|挂着/u);
 });

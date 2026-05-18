@@ -254,7 +254,7 @@ test('buildGroupOfflinePrompt lets explicit special-instruction length override 
   assert.doesNotMatch(prompt, /总字数控制在 800 汉字以内/);
 });
 
-test('buildGroupOfflinePrompt switches to html page-episode schema when special instruction asks for html', () => {
+test('buildGroupOfflinePrompt switches to page-episode schema when special instruction asks for html', () => {
   const prompt = buildGroupOfflinePrompt({
     session: createSession(),
     runtimeProjection: createProjection(),
@@ -265,9 +265,27 @@ test('buildGroupOfflinePrompt switches to html page-episode schema when special 
     directorMode: 'next_round',
   });
 
-  assert.match(prompt, /输出协议不是普通正文轮，而是独立 HTML 页面轮/);
+  assert.match(prompt, /page_episode/);
   assert.match(prompt, /"mode": "page_episode"/);
   assert.match(prompt, /"pageType": "micro_app"/);
   assert.match(prompt, /"htmlDocument": "完整 html 或可直接渲染的主体结构"/);
   assert.doesNotMatch(prompt, /每个角色正文最好 2 到 4 段/);
+});
+
+test('buildGroupOfflinePrompt switches to wechat page schema when special instruction asks for a wechat page', () => {
+  const prompt = buildGroupOfflinePrompt({
+    session: createSession(),
+    runtimeProjection: createProjection(),
+    phase: 'round',
+    selectedCharacterIds: ['alpha', 'beta'],
+    dispatchMode: 'recommend',
+    directorInstructionOverride: '暂停主线，生成一个微信聊天页面番外，不要状态栏，消息不少于 30 条。',
+    directorMode: 'next_round',
+  });
+
+  assert.match(prompt, /"mode": "page_episode"/);
+  assert.match(prompt, /"pageType": "wechat_chat"/);
+  assert.match(prompt, /"platform": "wechat"/);
+  assert.match(prompt, /"chat": \{/);
+  assert.match(prompt, /"messages": \[/);
 });
