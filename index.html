@@ -151,25 +151,177 @@
           fallback.removeAttribute('data-state');
         }
 
-        function extractResourceMessage(event) {
+        var pendingBootResourceIssue = '';
+        var pendingBootResourceType = '';
+        var BOOT_RECOVERY_QUERY_PARAM = 'bloom_boot_retry';
+        var BOOT_RECOVERY_TTL_MS = 30000;
+
+        function getBootRecoveryStorageKey() {
+          var pathname = '/';
+          if (bootWindow.location && bootWindow.location.pathname) {
+            pathname = bootWindow.location.pathname;
+          }
+          return 'bloom-boot-recovery:' + pathname;
+        }
+
+        function readBootRecoveryAttempt() {
+          try {
+            var raw = bootWindow.sessionStorage.getItem(getBootRecoveryStorageKey());
+            if (!raw) {
+              return null;
+            }
+
+            var parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') {
+              return null;
+            }
+
+            return typeof parsed.at === 'number' && isFinite(parsed.at)
+              ? {
+                  at: parsed.at,
+                  reason: parsed.reason ? String(parsed.reason) : '',
+                }
+              : null;
+          } catch (_error) {
+            return null;
+          }
+        }
+
+        function hasRecentBootRecoveryAttempt() {
+          var attempt = readBootRecoveryAttempt();
+          return !!attempt && Date.now() - attempt.at < BOOT_RECOVERY_TTL_MS;
+        }
+
+        function rememberBootRecoveryAttempt(reason) {
+          try {
+            bootWindow.sessionStorage.setItem(
+              getBootRecoveryStorageKey(),
+              JSON.stringify({
+                at: Date.now(),
+                reason: reason ? String(reason) : '',
+              }),
+            );
+          } catch (_error) {}
+        }
+
+        function isRecoverableBootMessage(message) {
+          if (!message) {
+            return false;
+          }
+
+          var normalized = String(message).toLowerCase();
+          return (
+            normalized.indexOf('failed to fetch dynamically imported module') !== -1 ||
+            normalized.indexOf('error loading dynamically imported module') !== -1 ||
+            normalized.indexOf('importing a module script failed') !== -1 ||
+            normalized.indexOf('chunkloaderror') !== -1 ||
+            normalized.indexOf('loading css chunk') !== -1 ||
+            normalized.indexOf('unable to preload css') !== -1
+          );
+        }
+
+        function buildBootRecoveryUrl() {
+          try {
+            var nextUrl = new URL(bootWindow.location.href);
+            nextUrl.searchParams.set(BOOT_RECOVERY_QUERY_PARAM, String(Date.now()));
+            return nextUrl.toString();
+          } catch (_error) {
+            return '';
+          }
+        }
+
+        function shouldAttemptBootRecovery(issue) {
+          if (!issue || bootWindow.__BLOOM_BOOTED__) {
+            return false;
+          }
+
+          if (!bootWindow.location || bootWindow.location.protocol === 'file:') {
+            return false;
+          }
+
+          if (hasRecentBootRecoveryAttempt()) {
+            return false;
+          }
+
+          return issue.type === 'script' || issue.type === 'modulepreload' || issue.type === 'stylesheet';
+        }
+
+        function attemptBootRecovery(issue) {
+          if (!shouldAttemptBootRecovery(issue)) {
+            return false;
+          }
+
+          var nextUrl = buildBootRecoveryUrl();
+          if (!nextUrl) {
+            return false;
+          }
+
+          rememberBootRecoveryAttempt(issue.message || issue.type || 'boot-recovery');
+          bootWindow.location.replace(nextUrl);
+          return true;
+        }
+
+        function extractResourceIssue(event) {
           var target = event && event.target && event.target !== bootWindow ? event.target : null;
           if (!target) {
-            return '';
+            return null;
           }
 
           var tagName = target.tagName ? String(target.tagName).toLowerCase() : '';
           if (tagName === 'script') {
-            return target.src || '入口脚本加载失败';
+            return {
+              type: 'script',
+              message: target.src || '入口脚本加载失败',
+            };
           }
 
           if (tagName === 'link') {
             var rel = target.rel ? String(target.rel).toLowerCase() : '';
-            if (rel === 'stylesheet' || rel === 'modulepreload') {
-              return target.href || '关键资源加载失败';
+            if (rel === 'modulepreload') {
+              return {
+                type: 'modulepreload',
+                message: target.href || '关键模块预加载失败',
+              };
+            }
+
+            if (rel === 'stylesheet') {
+              return {
+                type: 'stylesheet',
+                message: target.href || '关键样式资源加载失败',
+              };
             }
           }
 
-          return '';
+          return null;
+        }
+
+        function rememberResourceIssue(issue) {
+          if (!issue) {
+            return;
+          }
+
+          pendingBootResourceIssue = issue.message || '';
+          pendingBootResourceType = issue.type || '';
+        }
+
+        function getPendingResourceIssueMessage() {
+          if (!pendingBootResourceIssue) {
+            return '';
+          }
+
+          if (pendingBootResourceType === 'modulepreload') {
+            return '模块预加载失败：' + pendingBootResourceIssue;
+          }
+
+          if (pendingBootResourceType === 'stylesheet') {
+            return '样式资源加载失败：' + pendingBootResourceIssue;
+          }
+
+          return pendingBootResourceIssue;
+        }
+
+        function isFatalResourceIssue(issue) {
+          return !!issue && issue.type === 'script';
         }
 
         bootWindow.__BLOOM_SHOW_BOOT_FALLBACK__ = function (reason) {
@@ -184,13 +336,22 @@
               return;
             }
 
-            var resourceMessage = extractResourceMessage(event);
-            if (resourceMessage) {
-              revealFallback('script-load', resourceMessage);
+            var resourceIssue = extractResourceIssue(event);
+            if (resourceIssue) {
+              rememberResourceIssue(resourceIssue);
+              if (attemptBootRecovery(resourceIssue)) {
+                return;
+              }
+              if (isFatalResourceIssue(resourceIssue)) {
+                revealFallback('script-load', getPendingResourceIssueMessage());
+              }
               return;
             }
 
             var message = event && event.message ? String(event.message) : '';
+            if (isRecoverableBootMessage(message) && attemptBootRecovery({ type: 'script', message: message })) {
+              return;
+            }
             revealFallback(message ? 'runtime-error' : 'script-load', message || '入口脚本没有开始执行');
           },
           true,
@@ -208,6 +369,9 @@
           } else if (reason) {
             message = String(reason);
           }
+          if (isRecoverableBootMessage(message) && attemptBootRecovery({ type: 'script', message: message })) {
+            return;
+          }
           revealFallback('runtime-error', message);
         });
 
@@ -221,13 +385,39 @@
             return;
           }
 
+          var pendingIssueMessage = getPendingResourceIssueMessage();
+
           if (!bootWindow.__BLOOM_BOOT_ENTRY_STARTED__) {
+            if (
+              attemptBootRecovery({
+                type: pendingBootResourceType || 'script',
+                message: pendingIssueMessage || '入口脚本没有开始执行',
+              })
+            ) {
+              return;
+            }
+
+            if (pendingIssueMessage) {
+              revealFallback('loading-timeout', pendingIssueMessage);
+              return;
+            }
+
             revealFallback('script-load', '入口脚本没有开始执行');
             return;
           }
 
-          revealFallback('loading-timeout', '');
-        }, 12000);
+          if (
+            pendingIssueMessage &&
+            attemptBootRecovery({
+              type: pendingBootResourceType || 'script',
+              message: pendingIssueMessage,
+            })
+          ) {
+            return;
+          }
+
+          revealFallback('loading-timeout', pendingIssueMessage);
+        }, 20000);
       })();
     </script>
   </head>
