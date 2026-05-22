@@ -1137,13 +1137,14 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
     { id: 'settings', name: 'API 中心', icon: 'Settings' },
     { id: 'worldbook', name: '世界书', icon: 'Book' },
     { id: 'monitor', name: '监控功能', icon: 'Activity' },
-    { id: 'dream', name: '梦境', icon: 'Moon' },
-    { id: 'customization', name: '自定义', icon: 'Settings2' },
     { id: 'couple-space', name: '情侣空间', icon: 'Heart' },
     { id: 'perception', name: '感知', icon: 'Eye' },
     { id: 'music', name: '音乐', icon: 'Music' },
     { id: 'forum', name: '界隙', icon: 'MessageCircle' },
+    { id: 'mall', name: '商城', icon: 'ShoppingBag' },
     { id: 'wallet', name: '钱包', icon: 'Wallet' },
+    { id: 'dream', name: '梦境', icon: 'Moon' },
+    { id: 'customization', name: '自定义', icon: 'Settings2' },
   ];
 
   const handleIconUpdate = (appId: string, url: string, previewUrl = '') => {
