@@ -17,35 +17,41 @@ export function DreamRolePickerStage({
   onBack: () => void;
   onPickRole: (roleId: string) => void;
 }) {
+  const hasRoles = roles.length > 0;
+
   return (
     <Shell time={time} scrollable contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
       <div className="flex flex-1 flex-col pb-[calc(1.5rem+var(--app-safe-area-bottom-ui,0px))]">
-        <button type="button" onClick={onBack} className="self-center border border-[var(--border)] px-6 py-2 text-[11px] tracking-[0.4em] text-[var(--mist)]">返 回</button>
-        <div className="mt-10 text-center text-[14px] tracking-[0.36em] text-[var(--mist)]">选择入梦角色</div>
-        <div className="mt-8 flex flex-1 flex-col gap-4">
-          {roles.map((role) => {
-            const active = selectedRoleId === role.id;
-            return (
-              <button
-                key={role.id}
-                type="button"
-                onClick={() => onPickRole(role.id)}
-                className="border px-4 py-5 text-left transition duration-300"
-                style={{
-                  borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
-                  backgroundColor: active ? 'rgba(19,25,38,.92)' : 'rgba(13,18,32,.76)',
-                }}
-              >
-                <div className="flex items-center gap-4">
-                  <Avatar role={role} small />
-                  <div className="min-w-0">
-                    <div className="text-[16px] font-[300] tracking-[0.14em] text-[var(--paper)]">{role.name}</div>
-                    <div className="mt-2 line-clamp-2 text-[12px] leading-[1.9] tracking-[0.14em] text-[var(--mist)]">{role.mood}</div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        <div className={`flex flex-col ${hasRoles ? 'w-full flex-1' : 'my-auto w-full max-w-[320px] self-center'}`}>
+          <button type="button" onClick={onBack} className="self-center border border-[var(--border)] px-6 py-2 text-[11px] tracking-[0.4em] text-[var(--mist)]">返 回</button>
+          <div className="mt-10 text-center text-[14px] tracking-[0.36em] text-[var(--mist)]">选择入梦角色</div>
+          {hasRoles ? (
+            <div className="mt-8 flex flex-1 flex-col gap-4">
+              {roles.map((role) => {
+                const active = selectedRoleId === role.id;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => onPickRole(role.id)}
+                    className="border px-4 py-5 text-left transition duration-300"
+                    style={{
+                      borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
+                      backgroundColor: active ? 'rgba(19,25,38,.92)' : 'rgba(13,18,32,.76)',
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <Avatar role={role} small />
+                      <div className="min-w-0">
+                        <div className="text-[16px] font-[300] tracking-[0.14em] text-[var(--paper)]">{role.name}</div>
+                        <div className="mt-2 line-clamp-2 text-[12px] leading-[1.9] tracking-[0.14em] text-[var(--mist)]">{role.mood}</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
     </Shell>
