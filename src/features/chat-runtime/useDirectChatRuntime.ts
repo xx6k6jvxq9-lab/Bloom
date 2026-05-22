@@ -32,6 +32,7 @@ import {
   serializeStructuredAssistantReplyEnvelope,
   streamStructuredAssistantReply,
 } from '../../services/ai/assistantReplyEnvelope';
+import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -532,6 +533,113 @@ function resolveDirectReplyDisplayPayload(params: {
       decision: params.decision,
     }),
     structuredRawText: null,
+  };
+}
+
+export type DirectReplyBubbleRange = {
+  minReplies: number;
+  maxReplies: number;
+};
+
+type DirectReplyBubbleInspectionOptions = {
+  assistantAliases?: string[];
+  availableStickers?: string[];
+  stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker' | 'stickerMetadataMap'>;
+  currentHistory?: ChatMessage[];
+  userLabel?: string;
+  modelLabel?: string;
+};
+
+export function resolveCharacterReplyBubbleRange(
+  character: Pick<Character, 'minReplies' | 'maxReplies'>,
+): DirectReplyBubbleRange {
+  const rawMin = Number.isFinite(character.minReplies) ? Math.floor(character.minReplies as number) : 1;
+  const minReplies = Math.max(1, Math.min(rawMin, 10));
+  const rawMax = Number.isFinite(character.maxReplies) ? Math.floor(character.maxReplies as number) : 3;
+  const maxReplies = Math.max(minReplies, Math.min(rawMax, 10));
+  return { minReplies, maxReplies };
+}
+
+function shouldEnforceDirectReplyBubbleMinimum(range: DirectReplyBubbleRange): boolean {
+  return range.minReplies > 1;
+}
+
+function buildDirectReplyBubbleRangePrompt(range: DirectReplyBubbleRange): string {
+  const rangeText = range.minReplies === range.maxReplies
+    ? `${range.minReplies} 条`
+    : `${range.minReplies} 到 ${range.maxReplies} 条`;
+
+  const minimumRule = range.minReplies > 1
+    ? `这不是风格建议，而是本轮必须满足的显示条数约束：至少 ${range.minReplies} 条。就算一句或两句已经能成立，也不要停在 1 到 2 条。`
+    : '当前最少条数允许为 1 条；如果一句已经成立，不需要为了凑数硬拆。';
+
+  return [
+    '## 单次回复条数硬约束',
+    `当前角色设置要求本轮可显示聊天气泡控制在 ${rangeText}。`,
+    minimumRule,
+    `最多不要超过 ${range.maxReplies} 条。`,
+    '如果一句话本身可以自然拆成“先接一句、再补一句、再压一句情绪或再追一句问句”，就拆开成多个短气泡。',
+    '如果使用统一回复协议，每个 text item 只对应一个最终显示气泡，不要把多条聊天内容塞进同一个 text item 里。',
+  ].join('\n');
+}
+
+function buildDirectReplyBubbleRepairInstruction(params: {
+  range: DirectReplyBubbleRange;
+  currentBubbleCount: number;
+  requireInlineTranslation: boolean;
+}): string {
+  const { range, currentBubbleCount, requireInlineTranslation } = params;
+  const targetBubbleCount = currentBubbleCount < range.minReplies ? range.minReplies : range.maxReplies;
+
+  return [
+    '上一版回复的可显示聊天气泡数量不符合当前角色设置，请立刻重写。',
+    `当前必须输出 ${targetBubbleCount} 条可显示聊天气泡。`,
+    `允许范围是 ${range.minReplies} 到 ${range.maxReplies} 条，不要再回成 ${currentBubbleCount} 条。`,
+    '保持同一角色、同一关系状态、同一事件推进和大致同一意思，不要改成解释文、总结文或说明文。',
+    '优先输出 [ASSISTANT_REPLY] {"items":[...]}；每个 text item 只放一个最终气泡，不要把多条聊天内容塞进同一个 text item。',
+    requireInlineTranslation
+      ? '每个 text item 都必须保留对应的简体中文 translation，顺序要一一对应。'
+      : '每个 text item 都必须像真实聊天里会单独发出去的一条短消息。',
+  ].join('\n');
+}
+
+export function inspectDirectReplyBubbleCount(
+  replyText: string,
+  options: DirectReplyBubbleInspectionOptions = {},
+): {
+  bubbleCount: number;
+  hasSpecialContent: boolean;
+} {
+  const messages = splitStreamingModelResponseIntoMessages(replyText, 0, {
+    assistantAliases: options.assistantAliases,
+    availableStickers: options.availableStickers,
+    stickerContext: options.stickerContext,
+    currentHistory: options.currentHistory,
+    userLabel: options.userLabel,
+    modelLabel: options.modelLabel,
+    maxDirectReplyBubbles: 10,
+  });
+
+  let bubbleCount = 0;
+  let hasSpecialContent = false;
+
+  messages.forEach((message) => {
+    if (
+      message.contentType === 'game-card'
+      || message.contentType === 'transfer'
+      || message.contentType === 'couple-space-invite'
+      || message.contentType === 'couple-space-invite-accepted'
+    ) {
+      hasSpecialContent = true;
+      return;
+    }
+
+    bubbleCount += 1;
+  });
+
+  return {
+    bubbleCount,
+    hasSpecialContent,
   };
 }
 
@@ -1045,11 +1153,10 @@ function stripCoupleSpaceTokens(text: string) {
 }
 
 function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies'>): number {
-  if (!Number.isFinite(character.maxReplies)) {
-    return 3;
-  }
-
-  return Math.max(1, Math.min(Math.floor(character.maxReplies as number), 10));
+  return resolveCharacterReplyBubbleRange({
+    minReplies: 1,
+    maxReplies: character.maxReplies,
+  }).maxReplies;
 }
 
 function isSameLocalDay(leftTimestamp: number, rightTimestamp: number): boolean {
@@ -2830,6 +2937,103 @@ export function useDirectChatRuntime({
     }
   }, [patchCurrentCharacter]);
 
+  const repairDirectReplyBubbleRangeIfNeeded = useCallback(async (params: {
+    replyText: string;
+    runtimeMessages: RuntimeChatMessage[];
+    traceLabel: string;
+    assistantAliases: string[];
+    availableStickers?: string[];
+    stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker' | 'stickerMetadataMap'>;
+    currentHistory?: ChatMessage[];
+    userLabel: string;
+    modelLabel: string;
+    requireInlineTranslation: boolean;
+    allowBracketActions: boolean;
+  }): Promise<string> => {
+    if (!activeConfig) {
+      return params.replyText;
+    }
+
+    const replyBubbleRange = resolveCharacterReplyBubbleRange(character);
+    if (!shouldEnforceDirectReplyBubbleMinimum(replyBubbleRange)) {
+      return params.replyText;
+    }
+
+    const inspectionOptions = {
+      assistantAliases: params.assistantAliases,
+      availableStickers: params.availableStickers,
+      stickerContext: params.stickerContext,
+      currentHistory: params.currentHistory,
+      userLabel: params.userLabel,
+      modelLabel: params.modelLabel,
+    };
+    const currentInspection = inspectDirectReplyBubbleCount(params.replyText, inspectionOptions);
+    if (
+      currentInspection.hasSpecialContent
+      || (
+        currentInspection.bubbleCount >= replyBubbleRange.minReplies
+        && currentInspection.bubbleCount <= replyBubbleRange.maxReplies
+      )
+    ) {
+      return params.replyText;
+    }
+
+    const rewriteSeedText = normalizeStructuredAssistantReplyToLegacyFormat(params.replyText).trim();
+    if (!rewriteSeedText) {
+      return params.replyText;
+    }
+
+    const repairedRawText = await streamStructuredAssistantReply({
+      activeConfig: {
+        ...activeConfig,
+        temperature: Math.min(activeConfig.temperature ?? 0.7, 0.4),
+      },
+      messages: [
+        ...params.runtimeMessages,
+        {
+          role: 'assistant',
+          content: rewriteSeedText,
+        },
+        {
+          role: 'user',
+          content: buildDirectReplyBubbleRepairInstruction({
+            range: replyBubbleRange,
+            currentBubbleCount: currentInspection.bubbleCount,
+            requireInlineTranslation: params.requireInlineTranslation,
+          }),
+        },
+      ],
+      traceLabel: `${params.traceLabel}:bubble-range-repair`,
+    });
+
+    const normalizedRepairedText = repairedRawText.trim();
+    if (!parseStructuredAssistantReplyEnvelope(normalizedRepairedText)) {
+      return params.replyText;
+    }
+
+    const repairedQuality = evaluateAssistantOutput(
+      normalizeStructuredAssistantReplyToLegacyFormat(normalizedRepairedText),
+      {
+        allowBracketActions: params.allowBracketActions,
+        allowStructuredProtocols: true,
+      },
+    );
+    if (!repairedQuality.ok) {
+      return params.replyText;
+    }
+
+    const repairedInspection = inspectDirectReplyBubbleCount(normalizedRepairedText, inspectionOptions);
+    if (
+      repairedInspection.hasSpecialContent
+      || repairedInspection.bubbleCount < replyBubbleRange.minReplies
+      || repairedInspection.bubbleCount > replyBubbleRange.maxReplies
+    ) {
+      return params.replyText;
+    }
+
+    return normalizedRepairedText;
+  }, [activeConfig, character]);
+
   const generateDirectAssistantMessage = useCallback(async (
     historySnapshot: ChatMessage[],
     mode: DirectGenerationMode,
@@ -2965,8 +3169,9 @@ export function useDirectChatRuntime({
             perceptionPrompt = parts.filter(Boolean).join('\n');
           }
 
+          const directReplyBubbleRange = resolveCharacterReplyBubbleRange(character);
           const chatSceneInput = buildChatSceneInput({
-            mode: mode === 'proactive' ? 'chat' : 'autoReply',
+            mode: 'chat',
             includeProtocolRules: mode !== 'proactive',
             character,
             allCharacters: characters,
@@ -3039,7 +3244,11 @@ export function useDirectChatRuntime({
           const structuredAssistantReplyEnabled =
             inlineReplyTranslationEnabled
             || isSpecialProtocolReply
-            || directIntentAnalysis?.actionIntent === 'request_transfer';
+            || directIntentAnalysis?.actionIntent === 'request_transfer'
+            || (
+              mode !== 'proactive'
+              && shouldEnforceDirectReplyBubbleMinimum(directReplyBubbleRange)
+            );
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage, {
@@ -3107,6 +3316,9 @@ export function useDirectChatRuntime({
                 sceneHints: chatSceneInput.sections || [],
                 ...directStickerContext,
               }),
+              mode !== 'proactive' && !isSpecialProtocolReply
+                ? buildDirectReplyBubbleRangePrompt(directReplyBubbleRange)
+                : '',
               buildDirectFinalCharacterGuardPrompt(),
               structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
             ].filter(Boolean),
@@ -3129,6 +3341,9 @@ export function useDirectChatRuntime({
               ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
               : []),
           ];
+          const runtimeTraceLabel = mode === 'proactive'
+            ? 'direct-chat:proactive-reply'
+            : 'direct-chat:assistant-reply';
           let structuredResponseText: string | null = null;
           let finalQualityResult;
           if (structuredAssistantReplyEnabled) {
@@ -3139,6 +3354,7 @@ export function useDirectChatRuntime({
             const responseText = await streamStructuredAssistantReply({
               activeConfig: structuredConfig,
               messages: runtimeMessages,
+              traceLabel: `${runtimeTraceLabel}:structured`,
             });
             structuredResponseText = parseStructuredAssistantReplyEnvelope(responseText) ? responseText : null;
             const normalizedText = normalizeStructuredAssistantReplyToLegacyFormat(responseText);
@@ -3155,6 +3371,7 @@ export function useDirectChatRuntime({
               finalQualityResult = await generateQualityCheckedAssistantReply({
                 activeConfig,
                 messages: runtimeMessages,
+                traceLabel: `${runtimeTraceLabel}:quality`,
                 allowBracketActions: shouldAllowBracketActions(character),
                 allowStructuredProtocols: true,
                 toneGuardMode: 'character_chat',
@@ -3175,6 +3392,7 @@ export function useDirectChatRuntime({
             finalQualityResult = await generateQualityCheckedAssistantReply({
               activeConfig,
               messages: runtimeMessages,
+              traceLabel: `${runtimeTraceLabel}:quality`,
               allowBracketActions: shouldAllowBracketActions(character),
               allowStructuredProtocols: true,
               toneGuardMode: 'character_chat',
@@ -3193,8 +3411,24 @@ export function useDirectChatRuntime({
             throw new Error(`模型返回无效内容：${finalQualityResult.reason || 'unknown'}`);
           }
 
+          const rangeCheckedReplyText = mode === 'proactive'
+            ? (structuredResponseText || finalQualityResult.cleanedText)
+            : await repairDirectReplyBubbleRangeIfNeeded({
+              replyText: structuredResponseText || finalQualityResult.cleanedText,
+              runtimeMessages,
+              traceLabel: runtimeTraceLabel,
+              assistantAliases: [character.name, character.remarkName?.trim() || ''].filter(Boolean),
+              availableStickers: runtimeStickerPool,
+              stickerContext: directStickerContext,
+              currentHistory: latestHistory,
+              userLabel: userName,
+              modelLabel: character.name,
+              requireInlineTranslation: inlineReplyTranslationEnabled,
+              allowBracketActions: shouldAllowBracketActions(character),
+            });
+
           const proactiveLightInteractionPayload = mode === 'proactive'
-            ? extractDirectProactiveLightInteractionPayload(finalQualityResult.cleanedText)
+            ? extractDirectProactiveLightInteractionPayload(rangeCheckedReplyText)
             : null;
 
           if (mode === 'proactive') {
@@ -3241,7 +3475,7 @@ export function useDirectChatRuntime({
           }
 
           const resolvedDisplayPayload = resolveDirectReplyDisplayPayload({
-            replyText: structuredResponseText || finalQualityResult.cleanedText,
+            replyText: rangeCheckedReplyText,
             latestUserMessage: latestPendingUserMessage,
             intentAnalysis: directIntentAnalysis,
             decision: directCharacterDecision,
@@ -3310,7 +3544,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, perception, persistPendingAvatarConfirmation, queueAutoAudioForLatestModelReply, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, perception, persistPendingAvatarConfirmation, queueAutoAudioForLatestModelReply, repairDirectReplyBubbleRangeIfNeeded, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
     text: string;
@@ -3335,6 +3569,7 @@ export function useDirectChatRuntime({
       const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
       const qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,
+        traceLabel: 'direct-chat:voice-call',
         messages: [
           {
             role: 'system',
@@ -3620,6 +3855,7 @@ export function useDirectChatRuntime({
         perceptionPrompt = parts.filter(Boolean).join('\n');
       }
 
+      const directReplyBubbleRange = resolveCharacterReplyBubbleRange(character);
       const chatSceneInput = buildChatSceneInput({
         mode: 'chat',
         character,
@@ -3686,7 +3922,8 @@ export function useDirectChatRuntime({
       const structuredAssistantReplyEnabled =
         inlineReplyTranslationEnabled
         || isSpecialProtocolReply
-        || directIntentAnalysis?.actionIntent === 'request_transfer';
+        || directIntentAnalysis?.actionIntent === 'request_transfer'
+        || shouldEnforceDirectReplyBubbleMinimum(directReplyBubbleRange);
       const directSpecialReplyPrompt = buildDirectSpecialReplyPrompt(userMsg, {
         structuredReplyEnabled: structuredAssistantReplyEnabled,
         requireInlineTranslation: inlineReplyTranslationEnabled,
@@ -3736,6 +3973,7 @@ export function useDirectChatRuntime({
             sceneHints: chatSceneInput.sections || [],
             ...directStickerContext,
           }),
+          !isSpecialProtocolReply ? buildDirectReplyBubbleRangePrompt(directReplyBubbleRange) : '',
           buildDirectFinalCharacterGuardPrompt(),
           structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
         ].filter(Boolean),
@@ -3755,6 +3993,7 @@ export function useDirectChatRuntime({
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
         })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
       ];
+      const runtimeTraceLabel = 'direct-chat:assistant-reply-live';
       let structuredResponseText: string | null = null;
       let qualityResult;
       if (structuredAssistantReplyEnabled) {
@@ -3765,6 +4004,7 @@ export function useDirectChatRuntime({
         const responseText = await streamStructuredAssistantReply({
           activeConfig: structuredConfig,
           messages: runtimeMessages,
+          traceLabel: `${runtimeTraceLabel}:structured`,
           onPreview: (previewText) => {
             if (activeGenerationIdRef.current !== generationId) {
               return;
@@ -3793,6 +4033,7 @@ export function useDirectChatRuntime({
           qualityResult = await generateQualityCheckedAssistantReply({
             activeConfig,
             messages: runtimeMessages,
+            traceLabel: `${runtimeTraceLabel}:quality`,
             allowBracketActions: shouldAllowBracketActions(character),
             allowStructuredProtocols: true,
             toneGuardMode: 'character_chat',
@@ -3813,6 +4054,7 @@ export function useDirectChatRuntime({
         qualityResult = await generateQualityCheckedAssistantReply({
           activeConfig,
           messages: runtimeMessages,
+          traceLabel: `${runtimeTraceLabel}:quality`,
           allowBracketActions: shouldAllowBracketActions(character),
           allowStructuredProtocols: true,
           toneGuardMode: 'character_chat',
@@ -3853,8 +4095,22 @@ export function useDirectChatRuntime({
         return;
       }
 
-      const resolvedDisplayPayload = resolveDirectReplyDisplayPayload({
+      const rangeCheckedReplyText = await repairDirectReplyBubbleRangeIfNeeded({
         replyText: structuredResponseText || qualityResult.cleanedText,
+        runtimeMessages,
+        traceLabel: runtimeTraceLabel,
+        assistantAliases: [character.name, character.remarkName?.trim() || ''].filter(Boolean),
+        availableStickers: runtimeStickerPool,
+        stickerContext: directStickerContext,
+        currentHistory: newHistory,
+        userLabel: userName,
+        modelLabel: character.name,
+        requireInlineTranslation: inlineReplyTranslationEnabled,
+        allowBracketActions: shouldAllowBracketActions(character),
+      });
+
+      const resolvedDisplayPayload = resolveDirectReplyDisplayPayload({
+        replyText: rangeCheckedReplyText,
         latestUserMessage: userMsg,
         intentAnalysis: directIntentAnalysis,
         decision: directCharacterDecision,
@@ -4016,7 +4272,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, characters, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, onPublishMoment, perception, persistPendingAvatarConfirmation, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, recordDirectBoundaryEvent, replyingTo, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, characters, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, onPublishMoment, perception, persistPendingAvatarConfirmation, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, recordDirectBoundaryEvent, repairDirectReplyBubbleRangeIfNeeded, replyingTo, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

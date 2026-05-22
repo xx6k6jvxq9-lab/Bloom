@@ -1,9 +1,40 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  inspectDirectReplyBubbleCount,
+  resolveCharacterReplyBubbleRange,
   splitStreamingModelResponseIntoMessages,
   splitStructuredAssistantReplyEnvelopeIntoMessages,
 } from './useDirectChatRuntime';
+
+test('resolveCharacterReplyBubbleRange keeps minimum and maximum aligned', () => {
+  assert.deepEqual(
+    resolveCharacterReplyBubbleRange({ minReplies: 3, maxReplies: 10 }),
+    { minReplies: 3, maxReplies: 10 },
+  );
+  assert.deepEqual(
+    resolveCharacterReplyBubbleRange({ minReplies: 6, maxReplies: 2 }),
+    { minReplies: 6, maxReplies: 6 },
+  );
+});
+
+test('inspectDirectReplyBubbleCount counts visible chat bubbles from structured replies', () => {
+  const inspection = inspectDirectReplyBubbleCount(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"text","text":"Come here first.","translation":"先过来。"},{"kind":"text","text":"Look at me.","translation":"看着我。"},{"kind":"text","text":"Then talk.","translation":"再说。"}]}',
+  );
+
+  assert.equal(inspection.bubbleCount, 3);
+  assert.equal(inspection.hasSpecialContent, false);
+});
+
+test('inspectDirectReplyBubbleCount flags protocol-only replies as special content', () => {
+  const inspection = inspectDirectReplyBubbleCount(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"game_card","payload":{"game":"qna","type":"answer","content":"Then listen carefully."},"translation":"Listen carefully."}]}',
+  );
+
+  assert.equal(inspection.bubbleCount, 0);
+  assert.equal(inspection.hasSpecialContent, true);
+});
 
 test('splitStreamingModelResponseIntoMessages keeps multi-bubble assistant replies even when translation stays in one block', () => {
   const messages = splitStreamingModelResponseIntoMessages(
