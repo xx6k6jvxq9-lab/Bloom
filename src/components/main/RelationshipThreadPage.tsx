@@ -3,7 +3,11 @@ import { ChevronLeft, Trash2 } from 'lucide-react';
 import type { FriendRequest } from '../../types';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
-import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import {
+  getLegacyTranslationParts,
+  resolveMessageTranslationForDisplay,
+  sanitizePipeMarkers,
+} from '../../services/chat/messageText';
 import {
   getCharacterRelationshipRounds,
   getFriendRequestRelationshipRoundNo,
@@ -70,14 +74,20 @@ function ThreadTextBlock({
   label,
   text,
   tone = 'default',
+  allowTranslation = true,
 }: {
   label: string;
   text: string;
   tone?: 'default' | 'response';
+  allowTranslation?: boolean;
 }) {
   const legacyTranslationParts = getLegacyTranslationParts(text);
   const mainText = sanitizePipeMarkers(legacyTranslationParts.mainText || text, '\n');
-  const translation = sanitizePipeMarkers(legacyTranslationParts.translation, '\n');
+  const translation = resolveMessageTranslationForDisplay({
+    text,
+  }, {
+    autoTranslate: allowTranslation,
+  });
 
   return (
     <div
@@ -167,6 +177,7 @@ export function RelationshipThreadPage({
   onReject,
   onSubmitRequest,
   onDeletePage,
+  getCharacterAutoTranslate,
   onBack,
 }: {
   requests: FriendRequest[];
@@ -175,6 +186,7 @@ export function RelationshipThreadPage({
   onReject: (id: string, note?: string) => void;
   onSubmitRequest?: (characterId: string, message: string) => void;
   onDeletePage?: (pageKey: string) => void;
+  getCharacterAutoTranslate?: (characterId: string) => boolean | undefined;
   onBack: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +219,9 @@ export function RelationshipThreadPage({
     ? relationshipRounds.find((round) => round.roundId === currentRoundId) || null
     : null;
   const visibleRequests = currentRound?.requests || threadRequests;
+  const resolveRequestTranslationEnabled = (request: FriendRequest) => (
+    request.characterId ? (getCharacterAutoTranslate?.(request.characterId) ?? true) : true
+  );
   const pendingIncomingRequest = visibleRequests.find((request) => (
     !request.isRelationshipEvent
     && request.status === 'pending'
@@ -319,6 +334,7 @@ export function RelationshipThreadPage({
                 <ThreadTextBlock
                   label={isIncoming ? `${displayName} 的附言` : '你的附言'}
                   text={request.message}
+                  allowTranslation={resolveRequestTranslationEnabled(request)}
                 />
               )}
 
@@ -334,6 +350,7 @@ export function RelationshipThreadPage({
                   label={`${displayName} 的回应`}
                   text={request.responseText}
                   tone="response"
+                  allowTranslation={resolveRequestTranslationEnabled(request)}
                 />
               )}
 

@@ -4,7 +4,11 @@ import type { FriendRequest } from '../../types';
 import type { AddFriendLookupResult } from '../../features/contacts/addFriendSearch';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
-import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import {
+  getLegacyTranslationParts,
+  resolveMessageTranslationForDisplay,
+  sanitizePipeMarkers,
+} from '../../services/chat/messageText';
 import { RelationshipThreadPage } from './RelationshipThreadPage';
 import {
   getFriendRequestPageKey,
@@ -55,7 +59,7 @@ function getRelationshipEventUnreadLabel(request: FriendRequest) {
   return '新动态';
 }
 
-function getMessagePreviewContent(text: string | null | undefined) {
+function getMessagePreviewContent(text: string | null | undefined, allowTranslation = true) {
   const normalized = text?.trim() || '';
   if (!normalized) {
     return {
@@ -67,12 +71,17 @@ function getMessagePreviewContent(text: string | null | undefined) {
   const { mainText, translation } = getLegacyTranslationParts(normalized);
   return {
     mainText: sanitizePipeMarkers(mainText || normalized, '\n'),
-    translationText: sanitizePipeMarkers(translation, '\n'),
+    translationText: resolveMessageTranslationForDisplay({
+      text: normalized,
+      translation,
+    }, {
+      autoTranslate: allowTranslation,
+    }),
   };
 }
 
-function getRelationshipEventPreviewContent(request: FriendRequest) {
-  const preview = getMessagePreviewContent(request.responseText);
+function getRelationshipEventPreviewContent(request: FriendRequest, allowTranslation = true) {
+  const preview = getMessagePreviewContent(request.responseText, allowTranslation);
   if (preview.mainText || preview.translationText) {
     return preview;
   }
@@ -92,6 +101,7 @@ export function NewFriendsPage({
   onThreadClosed,
   onDeletePage,
   onMarkPageRead,
+  getCharacterAutoTranslate,
   onLookupAddTarget,
   onConfirmAddTarget,
   onBack,
@@ -104,6 +114,7 @@ export function NewFriendsPage({
   onThreadClosed?: () => void;
   onDeletePage?: (pageKey: string) => void;
   onMarkPageRead?: (pageKey: string) => void;
+  getCharacterAutoTranslate?: (characterId: string) => boolean | undefined;
   onLookupAddTarget: (query: string) => { result?: AddFriendLookupResult; error?: string };
   onConfirmAddTarget: (result: AddFriendLookupResult) => { success: boolean; message: string };
   onBack: () => void;
@@ -158,6 +169,10 @@ export function NewFriendsPage({
     setRejectComposerTarget(null);
     setRejectDraft('');
   };
+
+  const resolveRequestTranslationEnabled = (request: FriendRequest) => (
+    request.characterId ? (getCharacterAutoTranslate?.(request.characterId) ?? true) : true
+  );
 
   const openRejectComposer = (request: FriendRequest) => {
     setRejectComposerTarget({
@@ -226,6 +241,7 @@ export function NewFriendsPage({
         onAccept={onAccept}
         onReject={onReject}
         onSubmitRequest={onSubmitRequest}
+        getCharacterAutoTranslate={getCharacterAutoTranslate}
         onDeletePage={(pageKey) => {
           onDeletePage?.(pageKey);
           setActivePageKey(null);
@@ -367,9 +383,10 @@ export function NewFriendsPage({
                     : '新申请'
               )
               : '';
+            const allowTranslation = resolveRequestTranslationEnabled(request);
             const previewContent = isRelationshipEvent
-              ? getRelationshipEventPreviewContent(request)
-              : getMessagePreviewContent(request.message);
+              ? getRelationshipEventPreviewContent(request, allowTranslation)
+              : getMessagePreviewContent(request.message, allowTranslation);
             const previewMainText = previewContent.mainText
               || previewContent.translationText
               || (isIncoming ? '请求添加你为好友' : '等待对方处理你的申请');

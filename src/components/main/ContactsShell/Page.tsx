@@ -741,6 +741,9 @@ export function ContactsApp({
         onAccept={handleAcceptFriendRequest}
         onReject={handleRejectFriendRequest}
         onSubmitRequest={handleSubmitRelationshipThreadRequest}
+        getCharacterAutoTranslate={(characterId) => (
+          characters.find((character) => character.id === characterId)?.autoTranslate
+        )}
         defaultThreadKey={relationshipThreadKey}
         onThreadClosed={() => {
           setRelationshipThreadKey(null);

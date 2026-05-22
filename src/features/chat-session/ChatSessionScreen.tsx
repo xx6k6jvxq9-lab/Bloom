@@ -27,7 +27,11 @@ import {
   getUserReadStatusLabel,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
-import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import {
+  getLegacyTranslationParts,
+  resolveMessageTranslationForDisplay,
+  sanitizePipeMarkers,
+} from '../../services/chat/messageText';
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { splitBracketActionDisplaySegments } from '../../services/chat/assistantText';
 import { extractImageUrls } from '../../utils';
@@ -326,7 +330,10 @@ type ParsedGameCardPayloadState =
   | { status: 'incomplete' }
   | { status: 'invalid'; error: unknown };
 
-function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadState {
+function parseGameCardPayloadState(
+  message: ChatMessage,
+  autoTranslateEnabled: boolean,
+): ParsedGameCardPayloadState {
   const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
   const gameCardMatch = message.text.match(gameCardRegex);
   if (!gameCardMatch) {
@@ -350,7 +357,6 @@ function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadS
     jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
 
     const gameData = JSON.parse(jsonString) as Partial<ParsedGameCardDisplayData>;
-    const legacyTranslationParts = getLegacyTranslationParts(message.text);
 
     if (
       (gameData.game !== 'qna' && gameData.game !== 'tod' && gameData.game !== 'blocks')
@@ -378,10 +384,9 @@ function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadS
             ? { question: sanitizePipeMarkers(gameData.question, '\n') }
             : {}),
         },
-        translation: sanitizePipeMarkers(
-          message.translation?.trim() || legacyTranslationParts.translation,
-          '\n',
-        ),
+        translation: resolveMessageTranslationForDisplay(message, {
+          autoTranslate: autoTranslateEnabled,
+        }),
       },
     };
   } catch (error) {
@@ -852,10 +857,9 @@ export function ChatSessionScreen({
     ? parseInnerVoiceCardContent(sanitizePipeMarkers(activeInnerVoiceParts?.mainText || activeInnerVoiceMessage.text, '\n'))
     : null;
   const activeInnerVoiceTranslation = activeInnerVoiceMessage?.isInnerVoice
-    ? sanitizePipeMarkers(
-        activeInnerVoiceMessage.translation?.trim() || activeInnerVoiceParts?.translation || '',
-        '\n',
-      )
+    ? resolveMessageTranslationForDisplay(activeInnerVoiceMessage, {
+        autoTranslate: character.autoTranslate,
+      })
     : '';
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
   const relationshipBlockNotice = getDirectChatRelationshipBlockNotice(character);
@@ -2560,7 +2564,7 @@ export function ChatSessionScreen({
                           msg.contentType === 'game-card'
                           || msg.text.trim().startsWith('[GAME_CARD]');
                         const gameCardPayloadState = shouldRenderGameCard
-                          ? parseGameCardPayloadState(msg)
+                          ? parseGameCardPayloadState(msg, !!character.autoTranslate)
                           : { status: 'invalid' as const, error: null };
 
                         if (gameCardPayloadState.status === 'ok') {
@@ -2674,7 +2678,9 @@ export function ChatSessionScreen({
                                   value={msg.audioUrl}
                                   durationSeconds={msg.duration}
                                   transcript={msg.audioTranscript || null}
-                                  translation={msg.translation || null}
+                                  translation={resolveMessageTranslationForDisplay(msg, {
+                                    autoTranslate: msg.role === 'model' ? character.autoTranslate : true,
+                                  }) || null}
                                   showTranscript={!!msg.audioTranscript}
                                   autoPlay={
                                     msg.role === 'model'
@@ -2770,9 +2776,6 @@ export function ChatSessionScreen({
                             )}
 
                             {!msg.imageUrl && !msg.audioUrl && cleanText && !msg.isInnerVoice && (() => {
-                              const legacyTranslationParts = getLegacyTranslationParts(cleanText);
-                              const translationText = msg.translation?.trim() || legacyTranslationParts.translation;
-
                               return (
                                 <>
                                   {msg.replyTo && (
@@ -2811,7 +2814,9 @@ export function ChatSessionScreen({
                                     {(() => {
                                       const legacyTranslationParts = getLegacyTranslationParts(cleanText);
                                       const normalizedMainText = sanitizePipeMarkers(legacyTranslationParts.mainText, '\n');
-                                      const translationText = msg.translation?.trim() || legacyTranslationParts.translation;
+                                      const translationText = resolveMessageTranslationForDisplay(msg, {
+                                        autoTranslate: character.autoTranslate,
+                                      });
                                       const bubbleTextStyle = directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle;
                                       const mainTextSegments = splitBracketActionDisplaySegments(normalizedMainText);
                                       const resolvedMainTextSegments = mainTextSegments.length > 0
@@ -3064,10 +3069,9 @@ export function ChatSessionScreen({
                               const parsedCard = parseInnerVoiceCardContent(
                                 sanitizePipeMarkers(legacyInnerVoiceParts.mainText || msg.text, '\n'),
                               );
-                              const innerVoiceTranslation = sanitizePipeMarkers(
-                                msg.translation?.trim() || legacyInnerVoiceParts.translation,
-                                '\n',
-                              );
+                              const innerVoiceTranslation = resolveMessageTranslationForDisplay(msg, {
+                                autoTranslate: character.autoTranslate,
+                              });
                               const teaserLines = parsedCard.headline.split('\n').filter(Boolean).slice(0, 2);
 
                               return (

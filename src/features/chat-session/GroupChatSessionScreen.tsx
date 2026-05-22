@@ -50,6 +50,7 @@ import {
 } from '../../services/chat/messageActions';
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { resolveMessageTranslationForDisplay } from '../../services/chat/messageText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import {
   buildGroupOfflineRecruitStatusSummary,
@@ -5019,7 +5020,9 @@ export function GroupChatSessionScreen({
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
                       transcript={msg.audioTranscript || null}
-                      translation={msg.translation || null}
+                      translation={resolveMessageTranslationForDisplay(msg, {
+                        autoTranslate: msg.role === 'model' ? (senderCharacter?.autoTranslate ?? true) : true,
+                      }) || null}
                       showTranscript={!!msg.audioTranscript}
                       autoPlay={msg.role === 'model' && !!senderCharacter?.voiceProfile?.autoPlay}
                       isUser={isUser}

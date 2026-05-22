@@ -26,6 +26,7 @@ import {
 } from '../../services/moments/publicThreadPolicy';
 import { applyMomentInteractionGrowth } from '../../services/moments/momentInteractionGrowth';
 import { getDefaultMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
+import { resolveMessageTranslationForDisplay } from '../../services/chat/messageText';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, MomentItem, UserProfileExtended } from '../../types';
 
@@ -1148,6 +1149,11 @@ export function MomentsApp({
           const author = resolveMomentAuthor(moment.authorId);
           if (!author) return null;
           const effectiveCollected = getLinkedChatFavoriteState(appData, moment) ?? !!moment.isCollected;
+          const momentTranslation = resolveMessageTranslationForDisplay({
+            translation: moment.translation,
+          }, {
+            autoTranslate: !('autoTranslate' in author) || !!author.autoTranslate,
+          });
 
           return (
             <div
@@ -1179,9 +1185,9 @@ export function MomentsApp({
                 {!isInnerVoiceMomentCard(moment) && (
                   <div className="mt-1 space-y-2">
                     <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
-                    {moment.translation?.trim() ? (
+                    {momentTranslation ? (
                       <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-500">
-                        翻译：{moment.translation.trim()}
+                        翻译：{momentTranslation}
                       </p>
                     ) : null}
                   </div>

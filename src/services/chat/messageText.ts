@@ -5,6 +5,8 @@ export const sanitizePipeMarkers = (text: string, replacement: '\n' | ' ' = '\n'
     : replaced.replace(/[ \t]{2,}/g, ' ').trim();
 };
 
+const CJK_TEXT_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
+
 const BRACKET_ACTION_REGEX = /[（(]([^（）()\n]{1,80})[）)]/gu;
 
 export const normalizeBracketActionTextForPrompt = (text: string): string => {
@@ -49,4 +51,46 @@ export const getLegacyTranslationParts = (text: string): { mainText: string; tra
     mainText: text.trim(),
     translation: '',
   };
+};
+
+export const stripLegacyTranslationBlock = (text: string): string => (
+  getLegacyTranslationParts(text).mainText.trim()
+);
+
+export const looksLikeChineseDisplayText = (text: string): boolean => {
+  const normalized = sanitizePipeMarkers(text, '\n');
+  return !!normalized && CJK_TEXT_REGEX.test(normalized);
+};
+
+export const resolveMessageTranslationForDisplay = (
+  message: {
+    text?: string | null;
+    translation?: string | null;
+  },
+  options: {
+    autoTranslate?: boolean;
+  } = {},
+): string => {
+  if (!options.autoTranslate) {
+    return '';
+  }
+
+  const legacyTranslation = getLegacyTranslationParts(message.text || '').translation;
+  const candidates = [
+    message.translation?.trim() || '',
+    legacyTranslation || '',
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedTranslation = sanitizePipeMarkers(candidate, '\n');
+    if (!normalizedTranslation) {
+      continue;
+    }
+
+    if (looksLikeChineseDisplayText(normalizedTranslation)) {
+      return normalizedTranslation;
+    }
+  }
+
+  return '';
 };

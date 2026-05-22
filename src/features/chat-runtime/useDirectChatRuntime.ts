@@ -33,6 +33,10 @@ import {
   streamStructuredAssistantReply,
 } from '../../services/ai/assistantReplyEnvelope';
 import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import {
+  buildStructuredAssistantReplyPrompt,
+  getStructuredReplyTextLanguageLabel,
+} from './directReplyProtocolPrompt';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -127,7 +131,12 @@ import {
   analyzeDirectRelationshipBoundary,
   generateDirectRelationshipBoundaryReply,
 } from '../../services/chat/directRelationshipBoundary';
-import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
+import {
+  getLegacyTranslationParts,
+  normalizeBracketActionTextForPrompt,
+  sanitizePipeMarkers,
+  stripLegacyTranslationBlock,
+} from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { collectRecentDirectPokeState } from '../../services/chat/lightInteractionHistory';
@@ -252,9 +261,7 @@ function shouldInlineReplyTranslation(character: Character): boolean {
 }
 
 function buildInlineReplyTranslationPrompt(character: Character): string {
-  const targetLanguage = character.replyLanguageMode === 'fixed'
-    ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
-    : (character.nativeLanguage?.trim() || '角色母语');
+  const targetLanguage = getStructuredReplyTextLanguageLabel(character);
 
   return [
     '## 双语输出',
@@ -265,26 +272,6 @@ function buildInlineReplyTranslationPrompt(character: Character): string {
     '如果正文被拆成多条短气泡，翻译部分也必须按完全相同的气泡顺序输出，并使用 `|||` 分隔每一条对应翻译。',
     '如果你不确定如何把翻译一一对应到多个气泡，请优先把正文控制成一个气泡，再给出一整段对应翻译，不要出现“正文拆开了但翻译只剩一部分”的情况。',
     '除 `---TRANSLATION---` 这条分隔线外，不要输出任何额外格式标记。',
-  ].join('\n');
-}
-
-function buildStructuredAssistantReplyPrompt(character: Character): string {
-  const targetLanguage = character.replyLanguageMode === 'fixed'
-    ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
-    : (character.nativeLanguage?.trim() || '角色母语');
-
-  return [
-    '## 统一回复协议',
-    `如果本轮需要输出任何可显示内容，优先只输出一个可机读协议，格式固定为：${STRUCTURED_ASSISTANT_REPLY_TOKEN} {"items":[...]}`,
-    `普通正文 item 的格式固定为：{"kind":"text","text":"${targetLanguage} 正文","translation":"对应的简体中文"}。`,
-    'items 的顺序就是最终显示顺序；如果本轮需要多个聊天气泡，就写多个 text item，不要把多段正文硬塞进一个字段里。',
-    `text 必须是角色真正会发出的 ${targetLanguage} 正文；translation 必须是与该 text 严格对应的简体中文。`,
-    '如果需要 [reply: ...]、[recall] 或 [sticker] 这类轻量 cue，把 cue 写在 text 字段里，不要额外解释。',
-    '如果需要 GAME_CARD，使用：{"kind":"game_card","payload":{...},"translation":"对应简体中文"}。game_card 是整轮唯一主体，不要再混入普通 text、transfer 或额外说明。',
-    '如果需要转账，使用：{"kind":"transfer","amount":"88.00"}。金额只保留数字和小数点，不要再写旧的 TRANSFER|...|... 变体。',
-    '如果需要情侣空间事件 token，使用：{"kind":"token","name":"COUPLE_SPACE_INVITE_ACCEPTED"}。',
-    '不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
-    '只要本轮存在普通正文 text item，就必须给每个 text item 填 translation，不要改回旧的 ---TRANSLATION--- 写法。',
   ].join('\n');
 }
 
@@ -494,11 +481,27 @@ function applyStructuredDirectReplyBridges(params: {
   });
 }
 
+function stripStructuredReplyEnvelopeTranslations(envelope: AssistantReplyEnvelope): AssistantReplyEnvelope {
+  return {
+    items: envelope.items.map((item): AssistantReplyEnvelope['items'][number] => {
+      switch (item.kind) {
+        case 'text':
+          return { kind: 'text', text: item.text };
+        case 'game_card':
+          return { kind: 'game_card', payload: item.payload };
+        default:
+          return item;
+      }
+    }),
+  };
+}
+
 function resolveDirectReplyDisplayPayload(params: {
   replyText: string;
   latestUserMessage: ChatMessage | null | undefined;
   intentAnalysis: DirectUserIntentAnalysis | null;
   decision: DirectCharacterDecision | null;
+  allowInlineTranslation: boolean;
 }): {
   legacyText: string;
   structuredRawText: string | null;
@@ -511,7 +514,10 @@ function resolveDirectReplyDisplayPayload(params: {
       intentAnalysis: params.intentAnalysis,
       decision: params.decision,
     });
-    const structuredRawText = serializeStructuredAssistantReplyEnvelope(bridgedEnvelope);
+    const finalEnvelope = params.allowInlineTranslation
+      ? bridgedEnvelope
+      : stripStructuredReplyEnvelopeTranslations(bridgedEnvelope);
+    const structuredRawText = serializeStructuredAssistantReplyEnvelope(finalEnvelope);
     return {
       legacyText: normalizeStructuredAssistantReplyToLegacyFormat(structuredRawText),
       structuredRawText,
@@ -526,12 +532,13 @@ function resolveDirectReplyDisplayPayload(params: {
     replyText: gameCardBridgedText,
     latestUserMessage: params.latestUserMessage,
   });
+  const legacyText = applyDirectTransferBridge({
+    replyText: coupleSpaceBridgedText,
+    intentAnalysis: params.intentAnalysis,
+    decision: params.decision,
+  });
   return {
-    legacyText: applyDirectTransferBridge({
-      replyText: coupleSpaceBridgedText,
-      intentAnalysis: params.intentAnalysis,
-      decision: params.decision,
-    }),
+    legacyText: params.allowInlineTranslation ? legacyText : stripLegacyTranslationBlock(legacyText),
     structuredRawText: null,
   };
 }
@@ -3320,7 +3327,13 @@ export function useDirectChatRuntime({
                 ? buildDirectReplyBubbleRangePrompt(directReplyBubbleRange)
                 : '',
               buildDirectFinalCharacterGuardPrompt(),
-              structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
+              structuredAssistantReplyEnabled
+                ? buildStructuredAssistantReplyPrompt({
+                    character,
+                    structuredReplyToken: STRUCTURED_ASSISTANT_REPLY_TOKEN,
+                    requireInlineTranslation: inlineReplyTranslationEnabled,
+                  })
+                : '',
             ].filter(Boolean),
           });
 
@@ -3479,6 +3492,7 @@ export function useDirectChatRuntime({
             latestUserMessage: latestPendingUserMessage,
             intentAnalysis: directIntentAnalysis,
             decision: directCharacterDecision,
+            allowInlineTranslation: inlineReplyTranslationEnabled,
           });
           if (
             inlineReplyTranslationEnabled
@@ -3978,7 +3992,13 @@ export function useDirectChatRuntime({
           }),
           !isSpecialProtocolReply ? buildDirectReplyBubbleRangePrompt(directReplyBubbleRange) : '',
           buildDirectFinalCharacterGuardPrompt(),
-          structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
+          structuredAssistantReplyEnabled
+            ? buildStructuredAssistantReplyPrompt({
+                character,
+                structuredReplyToken: STRUCTURED_ASSISTANT_REPLY_TOKEN,
+                requireInlineTranslation: inlineReplyTranslationEnabled,
+              })
+            : '',
         ].filter(Boolean),
       });
 
@@ -4117,6 +4137,7 @@ export function useDirectChatRuntime({
         latestUserMessage: userMsg,
         intentAnalysis: directIntentAnalysis,
         decision: directCharacterDecision,
+        allowInlineTranslation: inlineReplyTranslationEnabled,
       });
       if (inlineReplyTranslationEnabled && !hasRequiredDirectReplyTranslation(resolvedDisplayPayload.structuredRawText || resolvedDisplayPayload.legacyText)) {
         throw new Error('模型未按双语协议返回可显示的中文翻译。');
@@ -4160,7 +4181,13 @@ export function useDirectChatRuntime({
             latestUserText: userMsg.text,
             draftReplyText: currentResponseText,
             boundary: boundaryAnalysis,
-            structuredReplyPrompt: structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : undefined,
+            structuredReplyPrompt: structuredAssistantReplyEnabled
+              ? buildStructuredAssistantReplyPrompt({
+                  character,
+                  structuredReplyToken: STRUCTURED_ASSISTANT_REPLY_TOKEN,
+                  requireInlineTranslation: inlineReplyTranslationEnabled,
+                })
+              : undefined,
           })
         : null;
       const appliedBoundaryDecision = boundaryReply?.decision && boundaryAnalysis.allowedDecisions.includes(boundaryReply.decision)
