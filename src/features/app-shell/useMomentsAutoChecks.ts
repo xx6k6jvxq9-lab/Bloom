@@ -74,9 +74,20 @@ export function useMomentsAutoChecks({
 
     const runBackgroundMomentChecks = async () => {
       const forumConfig = resolveForumConfig();
-      if (!forumConfig?.apiKey?.trim() || isChatRuntimeBusy()) {
+      const chatRuntimeBusy = isChatRuntimeBusy();
+      if (!forumConfig?.apiKey?.trim() || chatRuntimeBusy) {
+        console.info('[auto-check] moments skipped', {
+          activeApp,
+          hasForumConfig: !!forumConfig?.apiKey?.trim(),
+          chatRuntimeBusy,
+        });
         return;
       }
+
+      console.info('[auto-check] moments pass start', {
+        activeApp,
+        trigger: 'app_foreground',
+      });
 
       await runAutoMomentSchedulerPass({
         trigger: 'app_foreground',
@@ -84,10 +95,10 @@ export function useMomentsAutoChecks({
         getSnapshot: () => appDataRef.current,
         publishGeneratedCharacterMoment: async (payload) => {
           if (cancelled) {
-            return;
+            return false;
           }
 
-          await publishGeneratedCharacterMomentToFeed({
+          return publishGeneratedCharacterMomentToFeed({
             payload,
             snapshot: appDataRef.current,
             setAppData,
@@ -114,6 +125,7 @@ export function useMomentsAutoChecks({
 
     const handleVisibilityRefresh = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        console.info('[auto-check] moments visibility refresh');
         void runBackgroundMomentChecks();
       }
     };

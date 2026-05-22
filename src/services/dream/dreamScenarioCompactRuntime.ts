@@ -143,7 +143,8 @@ function splitSceneIntoParagraphs(scene: string) {
   if (direct.length > 1) return direct;
 
   const sentences = scene
-    .split(/(?<=[。！？!?])/u)
+    .replace(/([。！？!?]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((segment) => segment.trim())
     .filter(Boolean);
 

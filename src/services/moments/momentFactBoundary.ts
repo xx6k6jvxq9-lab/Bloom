@@ -13,7 +13,6 @@ export type MomentFactRiskCategory =
 export type MomentFactBoundary = {
   promptLines: string[];
   supportedRiskCategories: MomentFactRiskCategory[];
-  safeFallback: string;
 };
 
 export type MomentFactBoundaryViolation = {
@@ -41,11 +40,6 @@ type RiskCategoryRule = {
   evidencePattern: RegExp;
   contentPattern: RegExp;
   blockedSummary: string;
-};
-
-type AnchorSpec = {
-  pattern: RegExp;
-  label: string;
 };
 
 type SofteningRule = {
@@ -96,19 +90,6 @@ const RISK_CATEGORY_RULES: RiskCategoryRule[] = [
     contentPattern: /室友|同事|我老板|导师|学长|学姐|队友|搭子|组长|经理|店长|甲方|乙方|客户|前辈|后辈/i,
     blockedSummary: '凭空新增了结构性稳定配角。',
   },
-];
-
-const SAFE_ANCHOR_SPECS: AnchorSpec[] = [
-  { pattern: /手机|屏幕/i, label: '手机屏幕' },
-  { pattern: /桌面|书桌/i, label: '桌面' },
-  { pattern: /镜子/i, label: '镜子' },
-  { pattern: /窗|天气|下雨|夜风|风|路灯|天色/i, label: '窗外的天色' },
-  { pattern: /耳机|歌|歌单/i, label: '耳机里的声音' },
-  { pattern: /饮料|咖啡|奶茶|水杯|杯子/i, label: '手边那杯东西' },
-  { pattern: /灯|灯光/i, label: '灯光' },
-  { pattern: /路上|街|地铁|公交/i, label: '路上这段时间' },
-  { pattern: /衣服|外套|袖口/i, label: '身上的衣服' },
-  { pattern: /房间|角落/i, label: '房间角落' },
 ];
 
 const SOFTENING_RULES: SofteningRule[] = [
@@ -180,7 +161,8 @@ function normalizeSoftenedContent(value: string) {
 function splitSentences(value: string) {
   return value
     .replace(/\r/g, '')
-    .split(/(?<=[。！？!?；;\n])/)
+    .replace(/([。！？!?；;]+)/g, '$1\n')
+    .split(/\n+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 }
@@ -244,34 +226,6 @@ function buildKnownFactLines(options: {
   return uniqueLines(lines);
 }
 
-function findSafeAnchorLabel(texts: string[]): string | undefined {
-  const combined = texts.join('\n');
-  return SAFE_ANCHOR_SPECS.find((spec) => spec.pattern.test(combined))?.label;
-}
-
-function buildSafeFallback(options: {
-  mode: MomentPostMode;
-  sceneLines: string[];
-}) {
-  const anchor = findSafeAnchorLabel(options.sceneLines);
-
-  if (options.mode === 'relationship_carryover') {
-    return anchor
-      ? `${anchor}还在眼前，情绪也还没完全落下去。`
-      : '有些余波不展开，也还是在。';
-  }
-
-  if (options.mode === 'self_life') {
-    return anchor
-      ? `${anchor}还在，今天先记这一点。`
-      : '先把今天这点状态放在这里。';
-  }
-
-  return anchor
-    ? `${anchor}还在，今天这条先写到这里。`
-    : '先留一句，免得转头又忘了。';
-}
-
 export function buildMomentFactBoundary(options: BuildMomentFactBoundaryOptions): MomentFactBoundary {
   const evidence = collectBoundaryEvidence(options);
   const supportedRiskCategories = RISK_CATEGORY_RULES
@@ -289,10 +243,6 @@ export function buildMomentFactBoundary(options: BuildMomentFactBoundaryOptions)
 
   return {
     supportedRiskCategories,
-    safeFallback: buildSafeFallback({
-      mode: options.mode,
-      sceneLines: evidence.sceneLines,
-    }),
     promptLines: [
       '事实来源优先级：当前场景 > 已写回共享状态/近期记忆 > 角色设定与长期设定 > 模型自由补充。',
       '没有来源的事实一律视为“未知”，不是“不存在”；可以不写，但不要硬补成稳定设定。',
@@ -338,10 +288,6 @@ export function validateMomentFactBoundaryDelta(options: {
 
 export function buildMomentFactBoundarySection(boundary: MomentFactBoundary): string[] {
   return boundary.promptLines;
-}
-
-export function buildMomentFactBoundarySafeFallback(boundary: MomentFactBoundary): string {
-  return boundary.safeFallback;
 }
 
 export function softlyCorrectMomentFactBoundaryDelta(options: {

@@ -353,6 +353,7 @@ export async function streamStructuredAssistantReply(params: {
   activeConfig: ApiConfig;
   messages: RuntimeChatMessage[];
   onPreview?: (previewText: string) => void;
+  traceLabel?: string;
 }): Promise<string> {
   let raw = '';
   let lastPreviewText = '';
@@ -360,6 +361,7 @@ export async function streamStructuredAssistantReply(params: {
   await streamTextWithConfig({
     activeConfig: params.activeConfig,
     messages: params.messages,
+    traceLabel: params.traceLabel,
     onTextChunk: (chunkText) => {
       raw += chunkText;
       const previewText = extractStructuredAssistantReplyPreviewText(raw);

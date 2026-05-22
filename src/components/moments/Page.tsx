@@ -641,7 +641,7 @@ export function MomentsApp({
     images?: string[];
     imageCard?: import('../../types').MomentImageCard;
   }) => {
-    await publishGeneratedCharacterMomentToFeed({
+    return publishGeneratedCharacterMomentToFeed({
       payload,
       snapshot: appDataRef.current,
       setAppData,

@@ -142,6 +142,31 @@ test('manual refresh can still pick a candidate without explicit state signals',
   assert.equal(plan[0]?.characterId, character.id);
 });
 
+test('daytime planning does not use the night journal intent', () => {
+  const now = Date.parse('2026-05-11T12:00:00+08:00');
+  const character = createCharacter({
+    id: 'day-char',
+    postFrequency: 'high',
+    sharedState: {
+      updatedAt: now,
+      sourceScene: 'direct_chat',
+      availability: 'recent',
+      currentActivity: '刚把窗帘拉开一点。',
+    },
+  });
+
+  const plan = buildAutoMomentPlan({
+    characters: [character],
+    moments: [],
+    now,
+    lastCheckedAt: now - 30 * 60 * 1000,
+    trigger: 'manual_refresh',
+  });
+
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0]?.requestText.includes('夜间记录'), false);
+});
+
 test('auto moment planning prefers record-derived public carryover over stale shared state text', async () => {
   const now = Date.parse('2026-05-11T12:00:00+08:00');
   await saveMemoryRecordData({

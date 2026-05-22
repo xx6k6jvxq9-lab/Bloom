@@ -108,6 +108,7 @@ export async function generateMomentThreadReply(options: BaseCommentGenerationOp
   try {
     const response = await generateTextFromMessagesWithConfig({
       activeConfig,
+      traceLabel: 'moments:thread-reply',
       messages: [
         {
           role: 'user',

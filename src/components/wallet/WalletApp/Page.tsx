@@ -141,6 +141,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
   // Bank Card State
   const [newBankName, setNewBankName] = useState('');
   const [newCardNumber, setNewCardNumber] = useState('');
+  const [newCardBalance, setNewCardBalance] = useState('');
   const [isAddingBankCard, setIsAddingBankCard] = useState(false);
 
   // Password State
@@ -346,6 +347,11 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
 
   const handleAddBankCard = () => {
     if (!newBankName || !newCardNumber) return;
+    const initialBalance = newCardBalance.trim() ? Number(newCardBalance) : 0;
+    if (Number.isNaN(initialBalance) || initialBalance < 0) {
+      alert('请输入有效的银行卡金额');
+      return;
+    }
     
     const newCard: WalletCard = {
       id: `card-${Date.now()}`,
@@ -353,7 +359,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
       bankName: newBankName,
       cardType: '储蓄卡',
       number: `**** ${newCardNumber.slice(-4)}`,
-      balance: 0,
+      balance: Number(initialBalance.toFixed(2)),
       color: 'bg-white border border-zinc-200',
       textColor: 'text-zinc-900',
       iconColor: 'text-zinc-900',
@@ -365,6 +371,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     alert(`成功添加银行卡：${newBankName}`);
     setNewBankName('');
     setNewCardNumber('');
+    setNewCardBalance('');
     setIsAddingBankCard(false);
   };
 
@@ -730,7 +737,12 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                             </div>
                             
                             <div className="flex justify-between items-end relative z-10 mt-1">
-                              <div className="text-xs text-zinc-400 font-medium tracking-widest uppercase">{card.cardType}</div>
+                              <div>
+                                <div className="text-xs text-zinc-400 font-medium tracking-widest uppercase">{card.cardType}</div>
+                                <div className="mt-1 text-[11px] text-zinc-300">
+                                  可用 ¥{card.balance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                                </div>
+                              </div>
                               {/* Card Brand Logo Placeholder */}
                               <div className="flex -space-x-2 opacity-80">
                                 <div className="w-6 h-6 rounded-full bg-zinc-400 mix-blend-screen"></div>
@@ -758,6 +770,15 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                         value={newCardNumber}
                         onChange={e => setNewCardNumber(e.target.value)}
                         placeholder="银行卡号"
+                        className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 transition-colors"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={newCardBalance}
+                        onChange={e => setNewCardBalance(e.target.value)}
+                        placeholder="银行卡初始金额（可选）"
                         className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 transition-colors"
                       />
                       <div className="flex gap-2 pt-2">

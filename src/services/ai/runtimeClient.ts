@@ -283,13 +283,58 @@ function summarizeRuntimeMessages(messages: RuntimeChatMessage[]) {
   });
 }
 
+function normalizeRuntimeTraceLabel(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim();
+}
+
+function inferRuntimeRequestOrigin() {
+  const stack = new Error().stack;
+  if (!stack) {
+    return '';
+  }
+
+  const lines = stack
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalized = line.replace(/\\/g, '/');
+    if (!normalized || normalized.includes('runtimeClient.ts')) {
+      continue;
+    }
+    if (normalized.includes('/node_modules/')) {
+      continue;
+    }
+
+    const srcMatch = normalized.match(/(src\/[^:\s)]+:\d+:\d+)/);
+    if (srcMatch?.[1]) {
+      return srcMatch[1];
+    }
+
+    if (normalized.startsWith('at ')) {
+      return normalized.slice(3);
+    }
+  }
+
+  return '';
+}
+
 function createRuntimeRequestTrace(options: {
   activeConfig: ApiConfig;
   model: string;
   mode: 'prompt' | 'messages' | 'stream';
   promptLength?: number;
   messages?: RuntimeChatMessage[];
+  traceLabel?: string;
 }) {
+  const source = normalizeRuntimeTraceLabel(options.traceLabel);
+  const origin = inferRuntimeRequestOrigin();
+
   return {
     requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     startedAt: getRuntimeNow(),
@@ -298,6 +343,8 @@ function createRuntimeRequestTrace(options: {
       : (options.activeConfig.provider?.trim() || 'Custom'),
     model: options.model,
     mode: options.mode,
+    source: source || origin || 'unknown',
+    origin,
     promptLength: options.promptLength,
     messageSummary: options.messages ? summarizeRuntimeMessages(options.messages) : undefined,
   };
@@ -313,6 +360,8 @@ function logRuntimeTrace(
     provider: trace.provider,
     model: trace.model,
     mode: trace.mode,
+    source: trace.source,
+    ...(trace.origin && trace.origin !== trace.source ? { origin: trace.origin } : {}),
     ...(typeof trace.promptLength === 'number' ? { promptLength: trace.promptLength } : {}),
     ...(trace.messageSummary || {}),
     ...extra,
@@ -674,14 +723,16 @@ export async function generateTextWithConfig(options: {
   temperature?: number;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  traceLabel?: string;
 }) {
-  const { activeConfig, prompt, temperature, maxOutputTokens, timeoutMs } = options;
+  const { activeConfig, prompt, temperature, maxOutputTokens, timeoutMs, traceLabel } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
   const trace = createRuntimeRequestTrace({
     activeConfig,
     model,
     mode: 'prompt',
     promptLength: prompt.length,
+    traceLabel,
   });
 
   try {
@@ -759,14 +810,16 @@ export async function generateTextFromMessagesWithConfig(options: {
   temperature?: number;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  traceLabel?: string;
 }) {
-  const { activeConfig, messages, temperature, maxOutputTokens, timeoutMs } = options;
+  const { activeConfig, messages, temperature, maxOutputTokens, timeoutMs, traceLabel } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
   const trace = createRuntimeRequestTrace({
     activeConfig,
     model,
     mode: 'messages',
     messages,
+    traceLabel,
   });
   const resolveStartedAt = getRuntimeNow();
   let resolveMs = 0;
@@ -857,14 +910,16 @@ export async function streamTextWithConfig(options: {
   messages: RuntimeChatMessage[];
   temperature?: number;
   onTextChunk: (chunkText: string) => void;
+  traceLabel?: string;
 }) {
-  const { activeConfig, messages, temperature, onTextChunk } = options;
+  const { activeConfig, messages, temperature, onTextChunk, traceLabel } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
   const trace = createRuntimeRequestTrace({
     activeConfig,
     model,
     mode: 'stream',
     messages,
+    traceLabel,
   });
   const resolveStartedAt = getRuntimeNow();
   let resolveMs = 0;

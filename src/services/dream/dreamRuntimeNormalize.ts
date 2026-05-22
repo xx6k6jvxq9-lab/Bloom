@@ -125,7 +125,8 @@ function stripExtraMechanicSentences(text: string, selection: DreamSelection) {
   }
 
   const sentences = trimmed
-    .split(/(?<=[。！？；.!?;])/u)
+    .replace(/([。！？；.!?;]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
   if (sentences.length === 0) {
@@ -201,7 +202,8 @@ function splitSceneParagraphs(scene: string) {
 
 function splitSceneSentences(scene: string) {
   return scene
-    .split(/(?<=[。！？!?；;：:])/)
+    .replace(/([。！？!?；;：:]+)/g, '$1\n')
+    .split(/\n+/)
     .map((segment) => segment.trim())
     .filter(Boolean);
 }
@@ -241,7 +243,8 @@ function normalizeSceneFragments(scene: string) {
     paragraphs.length > 0
       ? paragraphs
       : scene
-          .split(/(?<=[。！？!?；;：:])/)
+          .replace(/([。！？!?；;：:]+)/g, '$1\n')
+          .split(/\n+/)
           .map((segment) => segment.trim())
           .filter(Boolean);
 

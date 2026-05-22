@@ -514,7 +514,7 @@ export function ChatSessionScreen({
   datingResumeSignal?: number;
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: import('../../types').MomentSourceImageRef; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: import('../../types').MomentSourceImageRef; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => boolean | Promise<boolean>;
   onOpenCharacterMoments?: () => void;
   onOpenCharacterProfile?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;

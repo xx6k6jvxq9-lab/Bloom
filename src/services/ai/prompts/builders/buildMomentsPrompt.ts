@@ -7,6 +7,11 @@ import { MOMENTS_SCENARIO_PROMPT } from '../scenarios/moments';
 export type BuildMomentsPromptOptions = {
   characterCore?: CharacterCoreSectionsInput;
   memoryContext?: MemoryContextInput;
+  liveContext?: {
+    temporalContext?: string;
+    recentConversationLines?: string[];
+    recentMomentLines?: string[];
+  };
   postContext?: {
     signature?: string;
     relationship?: string;
@@ -38,6 +43,30 @@ function buildMomentsMemorySection(memoryContext: MemoryContextInput = {}): stri
     memoryContext.perceptionPrompt?.trim()
       ? `当前生活底色：${memoryContext.perceptionPrompt.trim()}`
       : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+function buildLiveContextSection(liveContext: BuildMomentsPromptOptions['liveContext'] = {}): string {
+  const recentConversationLines = (liveContext.recentConversationLines || []).filter(Boolean);
+  const recentMomentLines = (liveContext.recentMomentLines || []).filter(Boolean);
+  const hasLiveContext = !!liveContext.temporalContext?.trim()
+    || recentConversationLines.length > 0
+    || recentMomentLines.length > 0;
+
+  if (!hasLiveContext) {
+    return '';
+  }
+
+  const lines = [
+    '## 本轮动态的活体上下文',
+    liveContext.temporalContext?.trim() ? `当前时间约束：${liveContext.temporalContext.trim()}` : '',
+    recentConversationLines.length > 0 ? '最近聊天片段（只能转译成公开可见的生活状态、事件余波或情绪，不要照抄私聊原话）：' : '',
+    ...recentConversationLines.map((line) => `- ${line}`),
+    recentMomentLines.length > 0 ? '最近动态去重提醒：' : '',
+    ...recentMomentLines.map((line) => `- ${line}`),
+    '如果这些上下文不够支撑一条真实动态，就不要硬编一个看起来正确但实际空泛的句子。',
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -80,6 +109,7 @@ export function buildMomentsPrompt(options: BuildMomentsPromptOptions = {}): str
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
     buildMomentsMemorySection(options.memoryContext ?? {}),
+    buildLiveContextSection(options.liveContext),
     MOMENTS_SCENARIO_PROMPT,
     buildPostContextSection(options.postContext),
     buildFactBoundarySection(options.postContext),

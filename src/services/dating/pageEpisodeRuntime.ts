@@ -741,7 +741,8 @@ function buildParagraphMarkup(value: string, className: string): string {
   }
 
   const sentenceChunks = normalized
-    .split(/(?<=[。！？!?])/u)
+    .replace(/([。！？!?]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 

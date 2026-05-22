@@ -54,7 +54,8 @@ function splitOversizedBlock(block: string): string[] {
   }
 
   const sentences = block
-    .split(/(?<=[。！？!?；;])/)
+    .replace(/([。！？!?；;]+)/g, '$1\n')
+    .split(/\n+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 

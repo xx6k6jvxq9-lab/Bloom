@@ -51,12 +51,23 @@ export async function handleCommandTriggeredMomentPublish(
     privateCarryoverLevel: character.momentPrivateCarryoverLevel,
     requestText: text,
     recentImageReferences: recentContext?.recentImageReferences,
+    recentMessages: recentContext?.recentMessages,
+    now: recentContext?.now,
     allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
   });
 
+  const content = momentPost.content.trim();
+  if (!content) {
+    return {
+      shouldPublish: false,
+      triggerType: 'command',
+      reason: 'moment-generation-empty',
+    };
+  }
+
   return {
     shouldPublish: true,
-    momentContent: momentPost.content,
+    momentContent: content,
     momentTranslation: momentPost.translation,
     momentImages: momentPost.images,
     momentSourceImage: momentPost.sourceImage,
@@ -94,11 +105,22 @@ export async function maybeAutoPublishMoment(
     allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
     requestText: `自主发动态：${trigger.reason || 'auto'}`,
     recentImageReferences: recentContext?.recentImageReferences,
+    recentMessages: recentContext?.recentMessages,
+    now: recentContext?.now,
   });
+
+  const content = momentPost.content.trim();
+  if (!content) {
+    return {
+      shouldPublish: false,
+      triggerType: 'auto',
+      reason: 'moment-generation-empty',
+    };
+  }
 
   return {
     shouldPublish: true,
-    momentContent: momentPost.content,
+    momentContent: content,
     momentTranslation: momentPost.translation,
     momentImages: momentPost.images,
     momentSourceImage: momentPost.sourceImage,

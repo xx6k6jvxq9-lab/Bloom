@@ -45,6 +45,7 @@ async function generateCoupleSpaceText(options: {
   prompt: string;
   temperature?: number;
   recentImageReferences?: CoupleSpaceRecentImageReference[];
+  traceLabel?: string;
 }) {
   const activeConfig = resolveActiveConfig(options.settings);
   if (!activeConfig) return '';
@@ -55,6 +56,7 @@ async function generateCoupleSpaceText(options: {
 
   return generateTextFromMessagesWithConfig({
     activeConfig,
+    traceLabel: options.traceLabel || 'couple-space:prompt',
     messages: [
       ...recentImageReferences.map((reference, index) => ({
         role: 'user' as const,
@@ -109,6 +111,7 @@ export async function generateCoupleDailyCommentReply(
     prompt: buildCoupleDailyCommentReplyPrompt(input),
     temperature: 0.9,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:daily-comment-reply',
   });
 }
 
@@ -121,6 +124,7 @@ export async function generateCoupleCoNote(
     prompt: buildCoupleCoNotePrompt(input),
     temperature: 0.9,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:co-note',
   });
 }
 
@@ -133,6 +137,7 @@ export async function generateCoupleLoveLetterReply(
     prompt: buildCoupleLoveLetterReplyPrompt(input),
     temperature: 0.9,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:love-letter-reply',
   });
 }
 
@@ -145,6 +150,7 @@ export async function generateCoupleDailyPost(
     prompt: buildCoupleDailyPostPrompt(input),
     temperature: 0.95,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:daily-post',
   });
 }
 
@@ -169,6 +175,7 @@ export async function generateCoupleDailyComment(
     prompt: buildCoupleDailyCommentPrompt(input),
     temperature: 0.9,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:daily-comment',
   });
 }
 
@@ -181,6 +188,7 @@ export async function generateCoupleMessageBoardReply(
     prompt: buildCoupleMessageBoardPrompt(input),
     temperature: 0.9,
     recentImageReferences: input.recentContext?.recentImageReferences,
+    traceLabel: 'couple-space:message-board-reply',
   });
 }
 

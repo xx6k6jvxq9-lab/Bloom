@@ -33,3 +33,23 @@ test('buildMomentsPrompt renders fact boundary rules when provided', () => {
   assert.match(prompt, /事实来源优先级/);
   assert.match(prompt, /未知/);
 });
+
+test('buildMomentsPrompt renders live moment context when provided', () => {
+  const prompt = buildMomentsPrompt({
+    liveContext: {
+      temporalContext: '当前本地时间是 5月22日 23:00，属于夜晚。',
+      recentConversationLines: [
+        '用户：刚到家还是有点烧。',
+        '角色：窗外风有点大，你先别站在门口。',
+      ],
+      recentMomentLines: [
+        '最近公开动态预览：「窗外的天色还在，今天先记这一点。」',
+      ],
+    },
+  });
+
+  assert.match(prompt, /本轮动态的活体上下文/);
+  assert.match(prompt, /当前时间约束/);
+  assert.match(prompt, /最近聊天片段/);
+  assert.match(prompt, /最近动态去重提醒/);
+});

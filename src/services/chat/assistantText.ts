@@ -208,7 +208,8 @@ function splitDirectLongClause(text: string): string[] {
   if (normalized.length <= 24) return [normalized];
 
   const commaParts = normalized
-    .split(/(?<=[，,、；;])/u)
+    .replace(/([，,、；;])/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -258,7 +259,8 @@ function splitByNaturalChatBeats(text: string): string[] {
   if (!normalized) return [];
 
   const candidateParts = normalized
-    .split(/(?<=[。！？!?\u2026]+)\s*/u)
+    .replace(/([。！？!?\u2026]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 

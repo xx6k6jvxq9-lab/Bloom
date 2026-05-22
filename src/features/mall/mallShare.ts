@@ -32,7 +32,7 @@ export function buildMallShareDraftText(item: MallCatalogItem, mode: MallShareMo
     return `我刚看到「${title}」，你觉得适合我吗？现在买合适吗？`;
   }
 
-  return `我刚看到「${title}」，想分享给你看看。`;
+  return '';
 }
 
 export function createMallShareChatMessage(

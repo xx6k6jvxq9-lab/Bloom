@@ -39,6 +39,7 @@ import {
 import { applyMomentInteractionGrowth } from './momentInteractionGrowth';
 import { getDefaultMomentVisibilityScope } from './momentVisibilityScope';
 import { extractRecentMomentImageReferences } from './momentRecentImageReferences';
+import { findSimilarRecentMoment } from './momentDuplicateGuard';
 import { MOMENT_POST_SHAPES } from './postBlueprints';
 
 export type AutoMomentRuntimeSnapshot = Pick<
@@ -74,7 +75,7 @@ type RunAutoMomentSchedulerPassOptions = {
   trigger: AutoMomentSchedulerTrigger;
   forumConfig?: ApiConfig | null;
   getSnapshot: () => AutoMomentRuntimeSnapshot;
-  publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<void>;
+  publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<boolean>;
   executeTask?: (task: () => Promise<void>) => Promise<void>;
 };
 
@@ -203,7 +204,7 @@ async function executeMomentPlanEntry(options: {
   trigger: AutoMomentSchedulerTrigger;
   forumConfig: ApiConfig;
   getSnapshot: () => AutoMomentRuntimeSnapshot;
-  publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<void>;
+  publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<boolean>;
 }) {
   const { entry, trigger, forumConfig, getSnapshot, publishGeneratedCharacterMoment } = options;
   const latestData = getSnapshot();
@@ -219,6 +220,15 @@ async function executeMomentPlanEntry(options: {
     return false;
   }
 
+  const generationNow = Date.now();
+  const recentMessages = (latestData.chatHistory?.[entry.characterId] || [])
+    .filter((message) => message.role === 'user' || message.role === 'model')
+    .slice(-8)
+    .map((message) => ({
+      role: message.role as 'user' | 'model',
+      text: message.text,
+      timestamp: message.timestamp,
+    }));
   const generated = await generateMomentPostContent({
     activeConfig: forumConfig,
     character: liveCharacter,
@@ -230,6 +240,9 @@ async function executeMomentPlanEntry(options: {
     privateCarryoverLevel: liveCharacter.momentPrivateCarryoverLevel,
     allowPrivateMomentCarryover: liveCharacter.allowPrivateMomentCarryover ?? false,
     recentImageReferences: extractRecentMomentImageReferences(latestData.chatHistory?.[entry.characterId] || [], 2),
+    recentMessages,
+    recentMoments: latestData.moments || [],
+    now: generationNow,
   });
 
   const content = generated.content.trim();
@@ -237,15 +250,13 @@ async function executeMomentPlanEntry(options: {
     return false;
   }
 
-  await publishGeneratedCharacterMoment({
+  return publishGeneratedCharacterMoment({
     authorId: liveCharacter.id,
     content,
     translation: generated.translation,
     images: generated.images,
     imageCard: generated.imageCard,
   });
-
-  return true;
 }
 
 function appendLikeToMoment(
@@ -301,11 +312,20 @@ function appendCommentToMoment(
 
 export async function publishGeneratedCharacterMomentToFeed(
   options: PublishGeneratedCharacterMomentToFeedOptions,
-) {
+): Promise<boolean> {
   const { payload, snapshot, setAppData, forumConfig, onMomentPublished } = options;
   const author = snapshot.characters.find((character) => character.id === payload.authorId) || null;
   if (!author) {
-    return;
+    return false;
+  }
+
+  const duplicateHit = findSimilarRecentMoment({
+    content: payload.content,
+    moments: snapshot.moments || [],
+    now: Date.now(),
+  });
+  if (duplicateHit) {
+    return false;
   }
 
   const newMomentId = `${payload.authorId}-${Date.now()}`;
@@ -435,6 +455,8 @@ export async function publishGeneratedCharacterMomentToFeed(
       appendComment: (comment) => appendCommentToMoment(setAppData, newMomentId, comment),
     });
   }
+
+  return true;
 }
 
 export async function runAutoMomentSchedulerPass(

@@ -41,7 +41,7 @@ function createMallItem(overrides: Partial<MallCatalogItem> = {}): MallCatalogIt
     title: '白茶香氛蜡烛',
     subtitle: '柔和香调',
     category: '家居',
-    subCategory: '香氛',
+    subCategory: '香薰',
     price: 89,
     tags: ['香氛', '房间'],
     sceneTags: ['睡前', '房间'],
@@ -49,7 +49,7 @@ function createMallItem(overrides: Partial<MallCatalogItem> = {}): MallCatalogIt
     sensitivity: 'normal',
     destinationKinds: ['self'],
     media: {
-      fallbackEmoji: '🕯',
+      fallbackEmoji: '🕯️',
       fallbackIcon: 'package',
     },
     copy: {
@@ -70,9 +70,9 @@ test('buildMallCompanionReplyPrompt keeps the floating mall ask constraints expl
   });
 
   assert.match(prompt, /悬浮问答窗/);
-  assert.match(prompt, /只输出 1 到 3 句短消息/);
+  assert.match(prompt, /请输出 2 到 4 条短消息/);
   assert.match(prompt, /喜不喜欢/);
   assert.match(prompt, /适不适合用户/);
-  assert.match(prompt, /适不适合现在买/);
+  assert.match(prompt, /现在买合不合适/);
   assert.match(prompt, /白茶香氛蜡烛/);
 });

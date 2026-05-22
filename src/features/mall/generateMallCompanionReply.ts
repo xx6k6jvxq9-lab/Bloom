@@ -4,7 +4,7 @@ import type {
   MallCatalogItem,
 } from '../../types';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
-import { generateTextWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildDirectPersonaGuide } from '../../services/ai/prompts/character/buildDirectPersonaGuide';
 
 type GenerateMallCompanionReplyInput = {
@@ -12,6 +12,7 @@ type GenerateMallCompanionReplyInput = {
   character: Character;
   item: MallCatalogItem;
   userName: string;
+  onProgress?: (text: string) => void;
 };
 
 function formatMallItemSummary(item: MallCatalogItem) {
@@ -23,7 +24,7 @@ function formatMallItemSummary(item: MallCatalogItem) {
     item.tags.length ? `标签：${item.tags.join(' / ')}` : '',
     item.sceneTags?.length ? `适合场景：${item.sceneTags.join(' / ')}` : '',
     item.styleTags?.length ? `风格：${item.styleTags.join(' / ')}` : '',
-    `短描述：${item.copy.cardBlurb}`,
+    `商品短描述：${item.copy.cardBlurb}`,
     item.copy.recommendationReason ? `推荐理由：${item.copy.recommendationReason}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -41,23 +42,25 @@ export function buildMallCompanionReplyPrompt(input: GenerateMallCompanionReplyI
 
   return [
     `你现在是 ${displayName}。`,
-    '你不在正式聊天里，也不需要跳转场景。',
     '这是 Bloom 商城商品详情页右下角的悬浮问答窗，用户刚点了“问问TA”。',
-    '请直接用角色本人语气回复，不要旁白，不要分析框架，不要自称 AI，不要说“去聊天里说”。',
-    '只输出 1 到 3 句短消息，语气自然，像即时回了一下。',
-    '回复里必须自然包含这三层判断：',
-    '1. 你喜不喜欢这个商品',
-    '2. 这个商品适不适合用户',
-    '3. 这个商品适不适合现在买',
-    '不要用列表、标题、编号、引号解释，也不要写动作描写。',
-    `用户名字：${input.userName || '用户'}`,
+    '这里不是正式聊天页，也不要把用户往聊天里带。',
+    '用户现在只是想听你对这个商品的看法。',
+    '请直接用角色本人语气回复，不要旁白，不要分析框架，不要自称 AI。',
+    '请输出 2 到 4 条短消息。',
+    '每条消息单独占一行，不要编号，不要项目符号，不要引号。',
+    '每条尽量短一点，像聊天里一条一条发出来，不要写成长段。',
+    '你的看法里要自然覆盖这些点：',
+    '1. 你对这个商品喜不喜欢',
+    '2. 你觉得它适不适合用户',
+    '3. 你觉得现在买合不合适',
     '',
+    `用户名字：${input.userName || '用户'}`,
     personaGuide,
     '',
     formatMallItemSummary(input.item),
     '',
     `用户问的是：我看到「${input.item.title}」，你觉得适合我吗？现在买合适吗？`,
-    '现在直接给出角色回复，只输出回复正文。',
+    '现在直接给出角色回复正文，只输出这些短消息本身。',
   ].filter(Boolean).join('\n');
 }
 
@@ -73,11 +76,22 @@ export async function generateMallCompanionReply(
     throw new Error('还没有可用的模型配置。');
   }
 
-  const rawReply = await generateTextWithConfig({
+  let rawReply = '';
+
+  await streamTextWithConfig({
     activeConfig,
-    prompt: buildMallCompanionReplyPrompt(input),
+    traceLabel: 'mall:companion-reply',
+    messages: [
+      {
+        role: 'user',
+        content: buildMallCompanionReplyPrompt(input),
+      },
+    ],
     temperature: 0.85,
-    maxOutputTokens: 140,
+    onTextChunk: (chunkText) => {
+      rawReply += chunkText;
+      input.onProgress?.(rawReply.trimStart());
+    },
   });
 
   const reply = rawReply.trim();

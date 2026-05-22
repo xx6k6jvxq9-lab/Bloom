@@ -86,10 +86,20 @@ export function useCoupleSpaceAutoChecks({
     };
 
     const runBackgroundCoupleSpaceChecks = async () => {
-      if (!hasUsableAutoCheckConfig()) {
+      const hasUsableConfig = hasUsableAutoCheckConfig();
+      if (!hasUsableConfig) {
+        console.info('[auto-check] couple-space skipped', {
+          activeApp,
+          reason: 'missing-config',
+        });
         return;
       }
-      if (isChatRuntimeBusy()) {
+      const chatRuntimeBusy = isChatRuntimeBusy();
+      if (chatRuntimeBusy) {
+        console.info('[auto-check] couple-space skipped', {
+          activeApp,
+          reason: 'chat-runtime-busy',
+        });
         return;
       }
 
@@ -100,6 +110,11 @@ export function useCoupleSpaceAutoChecks({
         currentAppData.coupleSpace,
       );
       const spaces = resolvedState.spacesByPartnerId || {};
+
+      console.info('[auto-check] couple-space pass start', {
+        activeApp,
+        spaceCount: Object.keys(spaces).length,
+      });
 
       for (const [partnerId, storedCoupleSpace] of Object.entries(spaces)) {
         const partner = currentAppData.characters.find((character) => character.id === partnerId) ?? null;

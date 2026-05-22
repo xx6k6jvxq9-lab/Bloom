@@ -101,7 +101,7 @@ export function Shell({
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
       <div
-        className={`relative z-10 flex h-full min-h-full min-w-0 flex-col px-5 pb-[calc(2.75rem+var(--app-safe-area-bottom-ui,0px))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
+        className={`relative z-10 flex h-full min-h-full min-w-0 flex-col px-5 pb-[calc(2.75rem+var(--app-safe-area-bottom-ui,0px))] pt-[calc(2rem+var(--app-safe-area-top,0px))] sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
         style={scrollable ? { WebkitOverflowScrolling: 'touch' } : undefined}
       >
         {children}

@@ -117,7 +117,8 @@ type GroupOfflineSceneProps = {
   history: ChatMessage[];
   directChatHistory?: ChatHistory;
   perception?: PerceptionSettings;
-  onBackToPlanner: () => void;
+  onCloseScene: () => void;
+  onBackToPlanner?: () => void;
   onUpdateSession: (session: GroupOfflineSession) => void;
   onComplete: (payload: {
     archivedSession: GroupOfflineSession;
@@ -775,7 +776,8 @@ function splitNarrativeParagraphs(text: string): string[] {
     .filter(Boolean);
   if (explicitParagraphs.length > 1) return explicitParagraphs;
   const sentences = normalized
-    .split(/(?<=[。！？])/u)
+    .replace(/([。！？]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
   if (sentences.length <= 2) return [normalized];
@@ -1343,6 +1345,7 @@ export function GroupOfflineScene({
   history,
   directChatHistory,
   perception,
+  onCloseScene,
   onBackToPlanner,
   onUpdateSession,
   onComplete,
@@ -2409,7 +2412,7 @@ export function GroupOfflineScene({
       <div ref={shellRef} className="group-offline-scene__shell">
         <div className="group-offline-scene__topbar">
           <div className="group-offline-scene__topbar-left">
-            <button type="button" className="group-offline-scene__icon-btn" onClick={onBackToPlanner}>
+            <button type="button" className="group-offline-scene__icon-btn" onClick={onCloseScene}>
               <ChevronLeft size={16} />
             </button>
             <div className="group-offline-scene__identity">
@@ -2437,6 +2440,19 @@ export function GroupOfflineScene({
                     exit={{ opacity: 0, y: -8 }}
                     className="group-offline-scene__menu"
                   >
+                    {onBackToPlanner ? (
+                      <button
+                        type="button"
+                        className="group-offline-scene__menu-item"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onBackToPlanner();
+                        }}
+                      >
+                        <ChevronRight size={14} />
+                        线下设置
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="group-offline-scene__menu-item"

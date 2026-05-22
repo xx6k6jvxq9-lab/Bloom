@@ -105,7 +105,8 @@ function splitContentLines(content: string): string[] {
 
 function splitIntoSentences(block: string): string[] {
   return block
-    .split(/(?<=[。！？；!?;])\s+|\n+/)
+    .replace(/([。！？；!?;]+)\s+/g, '$1\n')
+    .split(/\n+/)
     .map((part) => normalizeStructuredLine(part))
     .filter(Boolean);
 }

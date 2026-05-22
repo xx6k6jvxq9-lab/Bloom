@@ -83,6 +83,7 @@ import {
 } from '../../services/moments/publicThreadPolicy';
 import { applyMomentInteractionGrowth } from '../../services/moments/momentInteractionGrowth';
 import { getDefaultMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
+import { findSimilarRecentMoment } from '../../services/moments/momentDuplicateGuard';
 import {
   appendForumFriendResolutionMessage,
   resolveOutgoingForumFriendRequest,
@@ -1058,6 +1059,22 @@ export function AppScreenContent({
   }, [activeApp]);
 
   useEffect(() => {
+    console.info('[app-shell] active app state', {
+      activeApp,
+      hasActivatedChatApp,
+      hasActivatedChatSessions,
+      mountedChatDetailScreens,
+      shouldRenderChatSessions,
+    });
+  }, [
+    activeApp,
+    hasActivatedChatApp,
+    hasActivatedChatSessions,
+    mountedChatDetailScreens,
+    shouldRenderChatSessions,
+  ]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
     }
@@ -1531,6 +1548,15 @@ export function AppScreenContent({
               openForumApp(postId);
             }}
             onPublishMoment={({ authorId, content, translation, images, imageCard, isCollected, sourceChatMessage }) => {
+              const duplicateHit = findSimilarRecentMoment({
+                content,
+                moments: appData.moments || [],
+                now: Date.now(),
+              });
+              if (duplicateHit) {
+                return false;
+              }
+
               const author = appData.characters.find((character) => character.id === authorId) || null;
               const newMomentId = Date.now().toString();
               const newMoment = {
@@ -1635,6 +1661,7 @@ export function AppScreenContent({
                   preview: content.slice(0, 26),
                 });
               }
+              return true;
             }}
             onOpenCharacterMoments={() => {
               setCharacterMomentsBackApp('chat-session');

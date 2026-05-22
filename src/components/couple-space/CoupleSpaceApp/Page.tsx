@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff, Sparkles } from 'lucide-react';
+import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff, Sparkles, Package } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import {
-  AppDataExtended,
   CoNote,
   CoupleSpaceData,
   CoupleSpaceInitiativeDraftEntry,
+  CoupleSpaceSharedMallItem,
   LedgerEntry,
   LoveLetter,
   CalendarEvent,
@@ -16,6 +16,8 @@ import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { createDefaultMallData } from '../../../features/mall/defaultMallData';
+import { hydrateMallData } from '../../../features/persistence/mallDataStore';
 import {
   deletePartnerCoupleSpaceState,
   createDefaultCoupleSpaceData,
@@ -55,10 +57,15 @@ import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
 import { CoupleSpaceArchiveCenter } from '../archive/CoupleSpaceArchiveCenter';
 import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
 import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
+import { CoupleSpaceSharedMallItemsView } from '../shared-space/CoupleSpaceSharedMallItemsView';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
 import { persistSceneSettlement } from '../../../services/memory/sceneSettlement';
 import { resolveUserAvatarForScene } from '../../../services/user-avatar/userAvatarState';
+import {
+  removeCoupleSpaceSharedMallItem,
+  resolveMallOwnedOwnership,
+} from '../../../features/mall/mallSharedSpace';
 
 const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
 const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
@@ -184,7 +191,7 @@ type Props = {
 };
 
 export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props) {
-  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'archive' | 'interaction'>('main');
+  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'archive' | 'interaction' | 'shared-space'>('main');
   const [loveLetterReturnView, setLoveLetterReturnView] = useState<'loveletters' | 'archive'>('loveletters');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -205,6 +212,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [initiativeCheckBusy, setInitiativeCheckBusy] = useState(false);
   const [initiativeAutoCheckBusy, setInitiativeAutoCheckBusy] = useState(false);
   const [initiativeRefreshBusy, setInitiativeRefreshBusy] = useState(false);
+  const [sharedSpaceActionIds, setSharedSpaceActionIds] = useState<string[]>([]);
   const [initiativeCheckStatus, setInitiativeCheckStatus] = useState<string | null>(null);
   const [initiativeArtifactPreview, setInitiativeArtifactPreview] = useState<{
     kind: 'draft' | 'confirmation';
@@ -293,6 +301,21 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const daysTogether = coupleSpace.anniversaryDate 
     ? Math.floor((Date.now() - coupleSpace.anniversaryDate) / (1000 * 60 * 60 * 24))
     : 0;
+
+  const runSharedSpaceAction = async (actionId: string, action: () => void | Promise<void>) => {
+    if (sharedSpaceActionIds.includes(actionId)) {
+      return;
+    }
+
+    setSharedSpaceActionIds((current) => [...current, actionId]);
+    try {
+      await action();
+    } finally {
+      setSharedSpaceActionIds((current) => current.filter((entry) => entry !== actionId));
+    }
+  };
+
+  const isSharedSpaceActionBusy = (actionId: string) => sharedSpaceActionIds.includes(actionId);
 
   const handleUpdateCoupleSpace = (updates: any | ((prevCoupleSpace: any) => any)) => {
     setAppData((prev: any) => {
@@ -392,6 +415,53 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       console.error('[couple-space] Failed to persist settlement memory snapshots', error);
       alert('情侣空间记忆写入失败了，请稍后再试。');
     }
+  };
+
+  const handleMoveSharedMallItemBack = (sharedItemId: string) => {
+    void runSharedSpaceAction(sharedItemId, () => {
+      const sharedItem = (coupleSpace.sharedMallItems || []).find((entry: CoupleSpaceSharedMallItem) => entry.id === sharedItemId);
+      if (!sharedItem) {
+        return;
+      }
+
+      const ownedItemId = sharedItem.sourceOwnedItemId;
+      if (!ownedItemId) {
+        return;
+      }
+
+      setAppData((prev: any) => {
+        const nextMallDataBase = hydrateMallData(prev.mallData, createDefaultMallData());
+        const ownedItem = nextMallDataBase.ownedItems.find((entry) => entry.id === ownedItemId);
+        const catalogItem = nextMallDataBase.catalog.find((entry) => entry.id === sharedItem.itemId);
+        if (!ownedItem || !catalogItem) {
+          return prev;
+        }
+
+        const nextMallData = {
+          ...nextMallDataBase,
+          ownedItems: nextMallDataBase.ownedItems.map((entry) => (
+            entry.id === ownedItemId
+              ? { ...entry, ownership: resolveMallOwnedOwnership(catalogItem) }
+              : entry
+          )),
+        };
+
+        const { coupleSpaceState: nextCoupleSpaceState, coupleSpace: nextCoupleSpace } = updateCurrentCoupleSpaceState(
+          prev.coupleSpaceState,
+          prev.coupleSpace,
+          (prevSpace) => ({
+            sharedMallItems: removeCoupleSpaceSharedMallItem(prevSpace.sharedMallItems, sharedItemId),
+          }),
+        );
+
+        return {
+          ...prev,
+          mallData: nextMallData,
+          coupleSpaceState: nextCoupleSpaceState,
+          coupleSpace: nextCoupleSpace,
+        };
+      });
+    });
   };
 
   const handleUpdateInitiativeSettings = (next: typeof initiativeSettings) => {
@@ -775,6 +845,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             {activeView === 'calendar' && '情侣日历'}
             {activeView === 'anniversaries' && '纪念日'}
             {activeView === 'messageboard' && '留言板'}
+            {activeView === 'shared-space' && '共同空间'}
             {activeView === 'post-feed' && '情侣动态'}
             {activeView === 'archive' && '归档'}
             {activeView === 'interaction' && '互动'}
@@ -854,6 +925,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <MiniAppIcon icon={<Calendar size={24} className="text-rose-300" />} title="日历" onClick={() => setActiveView('calendar')} />
                   <MiniAppIcon icon={<Heart size={24} className="text-rose-300" />} title="纪念日" onClick={() => setActiveView('anniversaries')} />
                   <MiniAppIcon icon={<Edit3 size={24} className="text-rose-300" />} title="留言板" onClick={() => setActiveView('messageboard')} />
+                  <MiniAppIcon icon={<Package size={24} className="text-rose-300" />} title="共同空间" onClick={() => setActiveView('shared-space')} />
                   <MiniAppIcon icon={<Archive size={24} className="text-rose-300" />} title="归档" onClick={() => setActiveView('archive')} />
                   <MiniAppIcon icon={<Sparkles size={24} className="text-rose-300" />} title="互动" onClick={() => setActiveView('interaction')} />
                 </div>
@@ -1747,6 +1819,15 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               user={user}
               partner={partner}
               chatHistory={appData.chatHistory}
+            />
+          )}
+
+          {activeView === 'shared-space' && partner && (
+            <CoupleSpaceSharedMallItemsView
+              items={coupleSpace.sharedMallItems || []}
+              partnerName={partner.name}
+              onMoveBack={handleMoveSharedMallItemBack}
+              isItemBusy={isSharedSpaceActionBusy}
             />
           )}
 

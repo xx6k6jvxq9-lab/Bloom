@@ -88,6 +88,7 @@ export type GenerateQualityCheckedAssistantReplyParams = {
   retryTemperature?: number;
   onInvalid?: (result: OutputQualityResult) => void;
   onProgress?: (text: string, meta: { attempt: 1 | 2 | 3 }) => void;
+  traceLabel?: string;
 };
 
 const ANALYSIS_LEAK_PATTERN =
@@ -406,6 +407,7 @@ async function streamRuntimeReplyText(params: {
   messages: RuntimeChatMessage[];
   temperature?: number;
   onProgress?: (text: string) => void;
+  traceLabel?: string;
 }): Promise<string> {
   let responseText = '';
   await streamTextWithConfig({
@@ -416,6 +418,14 @@ async function streamRuntimeReplyText(params: {
     },
   });
   return responseText;
+}
+
+function buildAttemptTraceLabel(base: string | null | undefined, attempt: 1 | 2 | 3) {
+  if (!base?.trim()) {
+    return undefined;
+  }
+
+  return `${base.trim()}:attempt-${attempt}`;
 }
 
 export function shouldAllowBracketActions(input: {
@@ -497,6 +507,7 @@ export async function generateQualityCheckedAssistantReply(
     activeConfig: params.activeConfig,
     messages: params.messages,
     temperature: params.temperature,
+    traceLabel: buildAttemptTraceLabel(params.traceLabel, 1),
     onProgress: (text) => {
       params.onProgress?.(text, { attempt: 1 });
     },
@@ -525,6 +536,7 @@ export async function generateQualityCheckedAssistantReply(
       },
     ],
     temperature: params.retryTemperature,
+    traceLabel: buildAttemptTraceLabel(params.traceLabel, 2),
     onProgress: (text) => {
       params.onProgress?.(text, { attempt: 2 });
     },
@@ -576,6 +588,7 @@ export async function generateQualityCheckedAssistantReply(
       },
     ],
     temperature: Math.min(Math.max(params.retryTemperature ?? params.temperature ?? 0.65, 0.3), 0.45),
+    traceLabel: buildAttemptTraceLabel(params.traceLabel, 3),
     onProgress: (text) => {
       params.onProgress?.(text, { attempt: 3 });
     },

@@ -20,7 +20,6 @@ import {
 } from './momentLanguage';
 import {
   buildMomentFactBoundary,
-  buildMomentFactBoundarySafeFallback,
   buildMomentFactBoundarySection,
   softlyCorrectMomentFactBoundaryDelta,
   validateMomentFactBoundaryDelta,
@@ -31,9 +30,16 @@ import {
   getRecentMomentReplyContext,
   inferMomentIntent,
   inferMomentTone,
+  isDirectMomentPublishCommand,
 } from './triggers';
 import { hasOwnershipClaimRisk } from './publicThreadPolicy';
 import { getCharacterPublicThreadProfile, isLikelyUserDirectedMoment } from './publicThreadPolicy';
+import {
+  buildRecentMomentAvoidanceLines,
+  findSimilarRecentMoment,
+  type ComparableMoment,
+  type SimilarRecentMomentHit,
+} from './momentDuplicateGuard';
 import {
   buildRecentMomentImageReferenceMessages,
   extractSelectedRecentMomentImages,
@@ -63,13 +69,28 @@ type GeneratedMomentPost = {
   imageCard?: MomentImageCard;
 };
 
-const MOMENT_FALLBACKS = [
-  '今天先这样，晚点再说。',
-  '脑子有点乱，先记一笔。',
-  '风一吹，心情就安静了一点。',
-  '今天适合少解释，先过完这一天。',
-  '状态一般，但还在往前走。',
-];
+type MomentGenerationRecentMessage = {
+  role: 'user' | 'model';
+  text: string;
+  timestamp?: number;
+};
+
+type MomentLiveContext = {
+  temporalContext?: string;
+  recentConversationLines: string[];
+  recentMomentLines: string[];
+};
+
+type MomentPostCandidate = {
+  content: string;
+  translation?: string;
+  images?: string[];
+  sourceImage?: MomentSourceImageRef;
+  duplicateHit: SimilarRecentMomentHit | null;
+  softCorrection: ReturnType<typeof softlyCorrectMomentFactBoundaryDelta>;
+  translationReady: boolean;
+  accepted: boolean;
+};
 
 const MOMENT_BAD_PATTERNS = [
   /发动态/,
@@ -294,6 +315,118 @@ function buildMomentMemoryContext(
   };
 }
 
+function normalizeMomentPromptSnippet(value: string | null | undefined) {
+  const normalized = value?.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
+  return normalized ? normalized : '';
+}
+
+function trimMomentPromptSnippet(value: string | null | undefined, maxChars = 84) {
+  const normalized = normalizeMomentPromptSnippet(value);
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.length > maxChars
+    ? `${normalized.slice(0, maxChars).trim()}...`
+    : normalized;
+}
+
+function formatMomentClockLabel(timestamp: number) {
+  const date = new Date(timestamp);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${month}月${day}日 ${hour}:${minute}`;
+}
+
+function resolveMomentTimeBucket(hour: number) {
+  if (hour < 5) return '深夜';
+  if (hour < 8) return '清晨';
+  if (hour < 12) return '上午';
+  if (hour < 14) return '中午';
+  if (hour < 18) return '下午';
+  if (hour < 21) return '傍晚';
+  return '夜晚';
+}
+
+function buildMomentTemporalContext(now?: number) {
+  if (!Number.isFinite(now)) {
+    return '';
+  }
+
+  const date = new Date(now!);
+  const hour = date.getHours();
+  return `当前本地时间是 ${formatMomentClockLabel(now!)}，属于${resolveMomentTimeBucket(hour)}。如果正文写到光线、路况、情绪收束，或“今天/刚刚/夜里”这类时间感，必须和这个时段一致。`;
+}
+
+function looksLikeGenericMomentRequest(text: string) {
+  const normalized = text.replace(/\s+/g, '');
+  return isDirectMomentPublishCommand(text)
+    || /^(再发一条|再写一条|再生成一条|再来一条|再来一个|再发个|换一个|换一条|下一个|继续发|继续|再来|再整点)/.test(normalized)
+    || /自主发动态/.test(normalized);
+}
+
+function buildMomentRecentConversationLines(
+  messages: MomentGenerationRecentMessage[] | undefined,
+  maxItems = 6,
+) {
+  return (messages || [])
+    .map((message) => {
+      const text = trimMomentPromptSnippet(message.text, 88);
+      if (!text) {
+        return '';
+      }
+
+      if (looksLikeGenericMomentRequest(text)) {
+        return '';
+      }
+
+      return `${message.role === 'user' ? '用户' : '角色'}：${text}`;
+    })
+    .filter(Boolean)
+    .slice(-maxItems);
+}
+
+function buildMomentLiveContext(options: {
+  recentMessages?: MomentGenerationRecentMessage[];
+  recentMoments?: ComparableMoment[];
+  now?: number;
+}): MomentLiveContext {
+  return {
+    temporalContext: buildMomentTemporalContext(options.now),
+    recentConversationLines: buildMomentRecentConversationLines(options.recentMessages),
+    recentMomentLines: buildRecentMomentAvoidanceLines(options.recentMoments),
+  };
+}
+
+function hasGroundedMomentSignal(options: {
+  character: Character;
+  extraPromptSections?: string[];
+  recentConversationLines?: string[];
+  recentImageReferences?: MomentRecentImageReference[];
+}) {
+  const sharedState = rebuildSharedStateFromCharacter({
+    character: options.character,
+  });
+  const contextualSections = (options.extraPromptSections || [])
+    .map((section) => normalizeMomentPromptSnippet(section))
+    .filter((section) => /^(当前生活状态|最近生活节奏|公开(?:可见)?余波|当前进行中的互动|最近动态预览)/.test(section));
+
+  return Boolean(
+    normalizeMomentPromptSnippet(sharedState.currentActivity)
+    || normalizeMomentPromptSnippet(sharedState.publicCarryover)
+    || normalizeMomentPromptSnippet(sharedState.attentionNote)
+    || normalizeMomentPromptSnippet(options.character.activeDatingState?.summary)
+    || normalizeMomentPromptSnippet(options.character.presenceState?.recentLifeBeat)
+    || contextualSections.length > 0
+    || (options.recentConversationLines || []).length > 0
+    || (options.recentImageReferences || []).some((reference) => (
+      !!normalizeMomentPromptSnippet(reference.relatedText || reference.messageText)
+    )),
+  );
+}
+
 function inferMomentPostMode(requestText: string): 'self_life' | 'relationship_carryover' | 'public_daily' {
   const normalized = requestText.trim().toLowerCase();
 
@@ -313,6 +446,7 @@ function buildBalancedMomentPostPrompt(options: {
   masks: Mask[];
   worldBook: WorldBookEntry[];
   memoryContext: ReturnType<typeof buildMomentMemoryContext>;
+  liveContext?: MomentLiveContext;
   factBoundaryLines?: string[];
   triggerHint?: string;
   extraStyleHints?: string[];
@@ -326,6 +460,7 @@ function buildBalancedMomentPostPrompt(options: {
     masks,
     worldBook,
     memoryContext,
+    liveContext,
     factBoundaryLines = [],
     triggerHint,
     extraStyleHints = [],
@@ -369,6 +504,7 @@ function buildBalancedMomentPostPrompt(options: {
   return buildMomentsPrompt({
     characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
     memoryContext,
+    liveContext,
     postContext: {
       signature: character.signature,
       relationship,
@@ -649,51 +785,6 @@ function isContaminatedChatReaction(text: string) {
   return CHAT_REACTION_BAD_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-function getCleanMomentFallback(shape?: MomentPostBlueprint['shape']) {
-  return '';
-  const shapeFallbacks: Partial<Record<MomentPostBlueprint['shape'], string[]>> = {
-    photo_dump: [
-      '最近存了几张零碎的图。\n\n单看都很普通，拼在一起倒像这几天。',
-      '翻相册的时候才发现，这几天其实也不是只有忙和累。',
-    ],
-    multi_paragraph: [
-      '今天一整天都像被拆成好几小段。\n\n有些事现在还没想清楚，但我知道自己确实在往前走。',
-      '这一天下来，情绪起起落落的。\n\n先把它记在这里，等明天再慢慢整理。',
-    ],
-    journal_note: [
-      '有些心情当下说不清楚，写下来反而会安静一点。\n\n所以先记一笔，留给今晚的自己。',
-      '最近越来越想把一些日子留存下来。\n\n不是为了证明什么，只是怕自己转头就忘了。',
-    ],
-    music_diary: [
-      '今天想配一点很轻的歌。\n\n像把这一天慢慢收回来。',
-      '耳机里那首歌放到第三遍的时候，人终于没那么紧绷了。',
-    ],
-    cheerful_share: [
-      '今天有几件很小的好事，刚好够让我心情亮一点。',
-      '没发生什么惊天动地的大事，但今天确实过得不错。',
-    ],
-    abstract_fragment: [
-      '今天像被风吹散过一次，最后又慢慢拢回来。',
-      '人有时候像没完全登录，直到某个很小的瞬间才突然接上网。',
-    ],
-    tiny_complaint: [
-      '今天火气有一点，但夜风吹完就先不跟世界吵了。',
-      '忙是真的忙，烦也是真的烦，好在现在总算收工了。',
-    ],
-    soft_claim: [
-      '有些偏心藏不太住，先记在这里，不展开。',
-      '今天立场有点明显，不过我懒得装看不出来。',
-    ],
-  };
-
-  const pool = shape ? shapeFallbacks[shape] : undefined;
-  if (pool && pool.length > 0) {
-    return pool[Math.floor(Math.random() * pool.length)];
-  }
-
-  return MOMENT_FALLBACKS[Math.floor(Math.random() * MOMENT_FALLBACKS.length)];
-}
-
 function getCleanChatReactionFallback() {
   return '';
   return '行，我去整理一条。';
@@ -705,11 +796,13 @@ async function generateSingleText(options: {
   requestText: string;
   fallback: string;
   recentImageReferences?: MomentRecentImageReference[];
+  traceLabel?: string;
 }) {
-  const { activeConfig, prompt, requestText, fallback, recentImageReferences } = options;
+  const { activeConfig, prompt, requestText, fallback, recentImageReferences, traceLabel } = options;
   try {
     const text = await generateTextFromMessagesWithConfig({
       activeConfig,
+      traceLabel,
       messages: [
         ...buildRecentMomentImageReferenceMessages(activeConfig, recentImageReferences),
         {
@@ -818,54 +911,6 @@ function createMomentPhotoDescription(content: string): string {
   return `像${shortened}的一幕`;
 }
 
-function buildMomentVisualAnchors(content: string): string[] {
-  const normalized = content.replace(/\r/g, '').trim();
-  const anchors = [
-    /女仆|maid/i.test(normalized) && /猫|cat|猫耳/i.test(normalized) ? '猫耳女仆装' : '',
-    /女仆|maid/i.test(normalized) ? '女仆装镜前自拍' : '',
-    /腹肌|abs/i.test(normalized) ? '八块腹肌' : '',
-    /热狗|hot dog/i.test(normalized) ? '热气腾腾的热狗' : '',
-    /奶茶|milk tea/i.test(normalized) ? '快化掉的奶茶' : '',
-    /健身房|gym/i.test(normalized) ? '周末健身房镜子' : '',
-    /路灯|街灯/i.test(normalized) ? '路灯下的一段影子' : '',
-    /卧室|房间/i.test(normalized) ? '没开灯的卧室' : '',
-    /便利店/i.test(normalized) ? '便利店门口的灯' : '',
-    /地铁|车厢/i.test(normalized) ? '地铁车窗倒影' : '',
-    /工位|电脑|表格|会议/i.test(normalized) ? '工位上的电脑屏幕' : '',
-    /耳机|歌|bgm|音乐/i.test(normalized) ? '耳机线和锁屏界面' : '',
-    /猫|cat/i.test(normalized) ? '猫趴在边上' : '',
-    /自拍|镜子|穿搭/i.test(normalized) ? '镜子里的今日穿搭' : '',
-    /雨|下雨/i.test(normalized) ? '伞边的雨线' : '',
-    /夜风|晚风/i.test(normalized) ? '夜风吹过的街口' : '',
-    /鲷鱼烧|豆沙/i.test(normalized) ? '纸袋里还热着的鲷鱼烧' : '',
-  ].filter(Boolean) as string[];
-
-  return Array.from(new Set(anchors));
-}
-
-function buildMomentVisualDirections(content: string): string[] {
-  const normalized = content.replace(/\r/g, '').trim();
-  const directions = [
-    /自拍|镜子|穿搭|look|outfit/i.test(normalized) ? '镜子里的自己' : '',
-    /女仆|maid|猫耳|cos/i.test(normalized) ? '镜头前的一身打扮' : '',
-    /腹肌|abs|腰线|锁骨/i.test(normalized) ? '镜子里露出来的身体线条' : '',
-    /耳机|节奏|歌|bgm|音乐/i.test(normalized) ? '手里捏着的耳机' : '',
-    /热狗|奶茶|咖啡|拉面|蛋糕|夜宵|早餐|便当|烧烤|吃/i.test(normalized) ? '手边那份还冒着热气的东西' : '',
-    /健身房|gym|跑步|运动/i.test(normalized) ? '镜子和灯光里的运动痕迹' : '',
-    /路灯|街灯|夜路|街口/i.test(normalized) ? '夜里那一点灯光' : '',
-    /卧室|房间|床边|窗边|桌面|阳台/i.test(normalized) ? '房间里被拍下来的一个角落' : '',
-    /便利店|商店|超市/i.test(normalized) ? '门口亮着的灯和玻璃反光' : '',
-    /地铁|车厢|公交|路上/i.test(normalized) ? '路上随手拍到的倒影' : '',
-    /工位|电脑|表格|会议|文件|键盘/i.test(normalized) ? '桌上摊着的东西' : '',
-    /猫|狗|宠物|cat|dog/i.test(normalized) ? '镜头里那只小东西' : '',
-    /下雨|雨伞|雨/i.test(normalized) ? '伞边垂下来的雨线' : '',
-    /晚风|夜风|风/i.test(normalized) ? '被风吹乱的一小块画面' : '',
-    /手|指尖|掌心/i.test(normalized) ? '指尖捏着的一点东西' : '',
-  ].filter(Boolean) as string[];
-
-  return Array.from(new Set(directions));
-}
-
 function normalizeMomentVisualTextLine(text: string) {
   return text
     .replace(/^[\d\-•.、\s]+/, '')
@@ -929,6 +974,27 @@ function collectMomentVisualCaptionCandidates(lines: string[], maxItems: number)
   )).slice(0, maxItems);
 }
 
+function buildMomentBodyVisualCandidates(content: string, maxItems: number) {
+  const normalized = content.replace(/\r/g, '').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const paragraphs = normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const sentenceCandidates = splitMomentSentences(normalized)
+    .map((sentence) => sentence.replace(/[。！？!?]+$/g, '').trim())
+    .filter(Boolean);
+
+  return collectMomentVisualCaptionCandidates([
+    ...paragraphs,
+    ...sentenceCandidates,
+    createMomentPhotoDescription(paragraphs[0] || normalized),
+  ], maxItems);
+}
+
 function parseMomentVisualTextLines(text: string, maxItems: number): string[] {
   return Array.from(new Set(
     text
@@ -967,6 +1033,7 @@ async function generateMomentVisualTextLines(options: {
     prompt: '请为动态里的伪图片生成简短中文画面文案。',
     requestText: prompt,
     fallback: '',
+    traceLabel: 'moments:visual-text',
   });
 
   return parseMomentVisualTextLines(raw, frameCount);
@@ -978,10 +1045,7 @@ function buildMomentFrameCaptions(content: string, frameCount: number): string[]
     return [];
   }
 
-  return collectMomentVisualCaptionCandidates([
-    ...buildMomentVisualAnchors(normalized),
-    ...buildMomentVisualDirections(normalized),
-  ], frameCount);
+  return buildMomentBodyVisualCandidates(normalized, frameCount);
 }
 
 function needsMomentVisualTranslation(text: string) {
@@ -1027,6 +1091,7 @@ async function generateMomentVisualTranslations(options: {
     prompt: '请把伪图片文案翻成简体中文。',
     requestText: prompt,
     fallback: '',
+    traceLabel: 'moments:visual-translation',
   });
 
   const parsed = parseMomentVisualTextLines(raw, lines.length);
@@ -1073,8 +1138,6 @@ async function generateMomentImageCard(options: {
     : [];
   const overlayText = generatedVisualLines[0]
     || fallbackFrameCaptions[0]
-    || buildMomentVisualAnchors(firstParagraph)[0]
-    || buildMomentVisualDirections(firstParagraph)[0]
     || createChineseMomentPhotoDescription(firstParagraph);
   const visualLines = frameCaptions.length > 1 ? frameCaptions : [overlayText];
   const translatedVisualLines = await generateMomentVisualTranslations({
@@ -1094,6 +1157,116 @@ async function generateMomentImageCard(options: {
   };
 }
 
+function buildMomentSourceImage(
+  reference: MomentRecentImageReference | undefined,
+  fallbackCharacterId: string,
+): MomentSourceImageRef | undefined {
+  if (!reference?.imageUrl) {
+    return undefined;
+  }
+
+  return {
+    source: 'recent_chat_image' as const,
+    characterId: reference.characterId || fallbackCharacterId,
+    ...(typeof reference.timestamp === 'number'
+      ? { messageTimestamp: reference.timestamp }
+      : {}),
+    imageUrl: reference.imageUrl,
+  };
+}
+
+function buildMomentDuplicateRewriteHints(hit: SimilarRecentMomentHit | null) {
+  if (!hit) {
+    return [];
+  }
+
+  return [
+    `上一版和最近动态太像了：${hit.preview || '最近一条动态'}`,
+    '重写时必须换掉开头、主要意象、句型和收尾，不要只改几个字。',
+  ];
+}
+
+function buildMomentPostCandidate(options: {
+  rawText: string;
+  blueprint: MomentPostBlueprint;
+  boundary: ReturnType<typeof buildMomentFactBoundary>;
+  momentMode: 'self_life' | 'relationship_carryover' | 'public_daily';
+  languagePlan: ReturnType<typeof resolveMomentLanguagePlan>;
+  recentImageReferences: MomentRecentImageReference[];
+  recentMoments?: ComparableMoment[];
+  now?: number;
+  characterId: string;
+}): MomentPostCandidate {
+  const parts = splitMomentTranslationParts(options.rawText);
+  const attachment = extractSelectedRecentMomentImages({
+    text: parts.mainText,
+    references: options.recentImageReferences,
+  });
+  const normalized = normalizeGeneratedMomentContent(
+    attachment.text,
+    options.blueprint.maxChars,
+    options.blueprint.shape,
+  );
+  const translation = normalizeMomentTranslationText(parts.translation);
+  const initialViolation = validateMomentFactBoundaryDelta({
+    content: normalized,
+    boundary: options.boundary,
+  });
+  const softCorrection = softlyCorrectMomentFactBoundaryDelta({
+    content: normalized,
+    boundary: options.boundary,
+    violation: initialViolation,
+  });
+  const content = softCorrection.content || normalized;
+  const translationReady = !options.languagePlan.needsTranslation || !!translation || softCorrection.changed;
+  const sourceImage = buildMomentSourceImage(attachment.selectedReference, options.characterId);
+  const duplicateHit = content
+    ? findSimilarRecentMoment({
+        content,
+        moments: options.recentMoments,
+        now: options.now,
+      })
+    : null;
+
+  return {
+    content,
+    ...(translation ? { translation } : {}),
+    ...(attachment.images ? { images: attachment.images } : {}),
+    ...(sourceImage ? { sourceImage } : {}),
+    duplicateHit,
+    softCorrection,
+    translationReady,
+    accepted: Boolean(content)
+      && !isContaminatedMomentContent(content, options.momentMode)
+      && !softCorrection.remainingViolation
+      && translationReady
+      && !duplicateHit,
+  };
+}
+
+async function finalizeAcceptedMomentPost(options: {
+  activeConfig: ApiConfig;
+  character: Character;
+  blueprint: MomentPostBlueprint;
+  candidate: MomentPostCandidate;
+}): Promise<GeneratedMomentPost> {
+  const { activeConfig, character, blueprint, candidate } = options;
+  return {
+    content: candidate.content,
+    ...(!candidate.softCorrection.changed && candidate.translation ? { translation: candidate.translation } : {}),
+    ...(candidate.images ? { images: candidate.images } : {}),
+    ...(candidate.sourceImage ? { sourceImage: candidate.sourceImage } : {}),
+    ...(!candidate.images ? {
+      imageCard: await generateMomentImageCard({
+        activeConfig,
+        character,
+        momentContent: candidate.content,
+        blueprint,
+      }),
+    } : {}),
+  };
+}
+
 export async function generateMomentPostContent(options: {
   activeConfig: ApiConfig;
   character: Character;
@@ -1105,6 +1278,9 @@ export async function generateMomentPostContent(options: {
   privateCarryoverLevel?: MomentPrivateCarryoverLevel;
   allowPrivateMomentCarryover?: boolean;
   recentImageReferences?: MomentRecentImageReference[];
+  recentMessages?: MomentGenerationRecentMessage[];
+  recentMoments?: ComparableMoment[];
+  now?: number;
 }): Promise<GeneratedMomentPost> {
   const {
     activeConfig,
@@ -1117,16 +1293,41 @@ export async function generateMomentPostContent(options: {
     privateCarryoverLevel,
     allowPrivateMomentCarryover = false,
     recentImageReferences = [],
+    recentMessages = [],
+    recentMoments = [],
+    now,
   } = options;
   const momentMode = inferMomentPostMode(requestText);
+  const generationNow = now ?? Date.now();
   const languagePlan = resolveMomentLanguagePlan(character);
   const translationInstructions = buildMomentTranslationInstruction(languagePlan);
   const memoryContext = buildMomentMemoryContext(character, {
     privateCarryoverLevel,
     allowPrivateMomentCarryover,
   });
+  const liveContext = buildMomentLiveContext({
+    recentMessages,
+    recentMoments,
+    now: generationNow,
+  });
+
+  if (
+    looksLikeGenericMomentRequest(requestText)
+    && !hasGroundedMomentSignal({
+      character,
+      extraPromptSections,
+      recentConversationLines: liveContext.recentConversationLines,
+      recentImageReferences,
+    })
+  ) {
+    return {
+      content: '',
+    };
+  }
+
   const combinedRequestText = [
     ...extraPromptSections.filter((section) => section.trim()),
+    ...liveContext.recentConversationLines,
     requestText,
   ].join('\n\n');
   const blueprint = buildMomentPostBlueprint({
@@ -1152,14 +1353,13 @@ export async function generateMomentPostContent(options: {
           'Recent user-shared images are available only as optional context. This post itself should stay text-only, so do not output any attachment marker.',
         ])
     : [];
-  const fallback = getCleanMomentFallback(blueprint.shape)
-    || buildMomentFactBoundarySafeFallback(factBoundary);
 
   const firstPrompt = buildBalancedMomentPostPrompt({
     character,
     masks,
     worldBook,
     memoryContext,
+    liveContext,
     factBoundaryLines: buildMomentFactBoundarySection(factBoundary),
     triggerHint: 'Generate a publishable public post body. This is not a chat reply.',
     mode: momentMode,
@@ -1176,56 +1376,29 @@ export async function generateMomentPostContent(options: {
     activeConfig,
     prompt: firstPrompt,
     requestText: `Generate one publishable public post body. Trigger: ${combinedRequestText}`,
-    fallback,
+    fallback: '',
     recentImageReferences,
+    traceLabel: 'moments:post-content:first-pass',
   });
-  const firstParts = splitMomentTranslationParts(firstRaw);
-  const firstAttachment = extractSelectedRecentMomentImages({
-    text: firstParts.mainText,
-    references: recentImageReferences,
-  });
-  const firstPass = normalizeGeneratedMomentContent(firstAttachment.text, blueprint.maxChars, blueprint.shape);
-  const firstTranslation = normalizeMomentTranslationText(firstParts.translation);
-  const firstBoundaryViolation = validateMomentFactBoundaryDelta({
-    content: firstPass,
+  const firstCandidate = buildMomentPostCandidate({
+    rawText: firstRaw,
+    blueprint,
     boundary: factBoundary,
+    momentMode,
+    languagePlan,
+    recentImageReferences,
+    recentMoments,
+    now: generationNow,
+    characterId: character.id,
   });
-  const firstSoftCorrection = softlyCorrectMomentFactBoundaryDelta({
-    content: firstPass,
-    boundary: factBoundary,
-    violation: firstBoundaryViolation,
-  });
-  const firstCandidateContent = firstSoftCorrection.content || firstPass;
-  const firstTranslationReady = !languagePlan.needsTranslation || !!firstTranslation || firstSoftCorrection.changed;
 
-  if (
-    !isContaminatedMomentContent(firstCandidateContent, momentMode)
-    && !firstSoftCorrection.remainingViolation
-    && firstTranslationReady
-  ) {
-    return {
-      content: firstCandidateContent,
-      ...(!firstSoftCorrection.changed && firstTranslation ? { translation: firstTranslation } : {}),
-      ...(firstAttachment.images ? { images: firstAttachment.images } : {}),
-      ...(firstAttachment.selectedReference?.imageUrl ? {
-        sourceImage: {
-          source: 'recent_chat_image' as const,
-          characterId: firstAttachment.selectedReference.characterId || character.id,
-          ...(typeof firstAttachment.selectedReference.timestamp === 'number'
-            ? { messageTimestamp: firstAttachment.selectedReference.timestamp }
-            : {}),
-          imageUrl: firstAttachment.selectedReference.imageUrl,
-        },
-      } : {}),
-      ...(!firstAttachment.images ? {
-        imageCard: await generateMomentImageCard({
-          activeConfig,
-          character,
-          momentContent: firstCandidateContent,
-          blueprint,
-        }),
-      } : {}),
-    };
+  if (firstCandidate.accepted) {
+    return finalizeAcceptedMomentPost({
+      activeConfig,
+      character,
+      blueprint,
+      candidate: firstCandidate,
+    });
   }
 
   const retryPrompt = buildBalancedMomentPostPrompt({
@@ -1233,6 +1406,7 @@ export async function generateMomentPostContent(options: {
     masks,
     worldBook,
     memoryContext,
+    liveContext,
     factBoundaryLines: buildMomentFactBoundarySection(factBoundary),
     triggerHint: 'Regenerate a clean public post body. Remove task narration and direct-chat residue.',
     mode: momentMode,
@@ -1240,7 +1414,8 @@ export async function generateMomentPostContent(options: {
     privateCarryoverLevel,
     allowPrivateMomentCarryover,
     extraStyleHints: [
-      ...(firstSoftCorrection.remainingViolation?.rewriteHints || []),
+      ...(firstCandidate.softCorrection.remainingViolation?.rewriteHints || []),
+      ...buildMomentDuplicateRewriteHints(firstCandidate.duplicateHit),
       'Do not write the post as direct speech to the user.',
       'Do not make the whole post orbit around the user.',
       'Prefer the character’s own life fragments, interests, observations, and state.',
@@ -1256,60 +1431,33 @@ export async function generateMomentPostContent(options: {
     activeConfig,
     prompt: retryPrompt,
     requestText: `Regenerate one publishable public post body. Trigger: ${combinedRequestText}`,
-    fallback,
+    fallback: '',
     recentImageReferences,
+    traceLabel: 'moments:post-content:retry',
   });
-  const secondParts = splitMomentTranslationParts(secondRaw);
-  const secondAttachment = extractSelectedRecentMomentImages({
-    text: secondParts.mainText,
-    references: recentImageReferences,
-  });
-  const secondPass = normalizeGeneratedMomentContent(secondAttachment.text, blueprint.maxChars, blueprint.shape);
-  const secondTranslation = normalizeMomentTranslationText(secondParts.translation);
-  const secondBoundaryViolation = validateMomentFactBoundaryDelta({
-    content: secondPass,
+  const secondCandidate = buildMomentPostCandidate({
+    rawText: secondRaw,
+    blueprint,
     boundary: factBoundary,
+    momentMode,
+    languagePlan,
+    recentImageReferences,
+    recentMoments,
+    now: generationNow,
+    characterId: character.id,
   });
-  const secondSoftCorrection = softlyCorrectMomentFactBoundaryDelta({
-    content: secondPass,
-    boundary: factBoundary,
-    violation: secondBoundaryViolation,
-  });
-  const secondCandidateContent = secondSoftCorrection.content || secondPass;
-  const secondTranslationReady = !languagePlan.needsTranslation || !!secondTranslation || secondSoftCorrection.changed;
 
-  if (
-    !isContaminatedMomentContent(secondCandidateContent, momentMode)
-    && !secondSoftCorrection.remainingViolation
-    && secondTranslationReady
-  ) {
-    return {
-      content: secondCandidateContent,
-      ...(!secondSoftCorrection.changed && secondTranslation ? { translation: secondTranslation } : {}),
-      ...(secondAttachment.images ? { images: secondAttachment.images } : {}),
-      ...(secondAttachment.selectedReference?.imageUrl ? {
-        sourceImage: {
-          source: 'recent_chat_image' as const,
-          characterId: secondAttachment.selectedReference.characterId || character.id,
-          ...(typeof secondAttachment.selectedReference.timestamp === 'number'
-            ? { messageTimestamp: secondAttachment.selectedReference.timestamp }
-            : {}),
-          imageUrl: secondAttachment.selectedReference.imageUrl,
-        },
-      } : {}),
-      ...(!secondAttachment.images ? {
-        imageCard: await generateMomentImageCard({
-          activeConfig,
-          character,
-          momentContent: secondCandidateContent,
-          blueprint,
-        }),
-      } : {}),
-    };
+  if (secondCandidate.accepted) {
+    return finalizeAcceptedMomentPost({
+      activeConfig,
+      character,
+      blueprint,
+      candidate: secondCandidate,
+    });
   }
 
   return {
-    content: fallback,
+    content: '',
   };
 }
 
@@ -1341,6 +1489,7 @@ export async function generateMomentChatReaction(options: {
     prompt: reactionPrompt,
     requestText: `请先在聊天里自然回应这次发动态请求：${requestText}`,
     fallback: getCleanChatReactionFallback(),
+    traceLabel: 'moments:chat-reaction',
   }));
 
   if (isContaminatedChatReaction(reaction)) {
@@ -1424,6 +1573,7 @@ export async function generateMomentCommentReply(options: {
     prompt,
     requestText: `请以评论区回复的方式，自然回应这条用户评论：${userComment}`,
     fallback,
+    traceLabel: 'moments:comment-reply',
   }));
 
   return response || fallback;
@@ -1512,6 +1662,7 @@ export async function generateMomentAutoComment(options: {
     prompt,
     requestText: `请为这条动态写一句自然短评：${moment.content}`,
     fallback,
+    traceLabel: 'moments:auto-comment',
   }));
 
   if (replyCharacter.id !== moment.authorId && response && hasOwnershipClaimRisk(response)) {

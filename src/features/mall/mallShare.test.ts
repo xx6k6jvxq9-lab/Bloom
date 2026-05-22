@@ -17,7 +17,7 @@ function createMallItem(overrides: Partial<MallCatalogItem> = {}): MallCatalogIt
     sensitivity: 'normal',
     destinationKinds: ['self'],
     media: {
-      fallbackEmoji: '🧥',
+      fallbackEmoji: '👕',
       fallbackIcon: 'package',
       backgroundPreset: 'mist-blue',
       accentColor: '#8aa0b7',
@@ -43,7 +43,7 @@ test('createSharedMallItemSnapshot keeps the chat-card fields needed for mall sh
     price: 129,
     blurb: '更适合高频日常穿的那类基础款。',
     detailDescription: '买完会进入衣柜。',
-    fallbackEmoji: '🧥',
+    fallbackEmoji: '👕',
     fallbackIcon: 'package',
     accentColor: '#8aa0b7',
     backgroundPreset: 'mist-blue',
@@ -59,7 +59,7 @@ test('createMallShareChatMessage builds a mall share message that can jump into 
   assert.equal(message.needsReply, true);
   assert.equal(message.source, 'app');
   assert.equal(message.channel, 'app');
-  assert.match(message.text, /分享给你看看/);
+  assert.equal(message.text, '');
   assert.equal(message.sharedMallItem?.title, item.title);
 });
 

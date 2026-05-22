@@ -129,8 +129,17 @@ function getCharacterStateText(character: Character) {
     .toLowerCase();
 }
 
-function pickPlannerIntent(seed: string): PlannerIntent {
-  return pickByHash(PLANNER_INTENTS, seed);
+function resolvePlannerIntentPool(now: number) {
+  const hour = new Date(now).getHours();
+  if (hour >= 20 || hour < 5) {
+    return PLANNER_INTENTS;
+  }
+
+  return PLANNER_INTENTS.filter((intent) => intent !== 'night_journal');
+}
+
+function pickPlannerIntent(seed: string, now: number): PlannerIntent {
+  return pickByHash(resolvePlannerIntentPool(now), seed);
 }
 
 function hasWorkCue(character: Character) {
@@ -355,6 +364,7 @@ export function buildAutoMomentPlan(options: {
     const effectiveSharedState = getEffectiveSharedState(character);
     const intent = pickPlannerIntent(
       `${character.id}:${trigger}:${effectiveSharedState.currentActivity || ''}:${effectiveSharedState.publicCarryover || ''}:${character.presenceState?.recentLifeBeat || ''}:${latestMomentAt}:${recentMoments.length}`,
+      now,
     );
     return buildIntentPlan(character, intent, { recentMoments });
   });

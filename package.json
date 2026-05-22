@@ -6,15 +6,17 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.ts",
-    "build": "vite build",
-    "build:pages": "vite build",
+    "lint:compat": "node scripts/check-legacy-regex.mjs",
+    "lint:types": "tsc --noEmit",
+    "build": "npm run lint:compat && vite build",
+    "build:pages": "npm run build",
     "preview": "vite preview",
     "test": "tsc -p tsconfig.test.json && node -e \"require('fs').mkdirSync('test-dist',{recursive:true});require('fs').writeFileSync('test-dist/package.json', JSON.stringify({ type: 'commonjs' }))\" && node --test --test-isolation=none --test-concurrency=1 test-dist/src/**/*.test.js",
     "audit:legacy-character-fields": "node scripts/audit-legacy-character-fields.mjs",
     "cf:deploy:pages": "npm run build:pages && wrangler pages deploy dist --project-name bloom-pages",
     "cf:dev:pages": "npm run build:pages && wrangler pages dev dist",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "lint": "tsc --noEmit"
+    "lint": "npm run lint:compat && npm run lint:types"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

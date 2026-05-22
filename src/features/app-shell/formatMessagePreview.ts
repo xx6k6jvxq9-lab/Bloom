@@ -14,6 +14,20 @@ const HTML_ENTITY_MAP: Record<string, string> = {
   '&#39;': "'",
 };
 
+function decodeHtmlEntities(text: string): string {
+  let current = text;
+
+  for (let index = 0; index < 2; index += 1) {
+    const next = current.replace(/&(nbsp|lt|gt|amp|quot|#39);/g, (entity) => HTML_ENTITY_MAP[entity] || entity);
+    if (next === current) {
+      return next;
+    }
+    current = next;
+  }
+
+  return current;
+}
+
 export const looksLikeStructuredCardText = (text: string | undefined): boolean => {
   if (!text) return false;
   return /<\/?[a-z][\w-]*\b[^>]*>/i.test(text) || /```[a-zA-Z0-9_-]*/.test(text);
@@ -22,14 +36,14 @@ export const looksLikeStructuredCardText = (text: string | undefined): boolean =
 export const sanitizePreviewText = (text: string | undefined): string => {
   if (!text) return '';
 
-  const normalized = text
+  const decoded = decodeHtmlEntities(text);
+  const normalized = decoded
     .replace(HTML_BLOCK_TAG_REGEX, ' ')
     .replace(HTML_LINEBREAK_TAG_REGEX, '\n')
     .replace(HTML_TAG_REGEX, ' ')
     .replace(MARKDOWN_FENCE_REGEX, ' ');
 
-  const decoded = normalized.replace(/&(nbsp|lt|gt|amp|quot|#39);/g, (entity) => HTML_ENTITY_MAP[entity] || entity);
-  return decoded
+  return normalized
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -90,8 +104,28 @@ export const formatMessagePreview = (text: string | undefined): string => {
   return sanitizePreviewText(text);
 };
 
+function formatSharedMallItemPreview(
+  message: Pick<ChatMessage, 'text' | 'sharedMallItem'>,
+): string {
+  if (!message.sharedMallItem) {
+    return '';
+  }
+
+  const title = sanitizePreviewText(message.sharedMallItem.title || '');
+  const mainText = sanitizePreviewText(getLegacyTranslationParts(message.text || '').mainText || message.text || '');
+
+  if (mainText) {
+    return title ? `[问问TA] ${title}` : '[问问TA]';
+  }
+
+  return title ? `[分享商品] ${title}` : '[分享商品]';
+}
+
 export function formatChatMessagePreview(
-  message: Pick<ChatMessage, 'role' | 'text' | 'contentType' | 'isInnerVoice' | 'transferDisplayLabel'> | null | undefined,
+  message: Pick<
+    ChatMessage,
+    'role' | 'text' | 'contentType' | 'isInnerVoice' | 'transferDisplayLabel' | 'sharedMallItem'
+  > | null | undefined,
 ): string {
   if (!message) {
     return '';
@@ -121,6 +155,10 @@ export function formatChatMessagePreview(
 
   if (message.contentType === 'couple-space-invite-accepted') {
     return '[情侣空间已建立]';
+  }
+
+  if (message.sharedMallItem) {
+    return formatSharedMallItemPreview(message);
   }
 
   const mainText = getLegacyTranslationParts(message.text || '').mainText;

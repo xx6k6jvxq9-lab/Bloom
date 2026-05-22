@@ -22,7 +22,8 @@ function compactLine(value: string, maxLength = 96): string {
 
 function splitClauses(value: string): string[] {
   return value
-    .split(/[\r\n]+|(?<=[。！？!?；;])/u)
+    .replace(/([。！？!?；;]+)/gu, '$1\n')
+    .split(/[\r\n]+/)
     .map((part) => compactLine(part))
     .filter((part) => part.length >= 2);
 }

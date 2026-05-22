@@ -197,3 +197,86 @@ test('publishGeneratedCharacterMomentToFeed preserves attached images on generat
 
   assert.deepEqual(appData.moments[0]?.images, ['asset://chat-image-1']);
 });
+
+test('publishGeneratedCharacterMomentToFeed skips exact duplicate recent content', async () => {
+  const character = createCharacter({ id: 'moment-char-duplicate' });
+  let appData: AppData = {
+    characters: [character],
+    moments: [
+      {
+        id: 'existing-moment',
+        authorId: 'other-role',
+        visibilityScope: 'known_network',
+        content: '窗外的天色还在，今天先记这一点。',
+        timestamp: Date.now() - 30_000,
+        likes: 0,
+        comments: [],
+      },
+    ],
+    masks: [],
+    worldBooks: [],
+    chatGroups: [],
+    chatHistory: {},
+    favorites: [],
+    groups: [],
+    visualSettings: {
+      globalBackground: '',
+      chatOpacity: 1,
+      desktopIcons: [],
+      widgets: [],
+      navBar: {
+        show: true,
+        style: 'default',
+        shape: 'pill',
+        showMultipleAvatars: false,
+        statusBarPlacement: 'top',
+      },
+      desktop: {
+        iconSize: 64,
+        iconBorderRadius: 16,
+        gridColumns: 4,
+        gridGap: 12,
+      },
+      chat: {
+        avatarSize: 40,
+        avatarBorderRadius: 20,
+        avatarBorderColor: '',
+        avatarBorderWidth: 0,
+        messageBorderRadius: 18,
+        messageBackgroundColorUser: '',
+        messageBackgroundColorModel: '',
+        messageSpacing: 10,
+      },
+      dynamics: {
+        background: '',
+        cardStyle: 'flat',
+        cardBorderRadius: 16,
+        cardOpacity: 1,
+      },
+      globalCss: '',
+    },
+    userProfile: {
+      name: 'User',
+      avatar: '',
+      bio: '',
+      mood: '',
+      id: 'user',
+    },
+  };
+
+  const published = await publishGeneratedCharacterMomentToFeed({
+    payload: {
+      authorId: character.id,
+      content: '窗外的天色还在，今天先记这一点。',
+    },
+    snapshot: appData,
+    setAppData: (updater) => {
+      appData = typeof updater === 'function'
+        ? updater(appData)
+        : updater;
+    },
+  });
+
+  assert.equal(published, false);
+  assert.equal(appData.moments.length, 1);
+});

@@ -1,6 +1,6 @@
 export const CATEGORY_ICON_MAP: Record<string, string> = {
   '全部': '🛍️',
-  '男装': '👔',
+  '男装': '👕',
   '女装': '👗',
   '家居': '🕯️',
   '数码': '💬',
@@ -44,7 +44,20 @@ export const HOME_HERO_SLIDES = [
   },
 ] as const;
 
-export type MallOrderFilter = 'all' | 'pending' | 'delivering' | 'done' | 'digital';
+export type MallHomeMode = 'self' | 'gift' | 'companion' | 'private';
+
+export const HOME_MODE_OPTIONS: Array<{
+  value: MallHomeMode;
+  label: string;
+  description: string;
+}> = [
+  { value: 'self', label: '自己买', description: '更偏日常自购和高频使用' },
+  { value: 'gift', label: '送给TA', description: '优先看适合送礼和有反馈余波的商品' },
+  { value: 'companion', label: '一起逛', description: '更强调陪逛、讨论感和共同挑选' },
+  { value: 'private', label: '私密专区', description: '预留独立模式入口，不混入普通货架' },
+];
+
+export type MallOrderFilter = 'all' | 'pending' | 'delivering' | 'done' | 'digital' | 'gift' | 'shared_space';
 
 export const ORDER_FILTER_OPTIONS: Array<{ value: MallOrderFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -52,4 +65,6 @@ export const ORDER_FILTER_OPTIONS: Array<{ value: MallOrderFilter; label: string
   { value: 'delivering', label: '配送中' },
   { value: 'done', label: '已完成' },
   { value: 'digital', label: '数字商品' },
+  { value: 'gift', label: '送礼记录' },
+  { value: 'shared_space', label: '共同空间' },
 ];

@@ -1266,6 +1266,7 @@ export const GroupOfflineModal: React.FC<GroupOfflineModalProps> = ({
             history={history}
             directChatHistory={directChatHistory}
             perception={perception}
+            onCloseScene={onClose}
             onBackToPlanner={() => setShowScene(false)}
             onUpdateSession={(nextSession) => {
               setCurrentSession(nextSession);

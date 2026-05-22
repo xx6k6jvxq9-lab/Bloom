@@ -668,6 +668,7 @@ export async function generateDirectRelationshipBoundaryReply(params: {
 
   const qualityResult = await generateQualityCheckedAssistantReply({
     activeConfig: params.activeConfig,
+    traceLabel: 'direct-chat:relationship-boundary',
     messages: [
       { role: 'system', content: systemPrompt },
       ...historyMessages,

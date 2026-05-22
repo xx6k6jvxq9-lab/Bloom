@@ -5,11 +5,18 @@ Bloom is a Vite + React app for an AI phone-style relationship experience.
 ## Scripts
 
 - `npm run dev`: start the local app server
-- `npm run build`: build the frontend bundle
+- `npm run lint:compat`: audit regex syntax against the legacy Safari/iOS WebView compatibility boundary
+- `npm run build`: run the regex audit and build the frontend bundle
 - `npm run preview`: preview the Vite build
 - `npm run cf:deploy:pages`: build and deploy to Cloudflare Pages
 - `npm run cf:dev:pages`: preview the Pages build locally
-- `npm run lint`: run TypeScript type-checking
+- `npm run lint`: run the regex audit and TypeScript type-checking
+
+## Compatibility Guardrails
+
+Bloom still targets older Safari and iOS WebView builds via `@vitejs/plugin-legacy` in `vite.config.ts`.
+
+To keep that boundary intact, `npm run lint:compat` blocks regex syntax that those environments do not support, including lookbehind, named capture groups, and named backreferences.
 
 ## Project Layout
 

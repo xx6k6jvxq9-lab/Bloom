@@ -625,7 +625,8 @@ function splitLongChatClause(text: string): string[] {
   }
 
   const commaParts = normalized
-    .split(/(?<=[\uFF0C,])/)
+    .replace(/([\uFF0C,])/g, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -661,7 +662,8 @@ function splitRhythmicChatClause(text: string): string[] {
   }
 
   const parts = normalized
-    .split(/(?<=[\uFF0C,])\s*/)
+    .replace(/([\uFF0C,])/g, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -707,7 +709,8 @@ function splitReadableRhythmicChatClause(text: string): string[] {
   }
 
   const parts = normalized
-    .split(/(?<=[\uFF0C,])\s*/)
+    .replace(/([\uFF0C,])/g, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -753,7 +756,8 @@ function splitByChatActionBeats(text: string): string[] {
   }
 
   const candidateParts = normalized
-    .split(/(?<=[。！？!?；;…]+|[，,])\s*/u)
+    .replace(/([。！？!?；;…]+|[，,])/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -822,7 +826,8 @@ function splitByNaturalChatBeats(text: string): string[] {
   }
 
   const candidateParts = normalized
-    .split(/(?<=[\u3002\uFF01\uFF1F!?\uFF1B;…]+)\s*/u)
+    .replace(/([\u3002\uFF01\uFF1F!?\uFF1B;…]+)/gu, '$1\n')
+    .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -886,6 +891,23 @@ function splitByNaturalChatBeats(text: string): string[] {
   return chunks.length > 1 ? chunks : [normalized];
 }
 
+function normalizeInnerCommaSpacing(value: string): string {
+  let normalized = '';
+
+  for (let index = 0; index < value.length; index += 1) {
+    const current = value[index];
+    const previous = index > 0 ? value[index - 1] : '';
+    const next = index < value.length - 1 ? value[index + 1] : '';
+    const isInnerComma = (current === ',' || current === '，')
+      && /[\u4e00-\u9fffA-Za-z0-9]/.test(previous)
+      && /[\u4e00-\u9fffA-Za-z0-9]/.test(next);
+
+    normalized += isInnerComma ? ' ' : current;
+  }
+
+  return normalized;
+}
+
 function normalizeShortBubbleEnding(text: string): string {
   const normalized = text.trim();
   if (!normalized) {
@@ -925,8 +947,7 @@ function normalizeChatMessageEnding(text: string): string {
     return normalized;
   }
 
-  const normalizedInnerPunctuation = stripped
-    .replace(/(?<=[\u4e00-\u9fffA-Za-z0-9])[,，](?=[\u4e00-\u9fffA-Za-z0-9])/g, ' ')
+  const normalizedInnerPunctuation = normalizeInnerCommaSpacing(stripped)
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -1610,6 +1631,7 @@ export function useGroupChatRuntime({
       continuityMode: temporalState.continuityMode,
       nowTimestamp: requestTimestamp,
     });
+    const runtimeTraceLabel = `group-chat:${params.mode}:assistant-reply`;
     const structuredAssistantReplyEnabled = true;
     let structuredResponseText: string | null = null;
     let qualityResult;
@@ -1621,6 +1643,7 @@ export function useGroupChatRuntime({
       const responseText = await streamStructuredAssistantReply({
         activeConfig: structuredConfig,
         messages: runtimeMessages,
+        traceLabel: `${runtimeTraceLabel}:structured`,
         onPreview: (previewText) => {
           updatePendingPreview(previewText);
         },
@@ -1644,6 +1667,7 @@ export function useGroupChatRuntime({
         qualityResult = await generateQualityCheckedAssistantReply({
           activeConfig,
           messages: runtimeMessages,
+          traceLabel: `${runtimeTraceLabel}:quality`,
           temperature: 0.7,
           allowBracketActions: shouldAllowBracketActions(params.speaker),
           allowStructuredProtocols: true,
@@ -1670,6 +1694,7 @@ export function useGroupChatRuntime({
       qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,
         messages: runtimeMessages,
+        traceLabel: `${runtimeTraceLabel}:quality`,
         temperature: 0.7,
         allowBracketActions: shouldAllowBracketActions(params.speaker),
         allowStructuredProtocols: true,

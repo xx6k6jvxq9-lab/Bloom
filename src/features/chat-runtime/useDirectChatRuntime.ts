@@ -1406,7 +1406,7 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
 
   const explicitParts = normalizedText
     .split(/\n+/)
-    .flatMap(part => part.split(/(?<=[。！？!?])\s*/))
+    .flatMap((part) => part.replace(/([。！？!?]+)/g, '$1\n').split(/\n+/))
     .map(part => part.trim())
     .filter(Boolean);
 
@@ -2135,7 +2135,7 @@ type UseDirectChatRuntimeArgs = {
   onPatchCharacter?: (patch: Partial<Character>) => void;
   friendRequests?: FriendRequest[];
   setFriendRequests?: (friendRequests: FriendRequest[] | ((prev: FriendRequest[]) => FriendRequest[])) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: MomentSourceImageRef; imageCard?: MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: MomentSourceImageRef; imageCard?: MomentImageCard }) => boolean | Promise<boolean>;
   onAddCallRecord?: (record: CallRecord) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
@@ -3784,23 +3784,26 @@ export function useDirectChatRuntime({
 
       if (commandMomentResult.shouldPublish && commandMomentResult.momentContent) {
         const noticeTimestamp = Date.now();
-        commitHistory([
-          ...newHistory,
-          createMomentPublishedSystemMessage(character.name, noticeTimestamp),
-        ]);
-        activeAssistantMessageIdRef.current = null;
-        activeAssistantRenderCountRef.current = 0;
-
-          onPublishMoment?.({
-            authorId: character.id,
-            content: commandMomentResult.momentContent,
-            translation: commandMomentResult.momentTranslation,
-            images: commandMomentResult.momentImages,
-            sourceImage: commandMomentResult.momentSourceImage,
-            imageCard: commandMomentResult.momentImageCard,
-          });
-        lastMomentPublishAtRef.current = Date.now();
-        return;
+        const published = onPublishMoment
+          ? await onPublishMoment({
+              authorId: character.id,
+              content: commandMomentResult.momentContent,
+              translation: commandMomentResult.momentTranslation,
+              images: commandMomentResult.momentImages,
+              sourceImage: commandMomentResult.momentSourceImage,
+              imageCard: commandMomentResult.momentImageCard,
+            })
+          : false;
+        if (published) {
+          commitHistory([
+            ...newHistory,
+            createMomentPublishedSystemMessage(character.name, noticeTimestamp),
+          ]);
+          activeAssistantMessageIdRef.current = null;
+          activeAssistantRenderCountRef.current = 0;
+          lastMomentPublishAtRef.current = noticeTimestamp;
+          return;
+        }
       }
 
       const historyLimit = getDirectMemoryMessageLimit(character.memoryLimit);
@@ -4240,13 +4243,9 @@ export function useDirectChatRuntime({
           worldBook,
         });
 
-        if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
+        if (autoMomentResult.shouldPublish && autoMomentResult.momentContent && onPublishMoment) {
           const noticeTimestamp = Date.now();
-          commitHistory([
-            ...finalHistory,
-            createMomentPublishedSystemMessage(character.name, noticeTimestamp),
-          ]);
-          onPublishMoment({
+          const published = await onPublishMoment({
             authorId: character.id,
             content: autoMomentResult.momentContent,
             translation: autoMomentResult.momentTranslation,
@@ -4254,7 +4253,13 @@ export function useDirectChatRuntime({
             sourceImage: autoMomentResult.momentSourceImage,
             imageCard: autoMomentResult.momentImageCard,
           });
-          lastMomentPublishAtRef.current = noticeTimestamp;
+          if (published) {
+            commitHistory([
+              ...finalHistory,
+              createMomentPublishedSystemMessage(character.name, noticeTimestamp),
+            ]);
+            lastMomentPublishAtRef.current = noticeTimestamp;
+          }
         }
       }
       activeAssistantMessageIdRef.current = null;

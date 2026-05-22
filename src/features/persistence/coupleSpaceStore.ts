@@ -22,6 +22,7 @@ export function createDefaultCoupleSpaceData(
     posts: [],
     anniversaries: [],
     messageBoard: [],
+    sharedMallItems: [],
     initiativeDrafts: [],
     initiativeRuntime: {},
     addedPartnerIds: [],
@@ -181,6 +182,7 @@ export function hydrateCoupleSpace(
     posts: Array.isArray(source?.posts) ? source.posts : fallback.posts,
     anniversaries: Array.isArray(source?.anniversaries) ? source.anniversaries : fallback.anniversaries,
     messageBoard: Array.isArray(source?.messageBoard) ? source.messageBoard : fallback.messageBoard,
+    sharedMallItems: Array.isArray(source?.sharedMallItems) ? source.sharedMallItems : fallback.sharedMallItems,
     initiativeDrafts: Array.isArray(source?.initiativeDrafts)
       ? source.initiativeDrafts
       : fallback.initiativeDrafts,
@@ -736,6 +738,7 @@ function looksLikeLegacyCoupleSpace(
     'coNotes' in value ||
     'loveLetters' in value ||
     'messageBoard' in value ||
+    'sharedMallItems' in value ||
     'addedPartnerIds' in value ||
     'initiativeDrafts' in value ||
     'initiativeRuntime' in value
