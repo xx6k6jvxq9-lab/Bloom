@@ -322,10 +322,14 @@ export function RelationshipGraphPage({
   };
 
   const visibleItems = pageMode === 'guide' ? priorityRepairItems : peerItems;
+  const relationshipHeaderTopPadding = 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 12px)';
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-white">
-      <div className="relative z-[1] flex items-center gap-3 border-b border-zinc-100 bg-white px-4 pb-3 pt-5">
+      <div
+        className="relative z-[1] flex items-center gap-3 border-b border-zinc-100 bg-white px-4 pb-3"
+        style={{ paddingTop: relationshipHeaderTopPadding }}
+      >
         <button
           type="button"
           onClick={onBack}
