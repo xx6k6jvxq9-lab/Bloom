@@ -1,5 +1,6 @@
 import type { Song } from '../../types';
 import type { MusicSearchEntitlement, MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
+import { normalizeMusicCoverValue } from '../music-netease/neteaseCover';
 
 type NeteaseArtist = {
   name?: string;
@@ -44,8 +45,7 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
         .filter(Boolean)
         .join(', ') || '未知歌手',
     albumArt:
-      track.al?.picUrl ||
-      track.album?.picUrl ||
+      normalizeMusicCoverValue(track.al?.picUrl || track.album?.picUrl) ||
       `https://picsum.photos/seed/netease-search-${normalizedId}/300/300`,
     url: `/api/netease/song?id=${normalizedId}`,
     duration: Math.floor((track.dt || track.duration || 0) / 1000),

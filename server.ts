@@ -25,6 +25,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   const HOST = "0.0.0.0";
+  const NETEASE_COVER_HOST_PATTERN = /(^|\.)music\.126\.net$|(^|\.)nosdn\.127\.net$/i;
 
   app.use(express.json());
 
@@ -57,9 +58,87 @@ async function startServer() {
     return finalUrl;
   };
 
+  const normalizeNeteaseCoverSource = (src: string) => {
+    const trimmed = src.trim();
+    if (!trimmed) return null;
+
+    try {
+      const url = new URL(trimmed);
+      if (!/^https?:$/i.test(url.protocol) || !NETEASE_COVER_HOST_PATTERN.test(url.hostname)) {
+        return null;
+      }
+
+      url.protocol = "https:";
+      if (!url.searchParams.has("param")) {
+        url.searchParams.set("param", "400y400");
+      }
+
+      return url.toString();
+    } catch {
+      return null;
+    }
+  };
+
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/api/netease/cover", async (req, res) => {
+    const src = String(req.query.src || "").trim();
+    if (!src) {
+      return res.status(400).json({ error: "Missing cover source" });
+    }
+
+    const normalizedSource = normalizeNeteaseCoverSource(src);
+    if (!normalizedSource) {
+      return res.status(400).json({ error: "Invalid NetEase cover source" });
+    }
+
+    try {
+      const response = await fetch(normalizedSource, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Referer: "https://music.163.com/",
+          Accept: "image/*,*/*;q=0.8",
+        },
+        redirect: "follow",
+      });
+
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      if (!response.ok || !contentType.startsWith("image/")) {
+        return res.status(response.status >= 400 ? response.status : 502).json({
+          error: "Failed to fetch NetEase cover",
+        });
+      }
+
+      const contentLength = response.headers.get("content-length");
+      const etag = response.headers.get("etag");
+      const lastModified = response.headers.get("last-modified");
+      const cacheControl =
+        response.headers.get("cache-control")
+        || "public, max-age=86400, stale-while-revalidate=86400";
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", cacheControl);
+      if (contentLength) res.setHeader("Content-Length", contentLength);
+      if (etag) res.setHeader("ETag", etag);
+      if (lastModified) res.setHeader("Last-Modified", lastModified);
+      res.status(response.status);
+
+      if (response.body) {
+        // @ts-ignore
+        Readable.fromWeb(response.body).pipe(res);
+      } else {
+        res.end();
+      }
+    } catch (error) {
+      console.error("Error proxying NetEase cover:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to proxy NetEase cover" });
+      }
+    }
   });
 
   app.get("/api/netease/song", async (req, res) => {

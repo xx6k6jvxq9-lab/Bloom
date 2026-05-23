@@ -12,6 +12,9 @@ const FREETOUSE_HEADERS = {
   Origin: "https://freetouse.com",
 };
 
+const NETEASE_COVER_HOST_PATTERN = /(^|\.)music\.126\.net$|(^|\.)nosdn\.127\.net$/i;
+const DEFAULT_NETEASE_COVER_PARAM = "400y400";
+
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -36,6 +39,53 @@ async function fetchJson(url, init) {
     throw new Error(`Upstream request failed: ${response.status}`);
   }
   return response.json();
+}
+
+function normalizeNeteaseCoverSource(src) {
+  const trimmed = String(src || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!/^https?:$/i.test(url.protocol) || !NETEASE_COVER_HOST_PATTERN.test(url.hostname)) {
+    return null;
+  }
+
+  url.protocol = "https:";
+  if (!url.searchParams.has("param")) {
+    url.searchParams.set("param", DEFAULT_NETEASE_COVER_PARAM);
+  }
+
+  return url.toString();
+}
+
+function isImageLikeResponse(response) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  return contentType.startsWith("image/");
+}
+
+function buildResponseHeaders(response, headerNames, fallbackCacheControl) {
+  const passHeaders = new Headers();
+
+  for (const headerName of headerNames) {
+    const value = response.headers.get(headerName);
+    if (value) {
+      passHeaders.set(headerName, value);
+    }
+  }
+
+  if (fallbackCacheControl && !passHeaders.has("cache-control")) {
+    passHeaders.set("cache-control", fallbackCacheControl);
+  }
+
+  return passHeaders;
 }
 
 async function searchNeteaseByType(keywords, limit, type) {
@@ -150,21 +200,48 @@ export async function proxyNeteaseSong(request, id) {
     );
   }
 
-  const passHeaders = new Headers();
-  const headerNames = [
+  const passHeaders = buildResponseHeaders(response, [
     "content-type",
     "content-length",
     "content-range",
     "accept-ranges",
     "cache-control",
-  ];
+  ]);
 
-  for (const headerName of headerNames) {
-    const value = response.headers.get(headerName);
-    if (value) {
-      passHeaders.set(headerName, value);
-    }
+  return new Response(response.body, {
+    status: response.status,
+    headers: passHeaders,
+  });
+}
+
+export async function proxyNeteaseCover(request, src) {
+  const normalizedSource = normalizeNeteaseCoverSource(src);
+  if (!normalizedSource) {
+    return badRequest("Invalid NetEase cover source");
   }
+
+  const headers = new Headers(NETEASE_HEADERS);
+  headers.set("Accept", "image/*,*/*;q=0.8");
+
+  const response = await fetch(normalizedSource, {
+    headers,
+    redirect: "follow",
+  });
+
+  if (!response.ok || !isImageLikeResponse(response)) {
+    return json(
+      { error: "Failed to fetch NetEase cover" },
+      { status: response.status >= 400 ? response.status : 502 },
+    );
+  }
+
+  const passHeaders = buildResponseHeaders(response, [
+    "content-type",
+    "content-length",
+    "cache-control",
+    "etag",
+    "last-modified",
+  ], "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
 
   return new Response(response.body, {
     status: response.status,

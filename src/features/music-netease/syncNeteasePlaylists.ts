@@ -1,4 +1,5 @@
 import type { Playlist, Song } from '../../types';
+import { normalizeMusicCoverValue } from './neteaseCover';
 
 type NeteaseUserPlaylistItem = {
   id: number | string;
@@ -48,8 +49,7 @@ function mapTrackToSong(track: NeteaseTrack): Song {
         .filter(Boolean)
         .join(', ') || 'Unknown Artist',
     albumArt:
-      track.al?.picUrl ||
-      track.album?.picUrl ||
+      normalizeMusicCoverValue(track.al?.picUrl || track.album?.picUrl) ||
       `https://picsum.photos/seed/netease-${normalizedId}/300/300`,
     url: `/api/netease/song?id=${normalizedId}`,
     duration: Math.floor((track.dt || track.duration || 0) / 1000),
@@ -61,7 +61,7 @@ function mapPlaylistToAppPlaylist(playlist: NeteasePlaylistDetail): Playlist {
     id: `netease-pl-${playlist.id}`,
     name: playlist.name || 'NetEase Playlist',
     cover:
-      playlist.coverImgUrl ||
+      normalizeMusicCoverValue(playlist.coverImgUrl) ||
       `https://picsum.photos/seed/netease-playlist-${playlist.id}/300/300`,
     songs: (playlist.tracks || []).map(mapTrackToSong),
     type: 'user',

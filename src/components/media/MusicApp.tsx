@@ -51,6 +51,7 @@ import {
   parseNeteaseMediaInput,
   type NeteasePlaylistBinding,
 } from "../../features/music-netease/neteaseAccount";
+import { normalizeMusicCoverValue } from "../../features/music-netease/neteaseCover";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
 import { generateTogetherChatReply } from "../../features/music-together/generateTogetherChatReply";
 import { formatTogetherReplyMessages } from "../../features/music-together/formatTogetherChatReply";
@@ -98,15 +99,20 @@ function ResolvedMusicCover({
 function normalizeBuiltinSong(song: Song): Song {
   if (!song) return song;
 
+  const normalizedAlbumArt = normalizeMusicCoverValue(song.albumArt);
+
   if (song.id === "1" || song.title === "鏅村ぉ" || song.title === "鎌村お") {
-    return { ...song, title: "晴天", artist: "周杰伦" };
+    return { ...song, title: "晴天", artist: "周杰伦", albumArt: normalizedAlbumArt };
   }
 
   if (song.id === "3" || song.title === "鍛婄櫧姘旂悆") {
-    return { ...song, title: "告白气球", artist: "周杰伦" };
+    return { ...song, title: "告白气球", artist: "周杰伦", albumArt: normalizedAlbumArt };
   }
 
-  return song;
+  return normalizedAlbumArt === song.albumArt ? song : {
+    ...song,
+    albumArt: normalizedAlbumArt,
+  };
 }
 
 function normalizeSongList(songs: Song[] | null | undefined): Song[] {
@@ -375,6 +381,7 @@ export default function MusicApp({
     const normalizedPlaylists = Array.isArray(musicData?.playlists)
       ? musicData.playlists.map((playlist) => ({
           ...playlist,
+          cover: normalizeMusicCoverValue(playlist.cover),
           songs: normalizeSongList(playlist.songs),
         }))
       : defaultMusicData.playlists;
@@ -918,7 +925,7 @@ export default function MusicApp({
         (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
         "未知艺人",
       albumArt:
-        (track.al || track.album)?.picUrl ||
+        normalizeMusicCoverValue((track.al || track.album)?.picUrl) ||
         "https://picsum.photos/seed/netease/300/300",
       url: `/api/netease/song?id=${track.id}`,
       duration: Math.floor((track.dt || track.duration || 240000) / 1000),
@@ -928,7 +935,7 @@ export default function MusicApp({
       id: `netease-pl-${playlist.id}`,
       name: playlist.name,
       cover:
-        playlist.coverImgUrl ||
+        normalizeMusicCoverValue(playlist.coverImgUrl) ||
         "https://picsum.photos/seed/netease-pl/300/300",
       songs: newSongs,
       type: "user",
@@ -1007,7 +1014,7 @@ export default function MusicApp({
             (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
             "未知艺人",
           albumArt:
-            (track.al || track.album)?.picUrl ||
+            normalizeMusicCoverValue((track.al || track.album)?.picUrl) ||
             "https://picsum.photos/seed/netease/300/300",
           url: `/api/netease/song?id=${track.id}`,
           duration: Math.floor((track.dt || track.duration || 240000) / 1000),
