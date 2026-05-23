@@ -1,4 +1,5 @@
 import type { ApiConfig, ChatMessage } from '../../types';
+import { canUseVisionInputs } from '../ai/runtimeClient';
 
 export type MomentRecentImageReference = {
   imageUrl: string;
@@ -20,14 +21,7 @@ function summarizeText(text: string | undefined) {
 }
 
 export function canUseMomentImageInputs(activeConfig: ApiConfig): boolean {
-  if (activeConfig.provider === 'Google Gemini' || !activeConfig.baseUrl?.trim()) {
-    return true;
-  }
-
-  const model = activeConfig.model?.trim().toLowerCase() || '';
-  const provider = activeConfig.provider?.trim().toLowerCase() || '';
-  return /(gpt-4o|gpt-4\.1|gpt-4-turbo|vision|claude-3|gemini|qwen-vl|glm-4v|o1|o3|o4)/i.test(model)
-    || provider.includes('openai');
+  return canUseVisionInputs(activeConfig);
 }
 
 export function buildRecentMomentImageReferenceMessage(

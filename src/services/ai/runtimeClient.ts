@@ -11,6 +11,12 @@ export type RuntimeChatMessage = {
 };
 
 const geminiClientCache = new Map<string, GoogleGenAI>();
+const VISION_MODEL_REGEX =
+  /(gpt-4o|gpt-4\.1|gpt-4-turbo|vision|claude-3|claude-sonnet-4|claude-opus-4|gemini|qwen-vl|qvq|glm-4v|llava|pixtral|minicpm-v|o1|o3|o4)/i;
+const TEXT_ONLY_MODEL_REGEX =
+  /(embedding|rerank|moderation|whisper|transcrib|speech|audio|tts|instruct)/i;
+const VISION_CAPABILITY_ERROR_REGEX =
+  /(not a vlm|vision language model|text-only prompts?|text only prompts?|text-only model|only text(?:-only)? prompts?|does not support (?:image|vision|multimodal)|image input.*not supported|vision input.*not supported|multimodal input.*not supported|unsupported.*image(?:_url)?|invalid.*image(?:_url)?|image_url.*unsupported)/i;
 
 function parseDataUrl(value: string): { mimeType: string; data: string } | null {
   const match = value.match(/^data:([^;,]+)(?:;[^,]+)?,(.+)$/i);
@@ -126,6 +132,62 @@ function buildOpenAiCompatibleMessageContent(message: RuntimeChatMessage) {
   }
 
   return content;
+}
+
+function normalizeRuntimeErrorMessage(error: unknown) {
+  if (typeof error === 'string') {
+    return error.replace(/\s+/g, ' ').trim();
+  }
+
+  if (error instanceof Error) {
+    return error.message.replace(/\s+/g, ' ').trim();
+  }
+
+  return String(error ?? '').replace(/\s+/g, ' ').trim();
+}
+
+export function isVisionCapabilityError(error: unknown): boolean {
+  const normalized = normalizeRuntimeErrorMessage(error);
+  if (!normalized) {
+    return false;
+  }
+
+  return VISION_CAPABILITY_ERROR_REGEX.test(normalized);
+}
+
+export function canUseVisionInputs(activeConfig: ApiConfig): boolean {
+  if (isGeminiConfig(activeConfig)) {
+    return true;
+  }
+
+  const model = activeConfig.model?.trim() || '';
+  if (!model || TEXT_ONLY_MODEL_REGEX.test(model)) {
+    return false;
+  }
+
+  return VISION_MODEL_REGEX.test(model);
+}
+
+function countUserImageInputs(messages: RuntimeChatMessage[]) {
+  return messages.reduce(
+    (count, message) => count + (message.role === 'user' && message.imageUrl ? 1 : 0),
+    0,
+  );
+}
+
+function stripUserImageInputs(messages: RuntimeChatMessage[]): RuntimeChatMessage[] {
+  let changed = false;
+  const strippedMessages = messages.map((message) => {
+    if (message.role !== 'user' || !message.imageUrl) {
+      return message;
+    }
+
+    changed = true;
+    const { imageUrl: _imageUrl, ...rest } = message;
+    return rest;
+  });
+
+  return changed ? strippedMessages : messages;
 }
 
 function normalizeErrorDetail(detail: string, maxLength = 160) {
@@ -827,6 +889,7 @@ export async function generateTextFromMessagesWithConfig(options: {
   try {
     const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
     resolveMs = roundRuntimeDuration(getRuntimeNow() - resolveStartedAt);
+    const resolvedImageCount = countUserImageInputs(resolvedMessages);
 
     if (isGeminiConfig(activeConfig)) {
       const ai = getGeminiClient(apiKey);
@@ -855,7 +918,10 @@ export async function generateTextFromMessagesWithConfig(options: {
       return text;
     }
 
-    return await runWithTimeout(async (signal) => {
+    const runOpenAiRequest = async (
+      requestMessages: RuntimeChatMessage[],
+      signal?: AbortSignal,
+    ) => {
       const requestStartedAt = getRuntimeNow();
       const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -865,7 +931,7 @@ export async function generateTextFromMessagesWithConfig(options: {
         },
         body: JSON.stringify({
           model,
-          messages: resolvedMessages.map((message) => ({
+          messages: requestMessages.map((message) => ({
             role: message.role === 'model' ? 'assistant' : message.role,
             content: buildOpenAiCompatibleMessageContent(message),
           })),
@@ -885,16 +951,75 @@ export async function generateTextFromMessagesWithConfig(options: {
       const text = parseTextResponse(rawResponse);
       const finishedAt = getRuntimeNow();
 
+      return {
+        text,
+        requestStartedAt,
+        headersReceivedAt,
+        finishedAt,
+      };
+    };
+
+    const heuristicStrippedImageInputs =
+      resolvedImageCount > 0 && !canUseVisionInputs(activeConfig);
+    let visionFallbackMode: 'off' | 'heuristic' | 'retry' =
+      heuristicStrippedImageInputs ? 'heuristic' : 'off';
+    let requestMessages = heuristicStrippedImageInputs
+      ? stripUserImageInputs(resolvedMessages)
+      : resolvedMessages;
+
+    try {
+      const result = await runWithTimeout(
+        (signal) => runOpenAiRequest(requestMessages, signal),
+        timeoutMs,
+      );
+
       logRuntimeTrace(trace, 'request completed', {
         resolveMs,
-        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
-        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
-        headerMs: roundRuntimeDuration(headersReceivedAt - requestStartedAt),
-        outputChars: text.length,
+        totalMs: roundRuntimeDuration(result.finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(result.finishedAt - result.requestStartedAt),
+        headerMs: roundRuntimeDuration(result.headersReceivedAt - result.requestStartedAt),
+        outputChars: result.text.length,
+        ...(visionFallbackMode !== 'off' ? { visionFallback: visionFallbackMode } : {}),
+        ...(resolvedImageCount > 0 ? { imageInputCount: resolvedImageCount } : {}),
       });
 
-      return text;
-    }, timeoutMs);
+      return result.text;
+    } catch (error) {
+      const canRetryWithoutImages =
+        resolvedImageCount > 0
+        && visionFallbackMode === 'off'
+        && isVisionCapabilityError(error);
+
+      if (!canRetryWithoutImages) {
+        throw error;
+      }
+
+      logRuntimeTrace(trace, 'retrying without image inputs', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(getRuntimeNow() - trace.startedAt),
+        error: normalizeRuntimeErrorMessage(error),
+        imageInputCount: resolvedImageCount,
+      });
+
+      visionFallbackMode = 'retry';
+      requestMessages = stripUserImageInputs(resolvedMessages);
+      const retryResult = await runWithTimeout(
+        (signal) => runOpenAiRequest(requestMessages, signal),
+        timeoutMs,
+      );
+
+      logRuntimeTrace(trace, 'request completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(retryResult.finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(retryResult.finishedAt - retryResult.requestStartedAt),
+        headerMs: roundRuntimeDuration(retryResult.headersReceivedAt - retryResult.requestStartedAt),
+        outputChars: retryResult.text.length,
+        visionFallback: visionFallbackMode,
+        imageInputCount: resolvedImageCount,
+      });
+
+      return retryResult.text;
+    }
   } catch (error) {
     logRuntimeTrace(trace, 'request failed', {
       resolveMs,
@@ -942,6 +1067,7 @@ export async function streamTextWithConfig(options: {
   try {
     const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
     resolveMs = roundRuntimeDuration(getRuntimeNow() - resolveStartedAt);
+    const resolvedImageCount = countUserImageInputs(resolvedMessages);
 
     if (isGeminiConfig(activeConfig)) {
       const ai = getGeminiClient(apiKey);
@@ -974,108 +1100,162 @@ export async function streamTextWithConfig(options: {
       return;
     }
 
-    const requestStartedAt = getRuntimeNow();
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: resolvedMessages.map(message => ({
-          role: message.role === 'model' ? 'assistant' : message.role,
-          content: buildOpenAiCompatibleMessageContent(message),
-        })),
-        temperature: activeConfig.temperature ?? temperature ?? 0.7,
-        stream: true,
-      }),
-    });
-    const headersReceivedAt = getRuntimeNow();
+    const runOpenAiStream = async (requestMessages: RuntimeChatMessage[]) => {
+      const requestStartedAt = getRuntimeNow();
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: requestMessages.map(message => ({
+            role: message.role === 'model' ? 'assistant' : message.role,
+            content: buildOpenAiCompatibleMessageContent(message),
+          })),
+          temperature: activeConfig.temperature ?? temperature ?? 0.7,
+          stream: true,
+        }),
+      });
+      const headersReceivedAt = getRuntimeNow();
 
-    if (!res.ok) {
-      await throwApiErrorResponse(res);
-    }
-
-    const reader = res.body?.getReader();
-    if (!reader) {
-      throw new Error('Unable to read streaming response.');
-    }
-
-    const decoder = new TextDecoder();
-    let pendingChunk = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        pendingChunk += decoder.decode();
-      } else {
-        pendingChunk += decoder.decode(value, { stream: true });
+      if (!res.ok) {
+        await throwApiErrorResponse(res);
       }
 
-      const events = pendingChunk.split(/\r?\n\r?\n/);
-      pendingChunk = events.pop() || '';
+      const reader = res.body?.getReader();
+      if (!reader) {
+        throw new Error('Unable to read streaming response.');
+      }
 
-      for (const eventBlock of events) {
-        const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
-        const dataLines = lines
-          .filter(line => /^data:\s*/i.test(line))
-          .map(line => line.replace(/^data:\s*/i, ''));
+      const decoder = new TextDecoder();
+      let pendingChunk = '';
 
-        if (dataLines.length === 0) continue;
-
-        const dataStr = dataLines.join('\n');
-        if (dataStr === '[DONE]') continue;
-
-        try {
-          const data = JSON.parse(dataStr);
-          const content = extractTextFromPayload(data);
-          if (content) {
-            forwardChunk(content);
-          }
-        } catch (error) {
-          console.error('Error parsing SSE chunk', error);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          pendingChunk += decoder.decode();
+        } else {
+          pendingChunk += decoder.decode(value, { stream: true });
         }
-      }
 
-      if (done) {
-        break;
-      }
-    }
+        const events = pendingChunk.split(/\r?\n\r?\n/);
+        pendingChunk = events.pop() || '';
 
-    const finalData = pendingChunk.trim();
-    if (finalData) {
-      const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
-      const finalDataLines = finalLines
-        .filter(line => /^data:\s*/i.test(line))
-        .map(line => line.replace(/^data:\s*/i, ''));
+        for (const eventBlock of events) {
+          const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
+          const dataLines = lines
+            .filter(line => /^data:\s*/i.test(line))
+            .map(line => line.replace(/^data:\s*/i, ''));
 
-      if (finalDataLines.length > 0) {
-        const finalDataStr = finalDataLines.join('\n');
-        if (finalDataStr !== '[DONE]') {
+          if (dataLines.length === 0) continue;
+
+          const dataStr = dataLines.join('\n');
+          if (dataStr === '[DONE]') continue;
+
           try {
-            const data = JSON.parse(finalDataStr);
+            const data = JSON.parse(dataStr);
             const content = extractTextFromPayload(data);
             if (content) {
               forwardChunk(content);
             }
           } catch (error) {
-            console.error('Error parsing final SSE chunk', error);
+            console.error('Error parsing SSE chunk', error);
+          }
+        }
+
+        if (done) {
+          break;
+        }
+      }
+
+      const finalData = pendingChunk.trim();
+      if (finalData) {
+        const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
+        const finalDataLines = finalLines
+          .filter(line => /^data:\s*/i.test(line))
+          .map(line => line.replace(/^data:\s*/i, ''));
+
+        if (finalDataLines.length > 0) {
+          const finalDataStr = finalDataLines.join('\n');
+          if (finalDataStr !== '[DONE]') {
+            try {
+              const data = JSON.parse(finalDataStr);
+              const content = extractTextFromPayload(data);
+              if (content) {
+                forwardChunk(content);
+              }
+            } catch (error) {
+              console.error('Error parsing final SSE chunk', error);
+            }
           }
         }
       }
-    }
 
-    const finishedAt = getRuntimeNow();
-    logRuntimeTrace(trace, 'stream completed', {
-      resolveMs,
-      totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
-      requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
-      headerMs: roundRuntimeDuration(headersReceivedAt - requestStartedAt),
-      firstChunkMs,
-      chunkCount,
-      outputChars,
-    });
+      return {
+        requestStartedAt,
+        headersReceivedAt,
+        finishedAt: getRuntimeNow(),
+      };
+    };
+
+    const heuristicStrippedImageInputs =
+      resolvedImageCount > 0 && !canUseVisionInputs(activeConfig);
+    let visionFallbackMode: 'off' | 'heuristic' | 'retry' =
+      heuristicStrippedImageInputs ? 'heuristic' : 'off';
+    let requestMessages = heuristicStrippedImageInputs
+      ? stripUserImageInputs(resolvedMessages)
+      : resolvedMessages;
+
+    try {
+      const result = await runOpenAiStream(requestMessages);
+      logRuntimeTrace(trace, 'stream completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(result.finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(result.finishedAt - result.requestStartedAt),
+        headerMs: roundRuntimeDuration(result.headersReceivedAt - result.requestStartedAt),
+        firstChunkMs,
+        chunkCount,
+        outputChars,
+        ...(visionFallbackMode !== 'off' ? { visionFallback: visionFallbackMode } : {}),
+        ...(resolvedImageCount > 0 ? { imageInputCount: resolvedImageCount } : {}),
+      });
+      return;
+    } catch (error) {
+      const canRetryWithoutImages =
+        resolvedImageCount > 0
+        && visionFallbackMode === 'off'
+        && chunkCount === 0
+        && isVisionCapabilityError(error);
+
+      if (!canRetryWithoutImages) {
+        throw error;
+      }
+
+      logRuntimeTrace(trace, 'retrying without image inputs', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(getRuntimeNow() - trace.startedAt),
+        error: normalizeRuntimeErrorMessage(error),
+        imageInputCount: resolvedImageCount,
+      });
+
+      visionFallbackMode = 'retry';
+      requestMessages = stripUserImageInputs(resolvedMessages);
+      const retryResult = await runOpenAiStream(requestMessages);
+      logRuntimeTrace(trace, 'stream completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(retryResult.finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(retryResult.finishedAt - retryResult.requestStartedAt),
+        headerMs: roundRuntimeDuration(retryResult.headersReceivedAt - retryResult.requestStartedAt),
+        firstChunkMs,
+        chunkCount,
+        outputChars,
+        visionFallback: visionFallbackMode,
+        imageInputCount: resolvedImageCount,
+      });
+      return;
+    }
   } catch (error) {
     logRuntimeTrace(trace, 'stream failed', {
       resolveMs,

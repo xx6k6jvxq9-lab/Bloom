@@ -20,7 +20,7 @@ import type {
   BuildCoupleMessageBoardPromptOptions,
 } from '../../prompts';
 import type { CoupleSpaceRecentImageReference } from '../../prompts/coupleSpace/types';
-import { generateTextFromMessagesWithConfig } from '../../runtimeClient';
+import { canUseVisionInputs, generateTextFromMessagesWithConfig } from '../../runtimeClient';
 
 export type CoupleSpaceSettingsLike = {
   activeConfigId?: string;
@@ -70,14 +70,7 @@ async function generateCoupleSpaceText(options: {
 }
 
 function canUseCoupleSpaceImageInputs(activeConfig: ApiConfig): boolean {
-  if (activeConfig.provider === 'Google Gemini' || !activeConfig.baseUrl?.trim()) {
-    return true;
-  }
-
-  const model = activeConfig.model?.trim().toLowerCase() || '';
-  const provider = activeConfig.provider?.trim().toLowerCase() || '';
-  return /(gpt-4o|gpt-4\.1|gpt-4-turbo|vision|claude-3|gemini|qwen-vl|glm-4v|o1|o3|o4)/i.test(model)
-    || provider.includes('openai');
+  return canUseVisionInputs(activeConfig);
 }
 
 function buildRecentImageReferenceMessage(
