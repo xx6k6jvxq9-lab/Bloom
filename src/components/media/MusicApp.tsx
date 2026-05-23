@@ -47,6 +47,10 @@ import {
 } from "../../features/persistence/persistentAssetService";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
+import {
+  parseNeteaseMediaInput,
+  type NeteasePlaylistBinding,
+} from "../../features/music-netease/neteaseAccount";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
 import { generateTogetherChatReply } from "../../features/music-together/generateTogetherChatReply";
 import { formatTogetherReplyMessages } from "../../features/music-together/formatTogetherChatReply";
@@ -895,25 +899,99 @@ export default function MusicApp({
     setShowCreatePlaylistDialog(false);
   };
 
-  const handleImportNeteasePlaylist = async () => {
-    if (!neteaseUrl.trim()) return;
+  const importNeteasePlaylistById = async (id: string) => {
+    const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
+    if (!response.ok) throw new Error("获取歌单失败");
 
-    // Extract ID from URL or use as ID directly
-    let id = neteaseUrl.trim();
-    const idMatch = neteaseUrl.match(/id=(\d+)/);
-    if (idMatch) {
-      id = idMatch[1];
-    } else if (!/^\d+$/.test(id)) {
-      alert("请输入有效的网易云链接或ID");
-      return;
+    const data = await response.json();
+    if (!data.playlist && !data.result) {
+      throw new Error("歌单解析失败");
     }
 
-    const isSong = neteaseUrl.includes("song");
+    const playlist = data.playlist || data.result;
+    const tracks = playlist.tracks || [];
+
+    const newSongs: Song[] = tracks.map((track: any) => ({
+      id: `netease-${track.id}`,
+      title: track.name,
+      artist:
+        (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
+        "未知艺人",
+      albumArt:
+        (track.al || track.album)?.picUrl ||
+        "https://picsum.photos/seed/netease/300/300",
+      url: `/api/netease/song?id=${track.id}`,
+      duration: Math.floor((track.dt || track.duration || 240000) / 1000),
+    }));
+
+    const newPlaylist: Playlist = {
+      id: `netease-pl-${playlist.id}`,
+      name: playlist.name,
+      cover:
+        playlist.coverImgUrl ||
+        "https://picsum.photos/seed/netease-pl/300/300",
+      songs: newSongs,
+      type: "user",
+    };
+
+    const nextPlaylists = currentMusicData.playlists.some((item) => item.id === newPlaylist.id)
+      ? currentMusicData.playlists.map((item) => item.id === newPlaylist.id ? newPlaylist : item)
+      : [...currentMusicData.playlists, newPlaylist];
+
+    onUpdateMusicData(withSongLibrary({
+      ...currentMusicData,
+      playlists: nextPlaylists,
+      currentSong:
+        newSongs.length > 0 ? newSongs[0] : currentMusicData.currentSong,
+      isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
+      progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
+      queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
+    }, newSongs));
+
+    if (newSongs.length > 0) {
+      setLocalProgress(0);
+      setLocalCurrentTime(0);
+      setActiveTab("player");
+    }
+
+    return {
+      playlist,
+      newSongs,
+      replacedExisting: nextPlaylists.length === currentMusicData.playlists.length,
+    };
+  };
+
+  const handleDirectNeteasePlaylistImport = async (
+    playlistBinding: NeteasePlaylistBinding,
+  ): Promise<boolean> => {
+    if (isImporting) return false;
 
     setIsImporting(true);
     try {
-      if (isSong) {
-        const response = await fetch(`/api/netease/song/detail?id=${id}`);
+      const { playlist, newSongs, replacedExisting } = await importNeteasePlaylistById(playlistBinding.id);
+      alert(`${replacedExisting ? "已更新" : "已导入"}歌单“${playlist.name || "网易云歌单"}”，当前可播放 ${newSongs.length} 首。`);
+      return true;
+    } catch (error) {
+      console.error("Direct NetEase playlist import error:", error);
+      alert("歌单导入失败，请检查歌单链接或稍后再试。");
+      return false;
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportNeteasePlaylist = async () => {
+    if (!neteaseUrl.trim()) return;
+    const parsed = parseNeteaseMediaInput(neteaseUrl);
+    if (!parsed) {
+      alert("请输入有效的网易云歌曲链接，或歌单链接 / 歌单 ID");
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      if (parsed.kind === "song") {
+        const response = await fetch(`/api/netease/song/detail?id=${parsed.song.id}`);
         if (!response.ok) throw new Error("获取歌曲失败");
 
         const data = await response.json();
@@ -955,59 +1033,11 @@ export default function MusicApp({
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
       } else {
-        const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
-        if (!response.ok) throw new Error("获取歌单失败");
-
-        const data = await response.json();
-        if (!data.playlist && !data.result) {
-          throw new Error("歌单解析失败");
-        }
-
-        const playlist = data.playlist || data.result;
-        const tracks = playlist.tracks || [];
-
-        const newSongs: Song[] = tracks.map((track: any) => ({
-          id: `netease-${track.id}`,
-          title: track.name,
-          artist:
-            (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
-            "未知艺人",
-          albumArt:
-            (track.al || track.album)?.picUrl ||
-            "https://picsum.photos/seed/netease/300/300",
-            url: `/api/netease/song?id=${track.id}`,
-          duration: Math.floor((track.dt || track.duration || 240000) / 1000),
-        }));
-
-        const newPlaylist: Playlist = {
-          id: `netease-pl-${playlist.id}`,
-          name: playlist.name,
-          cover:
-            playlist.coverImgUrl ||
-            "https://picsum.photos/seed/netease-pl/300/300",
-          songs: newSongs,
-          type: "user",
-        };
-
-        onUpdateMusicData(withSongLibrary({
-          ...currentMusicData,
-          playlists: [...currentMusicData.playlists, newPlaylist],
-          currentSong:
-            newSongs.length > 0 ? newSongs[0] : currentMusicData.currentSong,
-          isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
-          progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
-          queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
-        }, newSongs));
-
-        if (newSongs.length > 0) {
-          setLocalProgress(0);
-          setLocalCurrentTime(0);
-          setActiveTab("player");
-        }
+        const { newSongs, replacedExisting } = await importNeteasePlaylistById(parsed.playlist.id);
 
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
-        alert(`歌单导入完成，当前可播放 ${newSongs.length} 首。`);
+        alert(`${replacedExisting ? "歌单已更新" : "歌单导入完成"}，当前可播放 ${newSongs.length} 首。`);
       }
     } catch (error) {
       console.error("Import error:", error);
@@ -2082,6 +2112,8 @@ export default function MusicApp({
                 neteaseAccount,
               })
             }
+            onImportPlaylist={handleDirectNeteasePlaylistImport}
+            isImportingPlaylist={isImporting}
             onSyncPlaylists={handleSyncNeteasePlaylists}
             isSyncing={isSyncingNeteasePlaylists}
           />
@@ -2848,7 +2880,7 @@ export default function MusicApp({
                       type="text"
                       value={neteaseUrl}
                       onChange={(e) => setNeteaseUrl(e.target.value)}
-                      placeholder="歌曲/歌单链接或ID"
+                      placeholder="歌曲链接，或歌单链接 / 歌单 ID"
                       className="w-full bg-zinc-100 rounded-xl px-4 py-3 font-bold text-zinc-800 outline-none focus:ring-2 focus:ring-pink-500/20"
                       disabled={isImporting}
                     />
