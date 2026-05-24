@@ -17,6 +17,7 @@ import { AudioMessageCard } from "../chat-session/AudioMessageCard";
 import { useAudioMessageRecorder } from "../chat-session/useAudioMessageRecorder";
 import { ExpandedInputSheet } from "../chat-session/ExpandedInputSheet";
 import { BASIC_CHAT_EXPRESSIONS } from "../../services/chat/basicExpressions";
+import { resolveMusicTogetherBackground } from "./resolveMusicTogetherBackground";
 
 function BubbleThemeAnchors() {
   return (
@@ -121,12 +122,24 @@ export function TogetherChatPanel({
   const [stickerTab, setStickerTab] = React.useState<"basic" | "custom">("basic");
   const [isVoiceMode, setIsVoiceMode] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const { resolvedUrl: resolvedGlobalChatBackgroundUrl } = useResolvedPersistentValue(
+    visualSettings?.chat?.background,
+  );
+  const { resolvedUrl: resolvedMusicTogetherBackgroundUrl } = useResolvedPersistentValue(
+    visualSettings?.chat?.musicTogetherBackground,
+  );
   const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(
     activeTogetherCharacter.bubbleImage,
   );
   const { resolvedUrl: resolvedUserBubbleImageUrl } = useResolvedPersistentValue(
     activeTogetherCharacter.userBubbleImage,
   );
+  const activeBackground = resolveMusicTogetherBackground({
+    musicTogetherBackground: visualSettings?.chat?.musicTogetherBackground,
+    resolvedMusicTogetherBackgroundUrl,
+    globalBackground: visualSettings?.chat?.background,
+    resolvedGlobalBackgroundUrl: resolvedGlobalChatBackgroundUrl,
+  });
   const directBubbleThemeCss = buildScopedBubbleThemeCss(
     visualSettings?.chat?.bubbleStyleCss,
     ".chat-bubble-theme-scope",
@@ -383,6 +396,11 @@ export function TogetherChatPanel({
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       className="chat-bubble-theme-scope absolute inset-0 z-[200] flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50"
+      style={{
+        backgroundImage: activeBackground ? `url(${activeBackground})` : "none",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
     >
       <style>{directBubbleThemeCss}</style>
       <style>{directModelBubbleThemeCss}</style>

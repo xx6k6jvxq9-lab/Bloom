@@ -118,6 +118,7 @@ export type NavBarConfig = {
 
 export type ChatCustomization = {
   background?: string;
+  musicTogetherBackground?: string;
   avatarSize: number;
   avatarBorderRadius: number;
   avatarBorderColor: string;

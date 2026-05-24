@@ -63,6 +63,7 @@ export function hydrateVisualSettings(
     },
     chat: {
       background: source?.chat?.background || '',
+      musicTogetherBackground: source?.chat?.musicTogetherBackground || '',
       avatarSize: source?.chat?.avatarSize ?? 40,
       avatarBorderRadius: source?.chat?.avatarBorderRadius ?? 20,
       avatarBorderColor: source?.chat?.avatarBorderColor || '#e4e4e7',

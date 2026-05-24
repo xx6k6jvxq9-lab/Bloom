@@ -68,6 +68,7 @@ export function createDefaultAppData(): AppData {
       },
       chat: {
         background: '',
+        musicTogetherBackground: '',
         avatarSize: 40,
         avatarBorderRadius: 20,
         avatarBorderColor: '#e4e4e7',

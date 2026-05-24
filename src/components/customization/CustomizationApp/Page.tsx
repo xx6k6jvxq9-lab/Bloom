@@ -60,6 +60,7 @@ import {
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 import { AvatarFrame } from '../../chat/AvatarFrame';
+import { resolveMusicTogetherBackground } from '../../../features/music-together/resolveMusicTogetherBackground';
 import {
   createDesktopWidgetFromType,
   getDesktopWidgetStyleOptions,
@@ -2311,6 +2312,13 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
   const dynamicsBackgroundMode = settings.dynamics?.backgroundMode ?? 'fullscreen';
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
+  const { resolvedUrl: resolvedMusicTogetherBackgroundUrl } = useResolvedPersistentValue(settings.chat?.musicTogetherBackground || '');
+  const activeMusicTogetherBackground = resolveMusicTogetherBackground({
+    musicTogetherBackground: settings.chat?.musicTogetherBackground,
+    resolvedMusicTogetherBackgroundUrl,
+    globalBackground: settings.chat?.background,
+    resolvedGlobalBackgroundUrl: resolvedChatBackgroundUrl,
+  });
   const { resolvedUrl: resolvedSelectedCharacterAvatarUrl } = useResolvedPersistentValue(selectedCharacter?.avatar || '');
   const { resolvedUrl: resolvedSelectedUserAvatarUrl } = useResolvedPersistentValue(appData?.userProfile?.avatar || '');
   const previewAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(settings.chat?.avatarFrameCss, '.avatar-frame-preview-theme');
@@ -2837,20 +2845,56 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
 
       {subTab === 'background' && (
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
-          <h3 className="text-sm font-bold text-zinc-800">全局聊天壁纸</h3>
-          <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
-            {resolvedChatBackgroundUrl ? (
-              <img src={resolvedChatBackgroundUrl} className="w-full h-full object-cover" alt="Wallpaper" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-zinc-400">无壁纸</div>
-            )}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-zinc-800">全局聊天壁纸</h3>
+            <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
+              {resolvedChatBackgroundUrl ? (
+                <img src={resolvedChatBackgroundUrl} className="w-full h-full object-cover" alt="Wallpaper" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-zinc-400">无壁纸</div>
+              )}
+            </div>
+            <PersistentImageUploadControl 
+              label="壁纸图片" 
+              value={settings.chat.background || ''} 
+              onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, background: val } })} 
+            />
+            <p className="text-xs text-zinc-400 text-center">设置所有聊天界面的默认背景壁纸。如果角色设置了专属壁纸，将优先显示专属壁纸。</p>
           </div>
-          <PersistentImageUploadControl 
-            label="壁纸图片" 
-            value={settings.chat.background || ''} 
-            onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, background: val } })} 
-          />
-          <p className="text-xs text-zinc-400 text-center">设置所有聊天界面的默认背景壁纸。如果角色设置了专属壁纸，将优先显示专属壁纸。</p>
+
+          <div className="space-y-4 border-t border-zinc-100 pt-4">
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-zinc-800">一起听聊天壁纸</h4>
+              <p className="text-xs leading-5 text-zinc-500">
+                只作用在“一起听聊天”界面；留空时会跟随上面的全局聊天壁纸。
+              </p>
+            </div>
+            <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
+              {activeMusicTogetherBackground ? (
+                <img src={activeMusicTogetherBackground} className="w-full h-full object-cover" alt="Music together wallpaper" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-zinc-400">
+                  未设置壁纸
+                </div>
+              )}
+            </div>
+            <PersistentImageUploadControl
+              label="一起听壁纸图片"
+              value={settings.chat.musicTogetherBackground || ''}
+              onChange={(val) => setSettings({
+                ...settings,
+                chat: {
+                  ...settings.chat,
+                  musicTogetherBackground: val,
+                },
+              })}
+            />
+            <p className="text-xs text-zinc-400 text-center">
+              {settings.chat.musicTogetherBackground?.trim()
+                ? '现在只会改动一起听聊天背景，不会影响普通单聊。'
+                : '当前未单独设置时，会直接沿用全局聊天壁纸。'}
+            </p>
+          </div>
           
           <div className="space-y-2 pt-2 border-t border-zinc-100">
             <label className="text-xs font-bold text-zinc-500 flex justify-between">
