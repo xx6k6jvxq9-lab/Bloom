@@ -1,3 +1,4 @@
+import { Buffer } from "buffer";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
 import {
@@ -30,6 +31,8 @@ import {
   Song,
   Playlist,
   MusicData,
+  MusicPlayerStylePreset,
+  MusicPlayerShapePreset,
   Character,
   ChatMessage,
   ChatHistory,
@@ -59,6 +62,329 @@ import { TogetherChatPanel } from "../../features/music-together/TogetherChatPan
 import { buildMusicTogetherWritebackPlan } from "../../features/music-together/buildMusicTogetherWritebackPlan";
 import { persistMusicTogetherEvidence } from "../../features/music-together/persistMusicTogetherEvidence";
 import { resolveUserAvatarForScene } from "../../services/user-avatar/userAvatarState";
+import {
+  hasTimedLyricLines,
+  normalizeLyricText,
+  parseLyricText,
+  pickPrimaryLyricText,
+  type ParsedLyricLine,
+} from "../../features/music/localLyrics";
+
+const LOCAL_MUSIC_PLACEHOLDER_ART = "https://picsum.photos/seed/music_local/300/300";
+const LOCAL_MUSIC_ARTIST_LABEL = "本地音乐";
+
+type PlayerStyleOption = {
+  id: MusicPlayerStylePreset;
+  name: string;
+  chip: string;
+  badge: string;
+  description: string;
+  previewClassName: string;
+};
+
+type PlayerShapeOption = {
+  id: MusicPlayerShapePreset;
+  name: string;
+  chip: string;
+  description: string;
+};
+
+const PLAYER_STYLE_OPTIONS: PlayerStyleOption[] = [
+  {
+    id: "ios-air",
+    name: "iOS 玻璃",
+    chip: "默认",
+    badge: "AIR",
+    description: "轻磨砂、留白更多，像系统级 Now Playing。",
+    previewClassName: "bg-[linear-gradient(140deg,#f4f8fc_0%,#dce7f0_48%,#bccedc_100%)]",
+  },
+  {
+    id: "netease-film",
+    name: "网易云胶片",
+    chip: "情绪",
+    badge: "FILM",
+    description: "更像纵向胶片封面，底部信息更有情绪感。",
+    previewClassName: "bg-[linear-gradient(160deg,#26161b_0%,#5d2635_48%,#f06b8f_100%)]",
+  },
+  {
+    id: "aurora-stream",
+    name: "流媒体极光",
+    chip: "极光",
+    badge: "AURORA",
+    description: "封面光晕更明显，整体更像主流流媒体播放器。",
+    previewClassName: "bg-[linear-gradient(145deg,#0d1720_0%,#0f4f4a_50%,#7af4c2_100%)]",
+  },
+  {
+    id: "magazine-poster",
+    name: "杂志海报",
+    chip: "海报",
+    badge: "POSTER",
+    description: "把歌名做得更醒目，封面更像编辑页海报。",
+    previewClassName: "bg-[linear-gradient(145deg,#f8f4ef_0%,#e8d7c4_42%,#b58c64_100%)]",
+  },
+];
+
+const PLAYER_SHAPE_OPTIONS: PlayerShapeOption[] = [
+  {
+    id: "rounded-square",
+    name: "圆角方形",
+    chip: "经典",
+    description: "最像主流音乐 App 的大封面卡片，稳妥、通用。",
+  },
+  {
+    id: "circle",
+    name: "圆形黑胶",
+    chip: "唱片",
+    description: "更拟物，像黑胶唱片或复古播放器的舞台感。",
+  },
+  {
+    id: "poster",
+    name: "竖版海报",
+    chip: "海报",
+    description: "更像胶片封面、歌词海报或编辑页竖版视觉。",
+  },
+];
+
+const PLAYER_STYLE_MARKET_NOTES: Record<MusicPlayerStylePreset, {
+  inspiration: string;
+  detail: string;
+}> = {
+  "ios-air": {
+    inspiration: "参考 Apple Music 那种系统级玻璃 Now Playing。",
+    detail: "适合做大封面、歌词页和清爽留白，圆角方形最像主流系统播放器。",
+  },
+  "netease-film": {
+    inspiration: "参考网易云的情绪氛围，再叠一点 QQ 音乐的歌词海报感。",
+    detail: "更适合做竖版胶片、情绪化底色和更重的氛围层。",
+  },
+  "aurora-stream": {
+    inspiration: "参考 YouTube Music / Spotify 一类的大面积背景光晕。",
+    detail: "更适合沉浸背景、发光封面和偏流媒体的大场景播放器。",
+  },
+  "magazine-poster": {
+    inspiration: "参考 QQ 音乐歌词海报、酷狗主题换肤里的竖版海报感。",
+    detail: "更适合把标题做得更像编辑页海报，竖版海报形状会最强。",
+  },
+};
+
+type NeteaseLyricResponse = {
+  lrc?: {
+    lyric?: string;
+  };
+  tlyric?: {
+    lyric?: string;
+  };
+};
+
+type NeteaseSearchTrack = {
+  id: number | string;
+  name?: string;
+  ar?: Array<{ name?: string }>;
+  artists?: Array<{ name?: string }>;
+};
+
+type NeteaseSearchResponse = {
+  result?: {
+    songs?: NeteaseSearchTrack[];
+  };
+};
+
+function stripFileExtension(fileName: string): string {
+  return fileName.replace(/\.[^/.]+$/, "").trim();
+}
+
+function inferSongIdentityFromFileName(fileName: string) {
+  const baseName = stripFileExtension(fileName);
+  const parts = baseName
+    .split(/\s*[-–—｜|/]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return {
+      artist: parts[0],
+      title: parts.slice(1).join(" - "),
+    };
+  }
+
+  return {
+    artist: LOCAL_MUSIC_ARTIST_LABEL,
+    title: baseName,
+  };
+}
+
+function isAudioUploadFile(file: File): boolean {
+  return file.type.startsWith("audio/") || /\.(?:mp3|wav|flac|m4a|aac|ogg|oga|opus|webm)$/i.test(file.name);
+}
+
+function isLyricUploadFile(file: File): boolean {
+  return /\.(?:lrc|txt)$/i.test(file.name);
+}
+
+function pickSidecarLyricFile(files: File[], audioFile: File): File | undefined {
+  const audioBaseName = stripFileExtension(audioFile.name).toLowerCase();
+
+  return files.find((file) => {
+    if (!isLyricUploadFile(file)) {
+      return false;
+    }
+
+    return stripFileExtension(file.name).toLowerCase() === audioBaseName;
+  }) || files.find((file) => isLyricUploadFile(file));
+}
+
+function isGenericLocalArtist(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return !normalized || normalized === LOCAL_MUSIC_ARTIST_LABEL.toLowerCase() || normalized === "local music";
+}
+
+function ensureMusicMetadataBrowserGlobals() {
+  const globalHost = globalThis as typeof globalThis & {
+    Buffer?: typeof Buffer;
+  };
+
+  if (!globalHost.Buffer) {
+    globalHost.Buffer = Buffer;
+  }
+}
+
+function buildSongLyricQueries(song: Song): string[] {
+  const queries: string[] = [];
+  const pushQuery = (value: string | null | undefined) => {
+    const normalized = value?.replace(/\s+/g, " ").trim();
+    if (!normalized || queries.includes(normalized)) {
+      return;
+    }
+    queries.push(normalized);
+  };
+
+  const title = song.title?.trim() || "";
+  const artist = song.artist?.trim() || "";
+
+  if (title && artist && !isGenericLocalArtist(artist)) {
+    pushQuery(`${title} ${artist}`);
+    pushQuery(`${artist} ${title}`);
+  }
+
+  if (title) {
+    pushQuery(title);
+    pushQuery(title.replace(/\s*[-–—｜|/]\s*/g, " "));
+  }
+
+  return queries;
+}
+
+function mergeLyricTranslations(
+  lyricLines: ParsedLyricLine[],
+  translationLines: ParsedLyricLine[],
+): ParsedLyricLine[] {
+  if (
+    lyricLines.length === 0
+    || translationLines.length === 0
+    || !hasTimedLyricLines(lyricLines)
+    || !hasTimedLyricLines(translationLines)
+  ) {
+    return lyricLines;
+  }
+
+  return lyricLines.map((line) => {
+    if (line.time === null) {
+      return line;
+    }
+
+    const translationMatch = translationLines.find((translation) => (
+      translation.time !== null
+      && Math.abs(translation.time - line.time) < 0.5
+      && translation.text.trim()
+      && translation.text !== line.text
+    ));
+
+    return translationMatch
+      ? { ...line, translation: translationMatch.text.trim() }
+      : line;
+  });
+}
+
+async function fetchNeteaseLyricsById(neteaseId: string): Promise<ParsedLyricLine[]> {
+  const response = await fetch(`/api/netease/lyric?id=${encodeURIComponent(neteaseId)}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch lyrics");
+  }
+
+  const data = await response.json() as NeteaseLyricResponse;
+  const primaryLyrics = parseLyricText(data.lrc?.lyric);
+  const translationLyrics = parseLyricText(data.tlyric?.lyric);
+
+  return mergeLyricTranslations(primaryLyrics, translationLyrics);
+}
+
+async function searchNeteaseLyricsForSong(song: Song): Promise<ParsedLyricLine[]> {
+  const queries = buildSongLyricQueries(song);
+
+  for (const query of queries) {
+    const response = await fetch(
+      `/api/netease/search?keywords=${encodeURIComponent(query)}&limit=5`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      continue;
+    }
+
+    const data = await response.json() as NeteaseSearchResponse;
+    const candidates = (data.result?.songs || []).slice(0, 3);
+
+    for (const candidate of candidates) {
+      if (!candidate?.id) {
+        continue;
+      }
+
+      const candidateLyrics = await fetchNeteaseLyricsById(String(candidate.id));
+      if (candidateLyrics.length > 0) {
+        return candidateLyrics;
+      }
+    }
+  }
+
+  return [];
+}
+
+async function readUploadedSongMetadata(file: File): Promise<Pick<Song, "title" | "artist" | "duration" | "lyricsText">> {
+  const inferredIdentity = inferSongIdentityFromFileName(file.name);
+
+  try {
+    ensureMusicMetadataBrowserGlobals();
+    const { parseBlob } = await import("music-metadata-browser");
+    const metadata = await parseBlob(file);
+
+    const result: Pick<Song, "title" | "artist" | "duration" | "lyricsText"> = {
+      title: metadata.common.title?.trim() || inferredIdentity.title,
+      artist: metadata.common.artist?.trim() || "本地音乐",
+      duration:
+        typeof metadata.format.duration === "number" && Number.isFinite(metadata.format.duration)
+          ? Math.max(0, Math.round(metadata.format.duration))
+          : 0,
+      lyricsText: pickPrimaryLyricText(metadata.common.lyrics),
+    };
+    result.artist = metadata.common.artist?.trim() || inferredIdentity.artist;
+    return result;
+  } catch (error) {
+    console.warn("Failed to read uploaded song metadata:", error);
+    const fallbackResult: Pick<Song, "title" | "artist" | "duration" | "lyricsText"> = {
+      title: stripFileExtension(file.name),
+      artist: "本地音乐",
+      duration: 0,
+      lyricsText: undefined,
+    };
+    fallbackResult.title = inferredIdentity.title;
+    fallbackResult.artist = inferredIdentity.artist;
+    return fallbackResult;
+  }
+}
 
 function ResolvedMusicAvatar({
   value,
@@ -198,8 +524,12 @@ export default function MusicApp({
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(
     null,
   );
-  const [lyrics, setLyrics] = useState<{ time: number; text: string; translation?: string }[]>([]);
+  const [lyrics, setLyrics] = useState<ParsedLyricLine[]>([]);
+  const [isResolvingLyrics, setIsResolvingLyrics] = useState(false);
+  const [lyricStatusText, setLyricStatusText] = useState("暂无歌词");
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isPlayerStyleSectionExpanded, setIsPlayerStyleSectionExpanded] = useState(true);
+  const [expandedPlayerStyleCardId, setExpandedPlayerStyleCardId] = useState<MusicPlayerStylePreset | null>("ios-air");
   const [showCreatePlaylistDialog, setShowCreatePlaylistDialog] =
     useState(false);
   const [showAddMusicDialog, setShowAddMusicDialog] = useState(false);
@@ -224,6 +554,8 @@ export default function MusicApp({
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
   const onPatchCharacterRef = useRef(onPatchCharacter);
+  const lyricCacheRef = useRef(new Map<string, ParsedLyricLine[]>());
+  const lyricStatusCacheRef = useRef(new Map<string, string>());
   const neteaseFallbackAttemptedRef = useRef<string | null>(null);
   const prefersDirectGesturePlaybackRef = useRef(false);
   const gesturePrimedSongIdRef = useRef<string | null>(null);
@@ -374,6 +706,14 @@ export default function MusicApp({
     queue: defaultSongs,
     collectedSongs: [],
     songLibrary: defaultSongs,
+    playerStylePreset: "ios-air",
+    playerShapePreset: "rounded-square",
+    playerShapeByStyle: {
+      "ios-air": "rounded-square",
+      "netease-film": "poster",
+      "aurora-stream": "circle",
+      "magazine-poster": "poster",
+    },
   }), [defaultSongs, safeCharacter.avatar, safeCharacter.id, safeCharacter.name]);
 
   const currentMusicData = useMemo<MusicData>(() => {
@@ -407,6 +747,97 @@ export default function MusicApp({
       songLibrary: normalizedSongLibrary,
     };
   }, [defaultMusicData, musicData]);
+  const currentPlayerStylePreset = currentMusicData.playerStylePreset || "ios-air";
+  const currentPlayerShapePreset = currentMusicData.playerShapeByStyle?.[currentPlayerStylePreset]
+    || currentMusicData.playerShapePreset
+    || (currentPlayerStylePreset === "aurora-stream"
+      ? "circle"
+      : currentPlayerStylePreset === "netease-film" || currentPlayerStylePreset === "magazine-poster"
+        ? "poster"
+        : "rounded-square");
+  const activePlayerStyleOption = useMemo(
+    () => PLAYER_STYLE_OPTIONS.find((option) => option.id === currentPlayerStylePreset) || PLAYER_STYLE_OPTIONS[0],
+    [currentPlayerStylePreset],
+  );
+  const activePlayerShapeOption = useMemo(
+    () => PLAYER_SHAPE_OPTIONS.find((option) => option.id === currentPlayerShapePreset) || PLAYER_SHAPE_OPTIONS[0],
+    [currentPlayerShapePreset],
+  );
+  const setPlayerStylePreset = (preset: MusicPlayerStylePreset) => {
+    if (preset === currentPlayerStylePreset) {
+      return;
+    }
+
+    onUpdateMusicData({
+      ...currentMusicData,
+      playerStylePreset: preset,
+    });
+  };
+  const setPlayerShapePreset = (preset: MusicPlayerShapePreset) => {
+    if (preset === currentPlayerShapePreset) {
+      return;
+    }
+
+    onUpdateMusicData({
+      ...currentMusicData,
+      playerShapeByStyle: {
+        ...(currentMusicData.playerShapeByStyle || {}),
+        [currentPlayerStylePreset]: preset,
+      },
+    });
+  };
+  const togglePlayerStyleCard = (preset: MusicPlayerStylePreset) => {
+    if (!isPlayerStyleSectionExpanded) {
+      setIsPlayerStyleSectionExpanded(true);
+    }
+
+    setExpandedPlayerStyleCardId((current) => current === preset ? null : preset);
+    if (preset !== currentPlayerStylePreset) {
+      onUpdateMusicData({
+        ...currentMusicData,
+        playerStylePreset: preset,
+      });
+    }
+  };
+  useEffect(() => {
+    if (!isPlayerStyleSectionExpanded) {
+      return;
+    }
+
+    setExpandedPlayerStyleCardId((current) => current ?? currentPlayerStylePreset);
+  }, [currentPlayerStylePreset, isPlayerStyleSectionExpanded]);
+  const playerStyleSurface = useMemo(() => {
+    switch (currentPlayerStylePreset) {
+      case "netease-film":
+        return {
+          backdropHaloClass: "bg-[radial-gradient(circle_at_top,rgba(255,246,248,0.98),rgba(248,226,232,0.92)_40%,rgba(232,214,220,0.8)_100%)]",
+          backdropWashClass: "bg-[linear-gradient(180deg,rgba(252,248,249,0.84)_0%,rgba(246,238,241,0.94)_34%,rgba(234,228,232,0.98)_100%)]",
+          titleClassName: "text-zinc-950",
+          artistClassName: "text-[#dd4b73]",
+        };
+      case "aurora-stream":
+        return {
+          backdropHaloClass: "bg-[radial-gradient(circle_at_top,rgba(236,255,249,0.96),rgba(201,242,233,0.88)_38%,rgba(183,224,221,0.78)_100%)]",
+          backdropWashClass: "bg-[linear-gradient(180deg,rgba(243,252,250,0.82)_0%,rgba(229,245,241,0.92)_34%,rgba(220,237,236,0.98)_100%)]",
+          titleClassName: "text-[#0f1720]",
+          artistClassName: "text-[#0c8b74]",
+        };
+      case "magazine-poster":
+        return {
+          backdropHaloClass: "bg-[radial-gradient(circle_at_top,rgba(255,250,245,0.96),rgba(244,229,211,0.9)_40%,rgba(225,212,199,0.82)_100%)]",
+          backdropWashClass: "bg-[linear-gradient(180deg,rgba(253,250,246,0.84)_0%,rgba(244,236,226,0.92)_34%,rgba(234,229,223,0.98)_100%)]",
+          titleClassName: "text-[#18130f]",
+          artistClassName: "text-[#a06838]",
+        };
+      default:
+        return {
+          backdropHaloClass: "bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.96),rgba(230,238,246,0.92)_42%,rgba(203,216,229,0.78)_100%)]",
+          backdropWashClass: "bg-[linear-gradient(180deg,rgba(247,250,253,0.82)_0%,rgba(236,243,248,0.9)_30%,rgba(228,236,244,0.96)_100%)]",
+          titleClassName: "text-zinc-900",
+          artistClassName: "text-pink-500",
+        };
+    }
+  }, [currentPlayerStylePreset]);
   const activeTogetherCharacter = useMemo(
     () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
     [allCharacters, safeCharacter, currentMusicData.togetherWith],
@@ -571,90 +1002,125 @@ export default function MusicApp({
 
   // Fetch lyrics
   useEffect(() => {
-    const fetchLyrics = async () => {
-      const currentSong = currentMusicData.currentSong;
-      if (!currentSong) return;
-      const songId = currentSong.id;
+    let cancelled = false;
 
-      // Only fetch for NetEase songs
-      if (!songId.startsWith("netease-")) {
-        setLyrics([]);
-        return;
-      }
+    const commitLyricsState = (
+      songId: string,
+      nextLyrics: ParsedLyricLine[],
+      statusText = "",
+    ) => {
+      lyricCacheRef.current.set(songId, nextLyrics);
+      lyricStatusCacheRef.current.set(songId, statusText);
 
-      try {
-        const realId = songId.replace("netease-", "");
-        const response = await fetch(`/api/netease/lyric?id=${realId}`);
-        if (!response.ok) throw new Error("Failed to fetch lyrics");
-        const data = await response.json();
-
-        if (data.lrc && data.lrc.lyric) {
-          const lrcStr = data.lrc.lyric;
-          const tlyricStr = data.tlyric?.lyric || "";
-          
-          const parseLines = (str: string) => {
-            return str.split("\n").map((line: string) => {
-              const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/);
-              if (match) {
-                const minutes = parseInt(match[1], 10);
-                const seconds = parseInt(match[2], 10);
-                const milliseconds = parseInt(match[3], 10);
-                const time =
-                  minutes * 60 +
-                  seconds +
-                  milliseconds / (match[3].length === 2 ? 100 : 1000);
-                const text = match[4].trim();
-                return { time, text };
-              }
-              return null;
-            }).filter((l: any) => l !== null && l.text !== "");
-          };
-
-          const parsedLyrics = parseLines(lrcStr);
-          const parsedTlyrics = parseLines(tlyricStr);
-
-          // Merge translations
-          const mergedLyrics = parsedLyrics.map(lyric => {
-            // Find closest translation within 0.5s
-            const translation = parsedTlyrics.find(t => Math.abs(t!.time - lyric!.time) < 0.5);
-            return {
-              ...lyric,
-              translation: translation ? translation.text : undefined
-            };
-          }) as { time: number; text: string; translation?: string }[];
-
-          setLyrics(mergedLyrics);
-        } else {
-          setLyrics([]);
-        }
-      } catch (error) {
-        console.error("Error fetching lyrics:", error);
-        setLyrics([]);
+      if (!cancelled) {
+        setLyrics(nextLyrics);
+        setLyricStatusText(statusText);
       }
     };
 
-    fetchLyrics();
+    const fetchLyrics = async () => {
+      const currentSong = currentMusicData.currentSong;
+      if (!currentSong) {
+        if (!cancelled) {
+          setLyrics([]);
+          setIsResolvingLyrics(false);
+          setLyricStatusText("暂无歌词");
+        }
+        return;
+      }
+
+      const songId = currentSong.id;
+      const localLyrics = parseLyricText(currentSong.lyricsText);
+
+      if (localLyrics.length > 0) {
+        commitLyricsState(songId, localLyrics, "");
+        if (!cancelled) {
+          setIsResolvingLyrics(false);
+        }
+        return;
+      }
+
+      if (lyricCacheRef.current.has(songId)) {
+        if (!cancelled) {
+          setLyrics(lyricCacheRef.current.get(songId) || []);
+          setLyricStatusText(lyricStatusCacheRef.current.get(songId) || "暂无歌词");
+          setIsResolvingLyrics(false);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setLyrics([]);
+        setIsResolvingLyrics(true);
+        setLyricStatusText(songId.startsWith("netease-") ? "正在加载歌词..." : "正在匹配歌词...");
+      }
+
+      try {
+        const resolvedLyrics = songId.startsWith("netease-")
+          ? await fetchNeteaseLyricsById(songId.replace("netease-", ""))
+          : await searchNeteaseLyricsForSong(currentSong);
+
+        const emptyStatusText = songId.startsWith("netease-")
+          ? "这首歌暂时没有可用歌词。"
+          : "文件里没有内嵌歌词，也没匹配到在线歌词。可以重新上传同名 .lrc / .txt。";
+
+        commitLyricsState(
+          songId,
+          resolvedLyrics,
+          resolvedLyrics.length > 0 ? "" : emptyStatusText,
+        );
+      } catch (error) {
+        console.error("Error resolving lyrics:", error);
+        commitLyricsState(
+          songId,
+          [],
+          songId.startsWith("netease-")
+            ? "歌词加载失败，请稍后重试。"
+            : "本地歌词读取失败，或没有匹配到在线歌词。",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsResolvingLyrics(false);
+        }
+      }
+    };
+
+    void fetchLyrics();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentMusicData.currentSong]);
 
+  const lyricsAreTimed = useMemo(() => hasTimedLyricLines(lyrics), [lyrics]);
   const activeLyricIndex = useMemo(() => {
+    if (!lyricsAreTimed) {
+      return -1;
+    }
+
     return lyrics.findIndex((line, index) => {
-      return localCurrentTime >= line.time && (index === lyrics.length - 1 || localCurrentTime < lyrics[index + 1].time);
+      if (line.time === null) {
+        return false;
+      }
+
+      const nextTimedLine = lyrics.slice(index + 1).find((candidate) => candidate.time !== null);
+      return localCurrentTime >= line.time && (!nextTimedLine || localCurrentTime < (nextTimedLine.time || 0));
     });
-  }, [lyrics, localCurrentTime]);
+  }, [lyrics, lyricsAreTimed, localCurrentTime]);
   const currentLyricLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex] : null;
-  const nearbyLyricLines = activeLyricIndex >= 0
+  const nearbyLyricLines = lyricsAreTimed && activeLyricIndex >= 0
     ? lyrics.slice(Math.max(0, activeLyricIndex - 1), activeLyricIndex + 2)
     : [];
 
   // Scroll active lyric into view
   useEffect(() => {
-    if (showLyrics && activeLyricIndex !== -1) {
+    if (showLyrics && lyricsAreTimed && activeLyricIndex !== -1) {
       const activeLyric = document.getElementById("active-lyric");
       if (activeLyric) {
         activeLyric.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
-  }, [activeLyricIndex, showLyrics]);
+  }, [activeLyricIndex, lyricsAreTimed, showLyrics]);
 
   // Sync song source and play state
   useEffect(() => {
@@ -1236,33 +1702,222 @@ export default function MusicApp({
     return formatTime(diff);
   };
 
+  const controlButtonSurfaceClass = "flex items-center justify-center rounded-full border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(244,247,251,0.56))] shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.76)] backdrop-blur-xl transition-all active:scale-95";
+  const chromeControlButtonClass = `${controlButtonSurfaceClass} h-11 w-11 text-zinc-500/80`;
+  const transportControlButtonClass = `${controlButtonSurfaceClass} h-11 w-11 text-zinc-700/85`;
+  const primaryTransportControlButtonClass = `${controlButtonSurfaceClass} h-11 w-11 text-zinc-800/85 disabled:cursor-not-allowed disabled:opacity-45`;
+  const glassPanelClass = "rounded-[30px] border border-white/72 bg-white/72 shadow-[0_20px_48px_rgba(15,23,42,0.09)] backdrop-blur-2xl";
+  const playerTitleText = currentMusicData.currentSong?.title || "还没有歌曲";
+  const playerArtistText = currentMusicData.currentSong?.artist || "去“我的”里添加本地音乐、音频链接或网易云歌曲";
+  const isLocalPlaceholderArtist = currentMusicData.currentSong?.artist?.trim() === LOCAL_MUSIC_ARTIST_LABEL;
+  const secondaryArtistText = isLocalPlaceholderArtist ? "" : playerArtistText;
+  const isCircleArtworkShape = currentPlayerShapePreset === "circle";
+  const isPosterArtworkShape = currentPlayerShapePreset === "poster";
+  const artworkFrameClass = isPosterArtworkShape
+    ? "relative aspect-[4/5] w-full max-w-[min(70vw,276px)] max-h-full"
+    : "relative aspect-square w-full max-w-[min(76vw,296px)] max-h-full";
+  const artworkOuterRadiusClass = isCircleArtworkShape
+    ? "rounded-full"
+    : isPosterArtworkShape
+      ? "rounded-[32px]"
+      : "rounded-[34px]";
+  const artworkInnerRadiusClass = isCircleArtworkShape
+    ? "rounded-full"
+    : isPosterArtworkShape
+      ? "rounded-[28px]"
+      : "rounded-[22px]";
+  const renderPlayerArtwork = () => {
+    const artworkNode = currentMusicData.currentSong?.albumArt ? (
+      <img
+        src={currentMusicData.currentSong.albumArt}
+        className="h-full w-full object-cover"
+      />
+    ) : (
+      <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(160deg,#cad6e2,#8ea4bb)] text-white">
+        <MusicIcon size={88} strokeWidth={1.5} />
+      </div>
+    );
+    const floatingAnimation = currentMusicData.isPlaying && isAudioActuallyPlaying
+      ? { y: [0, -8, 0], scale: [1, 1.018, 1] }
+      : { y: 0, scale: 1 };
+    const floatingTransition = {
+      duration: 4.8,
+      repeat: Infinity,
+      ease: "easeInOut" as const,
+    };
+    if (currentPlayerStylePreset === "netease-film") {
+      return (
+        <motion.div
+          key="cover-view-netease-film"
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          className={artworkFrameClass}
+        >
+          <div className={`absolute inset-4 ${artworkOuterRadiusClass} bg-[#f06b8f]/20 blur-[34px]`} />
+          <motion.div
+            animate={floatingAnimation}
+            transition={floatingTransition}
+            className={`relative h-full w-full overflow-hidden bg-[#161013] shadow-[0_28px_78px_rgba(91,38,53,0.28)] ${artworkOuterRadiusClass}`}
+          >
+            {artworkNode}
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04)_0%,rgba(0,0,0,0.08)_38%,rgba(0,0,0,0.36)_100%)]" />
+            <div className="absolute left-4 top-4 rounded-full bg-white/12 px-3 py-1 text-[10px] font-semibold tracking-[0.26em] text-white/78">
+              {activePlayerStyleOption.badge}
+            </div>
+            <div className="absolute inset-x-5 bottom-6 [text-shadow:0_8px_28px_rgba(0,0,0,0.28)]">
+              <div className="text-[11px] font-semibold tracking-[0.26em] text-white/82">
+                EMOTIVE FILM
+              </div>
+              <div className="mt-2 truncate text-[19px] font-semibold text-white">
+                {playerTitleText}
+              </div>
+              {secondaryArtistText ? (
+                <div className="mt-1 truncate text-[13px] text-white/78">
+                  {secondaryArtistText}
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </motion.div>
+      );
+    }
+
+    if (currentPlayerStylePreset === "aurora-stream") {
+      return (
+        <motion.div
+          key="cover-view-aurora-stream"
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          className={artworkFrameClass}
+        >
+          <div className={`absolute -inset-3 ${artworkOuterRadiusClass} bg-[radial-gradient(circle_at_top,rgba(122,244,194,0.46),rgba(34,197,176,0.18)_38%,rgba(88,147,255,0.08)_100%)] blur-[34px]`} />
+          <motion.div
+            animate={floatingAnimation}
+            transition={floatingTransition}
+            className={`relative h-full w-full overflow-hidden bg-[#081314] shadow-[0_28px_82px_rgba(12,68,66,0.24)] ${artworkOuterRadiusClass}`}
+          >
+            {artworkNode}
+            <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(97,255,211,0.14),rgba(0,0,0,0)_42%,rgba(84,180,255,0.26)_100%)]" />
+            <div className="absolute left-5 top-5 rounded-full bg-white/12 px-3 py-1 text-[10px] font-semibold tracking-[0.26em] text-white/76">
+              {activePlayerStyleOption.badge}
+            </div>
+            <div className="absolute right-5 top-5 flex items-end gap-1">
+              <span className="h-3 w-1.5 rounded-full bg-white/55" />
+              <span className="h-5 w-1.5 rounded-full bg-white/78" />
+              <span className="h-2.5 w-1.5 rounded-full bg-white/48" />
+            </div>
+            <div className="absolute inset-x-5 bottom-6 [text-shadow:0_8px_24px_rgba(0,0,0,0.22)]">
+              <div className="text-[11px] font-semibold tracking-[0.26em] text-[#dff7f0]">
+                AURORA MIX
+              </div>
+              <div className="mt-2 truncate text-[18px] font-semibold text-white">
+                {playerTitleText}
+              </div>
+              {secondaryArtistText ? (
+                <div className="mt-1 truncate text-[13px] text-white/82">
+                  {secondaryArtistText}
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </motion.div>
+      );
+    }
+
+    if (currentPlayerStylePreset === "magazine-poster") {
+      return (
+        <motion.div
+          key="cover-view-magazine-poster"
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          className={artworkFrameClass}
+        >
+          <div className={`absolute inset-0 bg-white/70 shadow-[0_26px_66px_rgba(126,96,63,0.18)] ${artworkOuterRadiusClass}`} />
+          <motion.div
+            animate={floatingAnimation}
+            transition={floatingTransition}
+            className={`absolute inset-4 overflow-hidden bg-[#fbf6f1] ${artworkOuterRadiusClass}`}
+          >
+            {artworkNode}
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_44%,rgba(24,19,15,0.08)_100%)]" />
+            <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,rgba(255,249,244,0)_0%,rgba(255,249,244,0.92)_36%,rgba(255,249,244,0.98)_100%)] px-5 pb-5 pt-10">
+              <div className="text-[10px] font-semibold tracking-[0.28em] text-[#a06838]">
+                {activePlayerStyleOption.badge}
+              </div>
+              <div className="mt-2 line-clamp-2 text-[22px] font-semibold leading-tight text-[#18130f]">
+                {playerTitleText}
+              </div>
+              {secondaryArtistText ? (
+                <div className="mt-2 truncate text-[13px] text-[#624a33]/80">
+                  {secondaryArtistText}
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </motion.div>
+      );
+    }
+
+    return (
+      <motion.div
+        key="cover-view-ios-air"
+        initial={{ opacity: 0, y: 16, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        className={artworkFrameClass}
+      >
+        <motion.div
+          animate={floatingAnimation}
+          transition={floatingTransition}
+          className={`relative h-full w-full overflow-hidden shadow-[0_28px_80px_rgba(15,23,42,0.22)] ${artworkOuterRadiusClass}`}
+        >
+          {artworkNode}
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0)_38%,rgba(15,23,42,0.18)_100%)]" />
+          <div className="absolute -right-12 top-5 h-24 w-24 rounded-full bg-white/30 blur-2xl" />
+        </motion.div>
+        <div className={`pointer-events-none absolute inset-x-4 bottom-4 bg-white/22 px-4 py-3 backdrop-blur-[20px] shadow-[0_10px_24px_rgba(15,23,42,0.14)] ${artworkInnerRadiusClass}`}>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+            {currentMusicData.isPlaying && isAudioActuallyPlaying ? "PLAYING NOW" : "LOCAL PLAYBACK"}
+          </div>
+          <div className="mt-1 truncate text-[15px] font-semibold text-white">
+            {playerTitleText}
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   const renderPlayer = () => (
     <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* Dynamic Background */}
       <div className="absolute inset-0 z-0">
+        <div className={`absolute inset-[-18%] ${playerStyleSurface.backdropHaloClass}`} />
         <div
-          className="absolute inset-0 bg-cover bg-center scale-110 blur-3xl opacity-50"
+          className="absolute inset-0 scale-110 bg-cover bg-center opacity-30 blur-[48px]"
           style={{
             backgroundImage: `url(${currentMusicData.currentSong?.albumArt})`,
           }}
         />
-        <div className="absolute inset-0 bg-white/60" />
+        <div className={`absolute inset-0 ${playerStyleSurface.backdropWashClass}`} />
       </div>
 
       <div
-        className="relative z-10 flex flex-1 min-h-0 flex-col px-4 pb-3 sm:px-6 sm:pb-4"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
+        className="relative z-10 flex flex-1 min-h-0 flex-col px-5 pb-4 sm:px-6 sm:pb-5"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 18px)" }}
       >
         {/* Header */}
-        <div className="mb-1 flex shrink-0 items-center justify-between">
+        <div className="mb-2 flex shrink-0 items-center justify-between">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 text-zinc-600 active:opacity-50 transition-opacity"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/56 text-zinc-700 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform active:scale-95"
           >
-            <ChevronLeft size={28} strokeWidth={2.5} />
+            <ChevronLeft size={24} strokeWidth={2.6} />
           </button>
           <div className="text-center">
-            <p className="text-[13px] font-semibold text-zinc-500 tracking-tight">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-zinc-500/70">
               正在播放
             </p>
           </div>
@@ -1270,7 +1925,7 @@ export default function MusicApp({
             {currentMusicData.togetherWith && (
               <button
                 onClick={disconnectTogether}
-                className="flex h-9 items-center justify-center rounded-full bg-zinc-100 px-2.5 text-[11px] font-bold text-zinc-500 shadow-sm transition-all sm:h-10 sm:px-3 sm:text-[12px]"
+                className="flex h-10 items-center justify-center rounded-full bg-white/62 px-3 text-[11px] font-semibold text-zinc-600 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform active:scale-95 sm:px-3.5"
               >
                 断开
               </button>
@@ -1278,14 +1933,14 @@ export default function MusicApp({
             {currentMusicData.togetherWith && (
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-sm transition-all sm:h-10 sm:w-10"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/62 text-zinc-500 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform active:scale-95"
               >
                 <MessageCircle size={20} />
               </button>
             )}
             <button
               onClick={() => setShowInviteDialog(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-sm transition-all sm:h-10 sm:w-10"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/62 text-zinc-500 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform active:scale-95"
             >
               <Users size={20} />
             </button>
@@ -1310,9 +1965,9 @@ export default function MusicApp({
                     alt={userName}
                   />
                 </div>
-              </motion.div>
-            ) : (
-              <motion.div
+                </motion.div>
+              ) : (
+                <motion.div
                 key="together"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -1406,11 +2061,11 @@ export default function MusicApp({
           onClick={() => setShowLyrics(!showLyrics)}
         >
           {/* Song Info */}
-          <div className="mb-2 mt-2 shrink-0 text-center sm:mt-4">
-            <h1 className="mb-0.5 truncate px-2 text-[17px] font-bold tracking-tight text-zinc-900 sm:px-4 sm:text-xl">
+          <div className={currentPlayerStylePreset === "ios-air" ? "mb-2 mt-2 shrink-0 text-center sm:mt-4" : "hidden"}>
+            <h1 className={`mb-0.5 truncate px-2 text-[17px] font-bold tracking-tight sm:px-4 sm:text-xl ${playerStyleSurface.titleClassName}`}>
               {currentMusicData.currentSong?.title || "还没有歌曲"}
             </h1>
-            <p className="truncate px-2 text-[13px] font-medium text-pink-500 sm:px-4 sm:text-[15px]">
+            <p className={`${secondaryArtistText ? "truncate px-2 text-[13px] font-medium sm:px-4 sm:text-[15px]" : "hidden"} ${playerStyleSurface.artistClassName}`}>
               {currentMusicData.currentSong?.artist || "去“我的”里添加本地音乐、音频链接或网易云歌曲"}
             </p>
             {playbackError ? (
@@ -1423,41 +2078,50 @@ export default function MusicApp({
           <div className="relative flex min-h-0 w-full flex-1 items-start justify-center px-2 pt-1 sm:px-4 sm:pt-2">
             <AnimatePresence mode="wait">
               {!showLyrics ? (
+                currentPlayerStylePreset === "ios-air" ? (
                 <motion.div
-                  key="cd-view"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="relative aspect-square w-full max-w-[220px] max-h-full sm:max-w-[260px]"
+                  key="cover-view"
+                  initial={{ opacity: 0, y: 16, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                  className={artworkFrameClass}
                 >
                   <motion.div
-                    animate={{ rotate: currentMusicData.isPlaying && isAudioActuallyPlaying ? 360 : 0 }}
+                    animate={
+                      currentMusicData.isPlaying && isAudioActuallyPlaying
+                        ? { y: [0, -8, 0], scale: [1, 1.018, 1] }
+                        : { y: 0, scale: 1 }
+                    }
                     transition={{
-                      duration: 20,
+                      duration: 4.8,
                       repeat: Infinity,
-                      ease: "linear",
+                      ease: "easeInOut",
                     }}
-                    className="w-full h-full rounded-full bg-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-center p-1 relative"
+                    className={`relative h-full w-full overflow-hidden shadow-[0_28px_80px_rgba(15,23,42,0.22)] ${artworkOuterRadiusClass}`}
                   >
-                    <div className="absolute inset-0 rounded-full border-[10px] border-zinc-800/50 sm:border-[12px]" />
-                    <div className="absolute inset-0 rounded-full border-[1px] border-white/5" />
-                    <div className="w-full h-full rounded-full overflow-hidden bg-[radial-gradient(circle_at_top,#374151,#111827_62%,#09090b)]">
-                      {currentMusicData.currentSong?.albumArt ? (
-                        <img
-                          src={currentMusicData.currentSong.albumArt}
-                          className="w-full h-full object-cover opacity-80"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-white/85">
-                          <MusicIcon size={72} strokeWidth={1.6} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-zinc-800 bg-zinc-900 shadow-inner sm:h-12 sm:w-12">
-                      <div className="h-2 w-2 rounded-full bg-zinc-700" />
-                    </div>
+                    {currentMusicData.currentSong?.albumArt ? (
+                      <img
+                        src={currentMusicData.currentSong.albumArt}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(160deg,#cad6e2,#8ea4bb)] text-white">
+                        <MusicIcon size={88} strokeWidth={1.5} />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0)_38%,rgba(15,23,42,0.18)_100%)]" />
+                    <div className="absolute -right-12 top-5 h-24 w-24 rounded-full bg-white/30 blur-2xl" />
                   </motion.div>
+                  <div className="hidden">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+                      {currentMusicData.isPlaying && isAudioActuallyPlaying ? "PLAYING NOW" : "LOCAL PLAYBACK"}
+                    </div>
+                    <div className="mt-1 truncate text-[15px] font-semibold text-white">
+                      {currentMusicData.currentSong?.title || "还没有歌曲"}
+                    </div>
+                  </div>
                 </motion.div>
+                ) : renderPlayerArtwork()
               ) : (
                 <motion.div
                   key="lyrics-view"
@@ -1472,18 +2136,30 @@ export default function MusicApp({
                       style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)" }}
                     >
                       {lyrics.map((line, index) => {
-                        const isActive = index === activeLyricIndex;
+                        const isActive = lyricsAreTimed && index === activeLyricIndex;
                         return (
                           <div
                             key={index}
                             id={isActive ? "active-lyric" : undefined}
                             className={`transition-all duration-300 ${isActive ? "scale-105" : ""}`}
                           >
-                            <p className={`${isActive ? "text-[15px] font-bold text-pink-500 sm:text-base" : "text-[13px] font-medium text-zinc-500/80 sm:text-sm"}`}>
+                            <p className={`${
+                              isActive
+                                ? "text-[15px] font-bold text-pink-500 sm:text-base"
+                                : lyricsAreTimed
+                                  ? "text-[13px] font-medium text-zinc-500/80 sm:text-sm"
+                                  : "text-[14px] font-semibold text-zinc-700 sm:text-[15px]"
+                            }`}>
                               {line.text}
                             </p>
                             {line.translation && (
-                              <p className={`mt-1 ${isActive ? "text-[12px] font-bold text-pink-500/80 sm:text-sm" : "text-[11px] font-medium text-zinc-500/60 sm:text-xs"}`}>
+                              <p className={`mt-1 ${
+                                isActive
+                                  ? "text-[12px] font-bold text-pink-500/80 sm:text-sm"
+                                  : lyricsAreTimed
+                                    ? "text-[11px] font-medium text-zinc-500/60 sm:text-xs"
+                                    : "text-[12px] font-medium text-zinc-500 sm:text-[13px]"
+                              }`}>
                                 {line.translation}
                               </p>
                             )}
@@ -1492,8 +2168,17 @@ export default function MusicApp({
                       })}
                     </div>
                   ) : (
-                    <div className="flex-1 flex items-center justify-center text-zinc-400 font-medium h-full">
-                      暂无歌词
+                    <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 px-10 text-center">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/30 backdrop-blur-xl">
+                        {isResolvingLyrics ? (
+                          <RefreshCw size={18} className="animate-spin text-zinc-500" />
+                        ) : (
+                          <MusicIcon size={20} className="text-zinc-400" />
+                        )}
+                      </div>
+                      <p className="max-w-[240px] text-[13px] font-medium leading-6 text-zinc-500">
+                        {lyricStatusText || "暂无歌词"}
+                      </p>
                     </div>
                   )}
                 </motion.div>
@@ -1503,22 +2188,22 @@ export default function MusicApp({
         </div>
 
         {/* Controls */}
-        <div className="shrink-0 space-y-3 pb-1 sm:space-y-4 sm:pb-2">
-          <div className="space-y-2 sm:space-y-3">
+        <div className="shrink-0 pb-2 sm:pb-3">
+          <div className="space-y-4 px-1 py-1 sm:px-2">
             <div
-              className="relative h-1.5 bg-zinc-200/50 rounded-full overflow-hidden cursor-pointer"
+              className="relative h-1.5 cursor-pointer overflow-hidden rounded-full bg-zinc-900/12"
               onClick={handleSeek}
             >
               <motion.div
-                className="absolute inset-y-0 left-0 bg-zinc-800 rounded-full"
+                className="absolute inset-y-0 left-0 rounded-full bg-zinc-900/78"
                 style={{ width: `${localProgress}%` }}
               />
               <div
-                className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border border-zinc-100 bg-white shadow-md sm:h-4 sm:w-4"
+                className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-[0_8px_18px_rgba(15,23,42,0.18)] sm:h-4 sm:w-4"
                 style={{ left: `calc(${localProgress}% - 7px)` }}
               />
             </div>
-            <div className="flex justify-between px-0.5 text-[10px] font-bold tracking-tight text-zinc-400 sm:text-[11px]">
+            <div className="flex justify-between px-0.5 text-[10px] font-semibold tracking-tight text-zinc-500 sm:text-[11px]">
               <span className="min-w-[38px] sm:min-w-[42px]">{formatTime(localCurrentTime)}</span>
               <span className="min-w-[38px] text-right sm:min-w-[42px]">
                 -
@@ -1532,12 +2217,12 @@ export default function MusicApp({
             </div>
           </div>
 
-          <div className="relative flex items-center justify-between px-1 sm:px-2">
+          <div className="relative flex items-center justify-between">
             <button
               onClick={() => setShowPlayerMoreMenu(!showPlayerMoreMenu)}
-              className={`transition-colors ${showPlayerMoreMenu ? "text-pink-500" : "text-zinc-400 active:text-zinc-600"}`}
+              className={`${chromeControlButtonClass} ${showPlayerMoreMenu ? "text-zinc-700/95" : ""}`}
             >
-              <MoreHorizontal size={24} />
+              <MoreHorizontal size={22} strokeWidth={2.2} />
             </button>
 
             {/* More Menu Popup */}
@@ -1552,7 +2237,7 @@ export default function MusicApp({
                     initial={{ opacity: 0, scale: 0.9, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                    className="absolute bottom-16 left-0 bg-white rounded-2xl shadow-xl border border-zinc-100 p-2 z-50 flex flex-col gap-1 min-w-[120px]"
+                    className="absolute bottom-16 left-0 z-50 flex min-w-[132px] flex-col gap-1 rounded-[24px] bg-white/86 p-2 shadow-[0_20px_38px_rgba(15,23,42,0.14)] backdrop-blur-2xl"
                   >
                     <button
                       onClick={() => {
@@ -1635,48 +2320,48 @@ export default function MusicApp({
               )}
             </AnimatePresence>
 
-            <div className="flex items-center gap-6 sm:gap-8">
+            <div className="flex items-center gap-3.5 sm:gap-4">
               <button
                 onClick={skipBack}
-                className="text-zinc-400 active:scale-90 transition-transform"
+                className={transportControlButtonClass}
               >
-                <SkipBack size={24} fill="currentColor" className="sm:h-7 sm:w-7" />
+                <SkipBack size={22} strokeWidth={2.25} />
               </button>
               <button
                 onClick={togglePlay}
                 disabled={!currentMusicData.currentSong}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-xl shadow-zinc-200/40 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 sm:h-16 sm:w-16"
+                className={primaryTransportControlButtonClass}
               >
                 {currentMusicData.isPlaying ? (
-                  <Pause size={26} fill="currentColor" className="sm:h-[30px] sm:w-[30px]" />
+                  <Pause size={22} strokeWidth={2.35} />
                 ) : (
-                  <Play size={26} fill="currentColor" className="ml-0.5 sm:ml-1 sm:h-[30px] sm:w-[30px]" />
+                  <Play size={20} fill="currentColor" className="ml-[1px]" />
                 )}
               </button>
               <button
                 onClick={skipForward}
-                className="text-zinc-400 active:scale-90 transition-transform"
+                className={transportControlButtonClass}
               >
-                <SkipForward size={24} fill="currentColor" className="sm:h-7 sm:w-7" />
+                <SkipForward size={22} strokeWidth={2.25} />
               </button>
             </div>
             <button
               onClick={() => setShowQueue(true)}
-              className="text-zinc-400 active:text-zinc-600"
+              className={chromeControlButtonClass}
             >
-              <ListMusic size={20} />
+              <ListMusic size={19} strokeWidth={2.15} />
             </button>
           </div>
 
           {/* Volume Slider (iOS Style) */}
-          <div className="flex items-center gap-2 px-1 sm:gap-3 sm:px-2">
-            <Volume2 size={13} className="text-zinc-400 sm:h-[14px] sm:w-[14px]" />
+          <div className="mt-1 flex items-center gap-3">
+            <Volume2 size={13} className="text-zinc-500 sm:h-[14px] sm:w-[14px]" />
             <div
-              className="flex-1 h-1.5 bg-zinc-200/50 rounded-full overflow-hidden cursor-pointer"
+              className="h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-zinc-900/12"
               onClick={handleVolumeChange}
             >
               <div
-                className="h-full bg-zinc-400/50 rounded-full transition-all"
+                className="h-full rounded-full bg-zinc-900/42 transition-all"
                 style={{ width: `${currentMusicData.volume}%` }}
               />
             </div>
@@ -1934,21 +2619,43 @@ export default function MusicApp({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = Array.from(e.target.files || []);
+    const audioFile = selectedFiles.find((file) => isAudioUploadFile(file));
 
-    const persistedUrl = await saveUploadedBlob(file, {
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
-    });
-    const newSong: Song = {
+    if (!audioFile) {
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const [metadata, sidecarLyricText, persistedUrl] = await Promise.all([
+        readUploadedSongMetadata(audioFile),
+        (async () => {
+          const lyricFile = pickSidecarLyricFile(selectedFiles, audioFile);
+          if (!lyricFile) {
+            return undefined;
+          }
+
+          return normalizeLyricText(await lyricFile.text());
+        })(),
+        saveUploadedBlob(audioFile, {
+          fileName: audioFile.name,
+          mimeType: audioFile.type || "application/octet-stream",
+        }),
+      ]);
+
+      const newSong: Song = {
       id: `uploaded-${Date.now()}`,
-      title: file.name.replace(/\.[^/.]+$/, ""), // remove extension
+      title: metadata.title || stripFileExtension(audioFile.name),
       artist: "本地音乐",
-      albumArt: "https://picsum.photos/seed/music_local/300/300",
+      albumArt: LOCAL_MUSIC_PLACEHOLDER_ART,
       url: persistedUrl,
-      duration: 0,
+      duration: typeof metadata.duration === "number" ? metadata.duration : 0,
+      ...(sidecarLyricText || metadata.lyricsText
+        ? { lyricsText: sidecarLyricText || metadata.lyricsText }
+        : {}),
     };
+      newSong.artist = metadata.artist || LOCAL_MUSIC_ARTIST_LABEL;
 
     onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
@@ -1964,6 +2671,12 @@ export default function MusicApp({
     setLocalProgress(0);
     setLocalCurrentTime(0);
     setShowAddMusicDialog(false);
+    } catch (error) {
+      console.error("Error importing local music:", error);
+      alert("Local music import failed. Please try again.");
+    } finally {
+      e.target.value = "";
+    }
   };
 
   const handleAddDirectMusic = () => {
@@ -2019,29 +2732,35 @@ export default function MusicApp({
       .filter((s): s is Song => !!s);
 
     return (
-      <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-zinc-50">
+      <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#f7f9fc_0%,#eef3f7_100%)]">
         {/* Profile Header */}
         <div
-          className="px-6 pb-6"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+          className="px-6 pb-7"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 34px)" }}
         >
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-zinc-100 shadow-xl">
+          <div className="flex items-start gap-4">
+            <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-white/70 shadow-[0_18px_38px_rgba(15,23,42,0.12)]">
               <ResolvedMusicAvatar value={userAvatar} className="w-full h-full object-cover" alt={userName} />
             </div>
             <div className="flex-1">
-              <h1 className="text-[28px] font-extrabold leading-none tracking-tight text-zinc-900 sm:text-2xl sm:font-black sm:tracking-tighter sm:leading-tight">
+              <div className="rounded-full bg-white/56 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-zinc-500 shadow-[0_8px_18px_rgba(15,23,42,0.06)] backdrop-blur-xl w-fit">
+                MUSIC PROFILE
+              </div>
+              <h1 className="mt-3 text-[30px] font-semibold leading-none tracking-[-0.04em] text-zinc-900">
                 {userName}
               </h1>
+              <p className="mt-2 text-[13px] font-medium text-zinc-500">
+                当前播放器：{activePlayerStyleOption.name}
+              </p>
             </div>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setShowAddMusicDialog(true)}
-                className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 shadow-lg shadow-zinc-200/40 active:scale-90 transition-transform"
+                className={chromeControlButtonClass}
               >
                 <Plus size={22} />
               </button>
-              <button className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 border border-zinc-100">
+              <button className={chromeControlButtonClass}>
                 <Share2 size={18} />
               </button>
             </div>
@@ -2049,7 +2768,7 @@ export default function MusicApp({
         </div>
 
         <div
-          className="flex-1 overflow-y-auto px-6 pt-6 space-y-6"
+          className="flex-1 overflow-y-auto px-6 pt-3 space-y-5"
           style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)" }}
         >
           {/* Quick Stats Grid - Smaller */}
@@ -2067,7 +2786,7 @@ export default function MusicApp({
                 };
                 setSelectedPlaylist(likedPlaylist);
               }}
-              className="bg-white p-4 rounded-[24px] shadow-lg shadow-zinc-200/20 border border-white flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer"
+              className={`${glassPanelClass} flex cursor-pointer flex-col items-center gap-2 p-5 active:scale-95 transition-transform`}
             >
               <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
                 <Heart size={20} fill="currentColor" />
@@ -2094,7 +2813,7 @@ export default function MusicApp({
                 };
                 setSelectedPlaylist(historyPlaylist);
               }}
-              className="bg-white p-4 rounded-[24px] shadow-lg shadow-zinc-200/20 border border-white flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer"
+              className={`${glassPanelClass} flex cursor-pointer flex-col items-center gap-2 p-5 active:scale-95 transition-transform`}
             >
               <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
                 <Clock size={20} />
@@ -2109,6 +2828,241 @@ export default function MusicApp({
               </div>
             </div>
           </div>
+
+          <section className="overflow-hidden rounded-[30px] border border-white/72 bg-white/72 backdrop-blur-2xl">
+            <button
+              onClick={() => setIsPlayerStyleSectionExpanded((current) => !current)}
+              className="w-full px-5 py-4 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex items-start gap-2.5">
+                  <p className="shrink-0 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-400">
+                    PLAYER STYLES
+                  </p>
+                  <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <div className="max-w-[112px] truncate whitespace-nowrap rounded-full border border-white/80 bg-[linear-gradient(180deg,#fff7fb,#f2e6ee)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#87566f]">
+                      {activePlayerStyleOption.name}
+                    </div>
+                    <div className="max-w-[88px] truncate whitespace-nowrap rounded-full bg-white/70 px-3 py-1 text-[10px] font-semibold text-zinc-500">
+                      {activePlayerShapeOption.name}
+                    </div>
+                    <ChevronLeft
+                      size={18}
+                      className={`shrink-0 text-zinc-400 transition-transform ${isPlayerStyleSectionExpanded ? "-rotate-90" : "rotate-180"}`}
+                    />
+                  </div>
+                </div>
+                <h2 className="mt-3 break-keep text-[18px] font-semibold leading-[1.12] tracking-[-0.03em] text-zinc-900">
+                  播放器样式
+                </h2>
+                <p className="hidden">
+                  这里可以修改播放器外观。整块能点开，下面每个样式卡也能继续点开，再选圆形、方形或海报形状。
+                </p>
+              </div>
+            </button>
+
+            <AnimatePresence initial={false}>
+              {isPlayerStyleSectionExpanded ? (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="border-t border-white/60 px-5 pb-5 pt-4">
+                    <div className="flex flex-col gap-3">
+                      {PLAYER_STYLE_OPTIONS.map((option) => {
+                        const isSelected = option.id === currentPlayerStylePreset;
+                        const isExpanded = expandedPlayerStyleCardId === option.id;
+                        const marketNote = PLAYER_STYLE_MARKET_NOTES[option.id];
+
+                        return (
+                          <div
+                            key={option.id}
+                            className={`self-start overflow-hidden rounded-[26px] border transition-colors ${
+                              isSelected
+                                ? "border-zinc-900/12 bg-white/95"
+                                : "border-white/70 bg-white/62"
+                            }`}
+                          >
+                            <button
+                              onClick={() => togglePlayerStyleCard(option.id)}
+                              className="w-full p-3 text-left"
+                            >
+                              <div className="hidden">
+                                <div className="flex h-full flex-col justify-between rounded-[16px] border border-white/20 bg-black/5 p-3">
+                                  <span className="text-[10px] font-semibold tracking-[0.24em] text-white/82">
+                                    {option.badge}
+                                  </span>
+                                  <span className="w-fit rounded-full bg-white/24 px-2.5 py-1 text-[10px] font-semibold text-white/88">
+                                    {option.chip}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-0 flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[14px] font-semibold text-zinc-900">
+                                      {option.name}
+                                    </span>
+                                    {isSelected ? (
+                                      <span className="rounded-full border border-white/80 bg-[linear-gradient(180deg,#fff7fb,#f2e6ee)] px-2 py-0.5 text-[10px] font-semibold text-[#87566f]">
+                                        当前
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                                    {option.description}
+                                  </p>
+                                </div>
+                                <ChevronLeft
+                                  size={16}
+                                  className={`mt-1 shrink-0 text-zinc-300 transition-transform ${isExpanded ? "-rotate-90" : "rotate-180"}`}
+                                />
+                              </div>
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                              {isExpanded ? (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="border-t border-zinc-100/70 px-3 pb-3 pt-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
+                                      MARKET NOTE
+                                    </p>
+                                    <p className="mt-2 text-[12px] font-medium leading-5 text-zinc-700">
+                                      {marketNote.inspiration}
+                                    </p>
+                                    <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                                      {marketNote.detail}
+                                    </p>
+
+                                    <div className="mt-4">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
+                                          SHAPE
+                                        </span>
+                                        <span className="text-[11px] font-medium text-zinc-500">
+                                          {isSelected ? `当前：${activePlayerShapeOption.name}` : "先选中再切形状"}
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {PLAYER_SHAPE_OPTIONS.map((shape) => {
+                                          const isShapeSelected = isSelected && shape.id === currentPlayerShapePreset;
+
+                                          return (
+                                            <button
+                                              key={shape.id}
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                setExpandedPlayerStyleCardId(option.id);
+                                                onUpdateMusicData({
+                                                  ...currentMusicData,
+                                                  playerStylePreset: option.id,
+                                                  playerShapeByStyle: {
+                                                    ...(currentMusicData.playerShapeByStyle || {}),
+                                                    [option.id]: shape.id,
+                                                  },
+                                                });
+                                              }}
+                                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all active:scale-95 ${
+                                                isShapeSelected
+                                                  ? "border border-white/80 bg-[linear-gradient(180deg,#fff7fb,#f2e6ee)] text-[#7b5568]"
+                                                  : "bg-zinc-100/85 text-zinc-600"
+                                              }`}
+                                            >
+                                              {shape.name}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+
+                                      <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                                        {isSelected ? activePlayerShapeOption.description : "先选中这个样式，再选一个形状。"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ) : null}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </section>
+
+          <section className="hidden">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-400">
+                  PLAYER STYLES
+                </p>
+                <h2 className="mt-2 text-[20px] font-semibold tracking-[-0.03em] text-zinc-900">
+                  播放器样式
+                </h2>
+                <p className="hidden">
+                  这里只会修改播放器外观，不影响歌曲、歌单、歌词和同步。想切成 iOS 玻璃、网易云胶片，或者更像其他平台的播放器质感，都可以在这里随时换。
+                </p>
+              </div>
+              <div className="rounded-full bg-zinc-900 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white">
+                {activePlayerStyleOption.chip}
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {PLAYER_STYLE_OPTIONS.map((option) => {
+                const isSelected = option.id === currentPlayerStylePreset;
+
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => setPlayerStylePreset(option.id)}
+                    className={`rounded-[26px] border p-3 text-left transition-all active:scale-[0.98] ${
+                      isSelected
+                        ? "border-zinc-900/10 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.12)]"
+                        : "border-white/70 bg-white/55 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+                    }`}
+                  >
+                              <div className="hidden">
+                      <div className="flex h-full flex-col justify-between rounded-[16px] border border-white/20 bg-black/5 p-3">
+                        <span className="text-[10px] font-semibold tracking-[0.24em] text-white/82">
+                          {option.badge}
+                        </span>
+                        <span className="w-fit rounded-full bg-white/24 px-2.5 py-1 text-[10px] font-semibold text-white/88">
+                          {option.chip}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-[14px] font-semibold text-zinc-900">
+                        {option.name}
+                      </span>
+                      {isSelected ? (
+                        <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          当前
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                      {option.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
           {/* Menu List - No Counts */}
           <NeteaseAccountPanel
@@ -2125,7 +3079,7 @@ export default function MusicApp({
             isSyncing={isSyncingNeteasePlaylists}
           />
 
-          <section className="bg-white rounded-[24px] p-3 shadow-lg shadow-zinc-200/10 border border-white">
+          <section className={`${glassPanelClass} p-3`}>
             {[
               {
                 name: "我的收藏",
@@ -2157,9 +3111,9 @@ export default function MusicApp({
               <div
                 key={item.name}
                 onClick={item.action}
-                className={`flex items-center gap-3 p-3 active:bg-zinc-50 transition-colors cursor-pointer ${i !== items.length - 1 ? "border-b border-zinc-50" : ""}`}
+                className={`flex cursor-pointer items-center gap-3 p-3 transition-colors active:bg-white/40 ${i !== items.length - 1 ? "border-b border-zinc-100/60" : ""}`}
               >
-                <div className="w-8 h-8 rounded-lg bg-zinc-50 flex items-center justify-center text-zinc-400">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/65 text-zinc-500 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
                   {item.icon}
                 </div>
                 <span className="flex-1 text-[14px] font-bold text-zinc-800">
@@ -2171,7 +3125,7 @@ export default function MusicApp({
           </section>
 
           {/* History Section - Real History */}
-          <section>
+          <section className={`${glassPanelClass} p-4`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-zinc-900 tracking-tight">
                 历史足迹
@@ -2191,7 +3145,7 @@ export default function MusicApp({
                   <div
                     key={song.id}
                     onClick={() => playSong(song)}
-                    className="flex items-center gap-3 p-2.5 bg-white rounded-xl shadow-sm border border-white active:scale-[0.98] transition-transform cursor-pointer group"
+                    className="group flex cursor-pointer items-center gap-3 rounded-[22px] border border-white/72 bg-white/68 p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur-xl transition-transform active:scale-[0.98]"
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 shadow-sm">
                       <img
@@ -2664,7 +3618,7 @@ export default function MusicApp({
 
       {/* iOS Style Bottom Navigation */}
       <div
-        className="app-bottom-tabbar relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/94 backdrop-blur-xl"
+        className="app-bottom-tabbar relative z-50 shrink-0 bg-white/72 shadow-[0_-18px_36px_rgba(15,23,42,0.08)] backdrop-blur-[24px]"
       >
         <div
           className="flex min-h-[40px] items-end justify-around px-4 pt-1"
@@ -2835,11 +3789,15 @@ export default function MusicApp({
                       选择音频文件
                       <input
                         type="file"
-                        accept="audio/*"
+                        accept="audio/*,.lrc,.txt"
+                        multiple
                         className="hidden"
                         onChange={handleFileUpload}
                       />
                     </label>
+                    <p className="text-[11px] font-medium leading-5 text-zinc-400">
+                      支持读取音频内嵌歌词，也可以同时选择同名 `.lrc` 或 `.txt` 歌词文件。
+                    </p>
                   </div>
                 </div>
 
