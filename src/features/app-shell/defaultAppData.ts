@@ -116,6 +116,14 @@ export function createDefaultAppData(): AppData {
       chatHistory: [],
       queue: [],
       songLibrary: [],
+      playerStylePreset: 'ios-air',
+      playerShapePreset: 'rounded-square',
+      playerShapeByStyle: {
+        'ios-air': 'rounded-square',
+        'netease-film': 'poster',
+        'aurora-stream': 'circle',
+        'magazine-poster': 'poster',
+      },
     },
     mallData: createDefaultMallData(),
   };

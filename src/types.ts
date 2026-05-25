@@ -1636,6 +1636,7 @@ export type Song = {
   albumArt: string;
   url: string;
   duration: number;
+  lyricsText?: string;
 };
 
 export type Playlist = {
@@ -1647,6 +1648,17 @@ export type Playlist = {
   authorId?: string;
   collaboratorId?: string;
 };
+
+export type MusicPlayerStylePreset =
+  | 'ios-air'
+  | 'netease-film'
+  | 'aurora-stream'
+  | 'magazine-poster';
+
+export type MusicPlayerShapePreset =
+  | 'rounded-square'
+  | 'circle'
+  | 'poster';
 
 export type MusicData = {
   currentSong: Song | null;
@@ -1663,6 +1675,9 @@ export type MusicData = {
   chatHistory: ChatMessage[];
   queue: Song[];
   songLibrary?: Song[]; // Persisted song snapshots used to resolve liked/collected/history across reloads.
+  playerStylePreset?: MusicPlayerStylePreset;
+  playerShapePreset?: MusicPlayerShapePreset;
+  playerShapeByStyle?: Partial<Record<MusicPlayerStylePreset, MusicPlayerShapePreset>>;
   neteaseAccount?: {
     uid: string;
     profileUrl: string;
@@ -2426,6 +2441,8 @@ export type WalletData = {
 export type MallCatalogItemSensitivity = 'normal' | 'private' | 'restricted';
 export type MallDestinationKind = 'self' | 'gift' | 'shared_space' | 'digital';
 export type MallMediaStyle = 'photo' | 'illustration' | 'icon' | 'emoji';
+export type MallCatalogItemSource = 'seed' | 'generated' | 'user';
+export type MallCatalogItemGeneratedFrom = 'entry' | 'refresh' | 'search';
 
 export type MallCatalogItem = {
   id: string;
@@ -2457,6 +2474,10 @@ export type MallCatalogItem = {
     detailDescription: string;
     recommendationReason?: string;
   };
+  source?: MallCatalogItemSource;
+  generatedAt?: number;
+  generatedFrom?: MallCatalogItemGeneratedFrom;
+  searchKeywords?: string[];
 };
 
 export type MallCartEntry = {
@@ -2464,6 +2485,7 @@ export type MallCartEntry = {
   itemId: string;
   quantity: number;
   mode: Extract<MallDestinationKind, 'self' | 'gift' | 'shared_space' | 'digital'>;
+  selectedVariantLabel?: string;
   giftTargetCharacterId?: string;
   giftTargetCharacterName?: string;
   addedAt: number;
@@ -2508,17 +2530,36 @@ export type MallGiftFeedbackSnapshot = {
   generatedAt: number;
 };
 
+export type MallOrderUnboxingSnapshot = {
+  summary: string;
+  afterglow?: string;
+  suggestedAction?: 'keep' | 'wardrobe' | 'prop' | 'shared_space';
+  generatedAt: number;
+};
+
+export type MallCharacterWishlistSnapshot = {
+  characterId: string;
+  wantedItemIds: string[];
+  likedItemIds: string[];
+  favoriteCategories: string[];
+  hintTexts: string[];
+  updatedAt: number;
+};
+
 export type MallOrder = {
   id: string;
   itemId: string;
   mode: Extract<MallDestinationKind, 'self' | 'gift' | 'shared_space' | 'digital'>;
   status: MallOrderStatus;
+  paymentCardId?: string;
   walletTransactionId?: string;
+  selectedVariantLabel?: string;
   shippingAddressId?: string;
   shippingAddressSnapshot?: MallOrderAddressSnapshot;
   giftTargetCharacterId?: string;
   giftTargetCharacterName?: string;
   giftFeedback?: MallGiftFeedbackSnapshot;
+  unboxing?: MallOrderUnboxingSnapshot;
   createdAt: number;
   updatedAt: number;
 };
@@ -2536,6 +2577,10 @@ export type MallOwnedItem = {
   sourceOrderId: string;
   itemId: string;
   ownership: MallOwnedItemOwnership;
+  selectedVariantLabel?: string;
+  isFavorite?: boolean;
+  useCount?: number;
+  lastUsedAt?: number;
   acquiredAt: number;
 };
 
@@ -2549,6 +2594,10 @@ export type MallDeliveryEvent = {
 
 export type MallData = {
   catalog: MallCatalogItem[];
+  generatedCatalog: MallCatalogItem[];
+  generationBatchSize?: number;
+  autoFlowEnabled?: boolean;
+  characterWishlists: MallCharacterWishlistSnapshot[];
   cart: MallCartEntry[];
   orders: MallOrder[];
   ownedItems: MallOwnedItem[];
