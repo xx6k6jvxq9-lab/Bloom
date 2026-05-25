@@ -154,6 +154,7 @@ import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
+import { tokenizeGroupTextMentions } from './groupMentionText';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../app-shell/keyboardUtils';
@@ -182,6 +183,7 @@ const GROUP_CHAT_HISTORY_INITIAL_WINDOW = 90;
 const GROUP_CHAT_HISTORY_LOAD_STEP = 60;
 const GROUP_CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
 const EMPTY_GROUP_STYLE: React.CSSProperties = {};
+const GROUP_CHAT_AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
 
 function removeBackdropBlurClassNames(className: string) {
   return className
@@ -977,6 +979,10 @@ export function GroupChatSessionScreen({
   const lastInitiativeAtRef = useRef(0);
   const lastGovernanceInitiativeAtRef = useRef(0);
   const lastModerationInitiativeAtRef = useRef(0);
+  const pendingNoticeReactionRef = useRef<{
+    noticeText: string;
+    noticeMessageTimestamp: number;
+  } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -997,6 +1003,12 @@ export function GroupChatSessionScreen({
     keyboardOpen: false,
     pendingMessageKey: '',
   });
+  const previousRenderedAutoscrollStateRef = useRef({
+    latestRenderedMessageKey: '',
+    isLoading: false,
+    renderedLength: 0,
+  });
+  const isNearBottomRef = useRef(true);
   const latestViewReadyRef = useRef(false);
   const previousActiveStateRef = useRef(isActive);
   const historyWindowRestoreRef = useRef<{ previousScrollHeight: number; previousScrollTop: number } | null>(null);
@@ -1038,6 +1050,16 @@ export function GroupChatSessionScreen({
     }
     return worldBooks.filter((worldBook) => activeIds.has(worldBook.id));
   }, [group.activeWorldBookIds, worldBooks]);
+  const getActiveWorldBooksForSpeaker = useCallback((
+    speaker: Character,
+    groupOverride?: Pick<ChatGroup, 'activeWorldBookIds'>,
+  ) => (
+    selectActiveGroupWorldBooks({
+      speaker,
+      group: groupOverride || group,
+      worldBooks,
+    })
+  ), [group, worldBooks]);
   const { openGroupOffline, groupOfflineModal } = useGroupOfflineController({
     group,
     members,
@@ -1322,7 +1344,16 @@ export function GroupChatSessionScreen({
       }
 
       if (governanceMessages.length > 0) {
-        setHistory([...nextHistory, ...governanceMessages]);
+        const expiredMessageByTimestamp = new Map(
+          expiredGovernanceMessages.map((message) => {
+            const expiredMessage = nextHistory.find((item) => item.timestamp === message.timestamp) || message;
+            return [message.timestamp, expiredMessage] as const;
+          }),
+        );
+        setHistory((prev) => [
+          ...prev.map((item) => expiredMessageByTimestamp.get(item.timestamp) || item),
+          ...governanceMessages,
+        ]);
       }
     };
 
@@ -1622,6 +1653,28 @@ export function GroupChatSessionScreen({
   const latestRenderedMessageKey = renderedHistory.length > 0
     ? `${renderedHistory[renderedHistory.length - 1].timestamp}:${renderedHistory[renderedHistory.length - 1].role}:${renderedHistory[renderedHistory.length - 1].senderCharacterId ?? ''}:${renderedHistory[renderedHistory.length - 1].text}:${renderedHistory[renderedHistory.length - 1].isPending ? 'pending' : 'final'}`
     : '';
+  const isNearScrollBottom = useCallback((container: HTMLDivElement | null) => {
+    if (!container) {
+      return true;
+    }
+
+    return container.scrollHeight - (container.scrollTop + container.clientHeight) <= GROUP_CHAT_AUTO_SCROLL_BOTTOM_THRESHOLD;
+  }, []);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = scrollRef.current;
+    if (!container) {
+      chatFooterRef.current?.scrollIntoView({ block: 'end', behavior });
+      messagesEndRef.current?.scrollIntoView({ block: 'end', behavior });
+      isNearBottomRef.current = true;
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
+    });
+    isNearBottomRef.current = true;
+  }, []);
   const [visibleRenderedMessageCount, setVisibleRenderedMessageCount] = useState(() => Math.min(renderedHistory.length, GROUP_CHAT_HISTORY_INITIAL_WINDOW));
   const hiddenRenderedMessageCount = Math.max(0, renderedHistory.length - visibleRenderedMessageCount);
   const visibleRenderedHistory = useMemo(
@@ -1648,10 +1701,11 @@ export function GroupChatSessionScreen({
     setVisibleRenderedMessageCount((current) => Math.min(renderedHistory.length, current + GROUP_CHAT_HISTORY_LOAD_STEP));
   }, [hiddenRenderedMessageCount, renderedHistory.length]);
   const handleRenderedHistoryScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    isNearBottomRef.current = isNearScrollBottom(event.currentTarget);
     if (event.currentTarget.scrollTop <= GROUP_CHAT_HISTORY_LOAD_MORE_THRESHOLD) {
       expandVisibleRenderedMessageWindow();
     }
-  }, [expandVisibleRenderedMessageWindow]);
+  }, [expandVisibleRenderedMessageWindow, isNearScrollBottom]);
 
   useEffect(() => {
     setVisibleRenderedMessageCount((current) => Math.min(current, renderedHistory.length));
@@ -1714,6 +1768,35 @@ export function GroupChatSessionScreen({
   }, [chatKeyboardOpen, pendingMessageKey]);
 
   useLayoutEffect(() => {
+    const previousAutoscrollState = previousRenderedAutoscrollStateRef.current;
+    const contentChanged = (
+      latestRenderedMessageKey !== previousAutoscrollState.latestRenderedMessageKey
+      || isLoading !== previousAutoscrollState.isLoading
+    );
+    const renderedLengthGrowth = renderedHistory.length - previousAutoscrollState.renderedLength;
+    const shouldFollowToBottom = isNearBottomRef.current;
+
+    previousRenderedAutoscrollStateRef.current = {
+      latestRenderedMessageKey,
+      isLoading,
+      renderedLength: renderedHistory.length,
+    };
+
+    if (!contentChanged || !isActive || showGroupSettings) {
+      return;
+    }
+
+    if (!shouldFollowToBottom) {
+      if (renderedLengthGrowth > 0) {
+        setVisibleRenderedMessageCount((current) => Math.min(renderedHistory.length, current + renderedLengthGrowth));
+      }
+      return;
+    }
+
+    scrollToBottom('auto');
+  }, [isActive, isLoading, latestRenderedMessageKey, renderedHistory.length, scrollToBottom, showGroupSettings]);
+
+  useLayoutEffect(() => {
     if (!isActive) {
       latestViewReadyRef.current = false;
       return;
@@ -1732,16 +1815,9 @@ export function GroupChatSessionScreen({
       return;
     }
 
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      latestViewReadyRef.current = true;
-      return;
-    }
-
-    chatFooterRef.current?.scrollIntoView({ block: 'end' });
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    scrollToBottom('auto');
     latestViewReadyRef.current = true;
-  }, [isActive, isLoading, latestRenderedMessageKey, showGroupSettings, visibleRenderedMessageCount]);
+  }, [isActive, isLoading, latestRenderedMessageKey, scrollToBottom, showGroupSettings, visibleRenderedMessageCount]);
 
   useLayoutEffect(() => {
     const restore = historyWindowRestoreRef.current;
@@ -1844,11 +1920,12 @@ export function GroupChatSessionScreen({
       );
       scrollRef.current.scrollTop = nextTop;
       preservedScrollTopRef.current = null;
+      isNearBottomRef.current = isNearScrollBottom(scrollRef.current);
       return;
     }
 
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [history]);
+    isNearBottomRef.current = isNearScrollBottom(scrollRef.current);
+  }, [history, isNearScrollBottom]);
 
   useEffect(() => {
     if (!highlightedMessageTarget || !scrollRef.current) {
@@ -2377,7 +2454,8 @@ export function GroupChatSessionScreen({
   };
 
   const handleMentionInsert = (member: Character) => {
-    setInput((prev) => prev.replace(/@([^\s@]*)$/, `@${member.name} `));
+    const mentionLabel = member.remarkName?.trim() || member.name;
+    setInput((prev) => prev.replace(/@([^\s@]*)$/, `@${mentionLabel} `));
     requestAnimationFrame(() => {
       focusTextEntryElement(textareaRef.current);
     });
@@ -2392,20 +2470,21 @@ export function GroupChatSessionScreen({
       timestamp: Date.now(),
       isSystem: true,
     };
-    setHistory((prev) => [...prev, noticeMessage]);
-    void reactToNoticeUpdate({
+    pendingNoticeReactionRef.current = {
       noticeText: trimmedNotice,
-      currentHistory: [...history, noticeMessage],
-    });
+      noticeMessageTimestamp: noticeMessage.timestamp,
+    };
+    setHistory((prev) => [...prev, noticeMessage]);
   };
 
-  const runAiVotesForPoll = async (params: { pollMessage: ChatMessage; pollOptions: string[] }) => {
+  const runAiVotesForPoll = async (params: { pollMessage: ChatMessage; pollOptions: string[]; initialHistory?: ChatMessage[] }) => {
     if (!params.pollMessage.groupPollCard || !activeConfig || !hasUsableConfig) {
       return;
     }
 
-    let workingHistory = [...history, params.pollMessage];
-    for (const member of members) {
+    const activeFeatureMembers = members.filter((member) => !isGroupMemberMuted(group, member.id));
+    let workingHistory = params.initialHistory ? [...params.initialHistory] : [...history, params.pollMessage];
+    for (const member of activeFeatureMembers) {
       try {
         const systemPrompt = buildGroupChatPrompt({
           sceneInput: buildGroupChatSceneInput({
@@ -2415,6 +2494,8 @@ export function GroupChatSessionScreen({
             history: workingHistory,
             userName: groupUserDisplayName,
             directChatHistory,
+            activeWorldBooks: getActiveWorldBooksForSpeaker(member),
+            perception,
           }),
         });
 
@@ -2488,13 +2569,14 @@ export function GroupChatSessionScreen({
     }));
   };
 
-  const runAiRelayEntries = async (params: { relayMessage: ChatMessage }) => {
+  const runAiRelayEntries = async (params: { relayMessage: ChatMessage; initialHistory?: ChatMessage[] }) => {
     if (!params.relayMessage.groupRelayCard || !activeConfig || !hasUsableConfig) {
       return;
     }
 
-    let workingHistory = [...history, params.relayMessage];
-    for (const member of members) {
+    const activeFeatureMembers = members.filter((member) => !isGroupMemberMuted(group, member.id));
+    let workingHistory = params.initialHistory ? [...params.initialHistory] : [...history, params.relayMessage];
+    for (const member of activeFeatureMembers) {
       try {
         const currentRelayCard = workingHistory.find(
           (message) => message.timestamp === params.relayMessage.timestamp,
@@ -2508,6 +2590,8 @@ export function GroupChatSessionScreen({
             history: workingHistory,
             userName: groupUserDisplayName,
             directChatHistory,
+            activeWorldBooks: getActiveWorldBooksForSpeaker(member),
+            perception,
           }),
         });
 
@@ -2573,12 +2657,13 @@ export function GroupChatSessionScreen({
     }));
   };
 
-  const runAiTaskEntries = async (params: { taskMessage: ChatMessage }) => {
+  const runAiTaskEntries = async (params: { taskMessage: ChatMessage; initialHistory?: ChatMessage[] }) => {
     if (!params.taskMessage.groupTaskCard || !activeConfig || !hasUsableConfig) {
       return;
     }
 
-    let workingHistory = [...history, params.taskMessage];
+    const activeTaskMembers = members.filter((member) => !isGroupMemberMuted(group, member.id));
+    let workingHistory = params.initialHistory ? [...params.initialHistory] : [...history, params.taskMessage];
     const maxRounds = 3;
     let currentRound = 0;
     let taskCompleted = false;
@@ -2588,7 +2673,7 @@ export function GroupChatSessionScreen({
       let roundMessageCount = 0;
       let finishSignals = 0;
 
-      for (const member of members) {
+      for (const member of activeTaskMembers) {
         try {
           const currentTaskCard = workingHistory.find(
             (message) => message.timestamp === params.taskMessage.timestamp,
@@ -2602,6 +2687,8 @@ export function GroupChatSessionScreen({
               history: workingHistory,
               userName: groupUserDisplayName,
               directChatHistory,
+              activeWorldBooks: getActiveWorldBooksForSpeaker(member),
+              perception,
             }),
           });
 
@@ -2669,7 +2756,21 @@ export function GroupChatSessionScreen({
             });
           }).concat(reactionMessage);
 
-          setHistory(workingHistory);
+          setHistory((prev) => prev.map((message) => {
+            if (message.timestamp !== params.taskMessage.timestamp || !message.groupTaskCard) {
+              return message;
+            }
+            return updateGroupTaskMessage({
+              message: appendGroupTaskEntry({
+                message,
+                authorId: member.id,
+                authorName: member.remarkName?.trim() || member.name,
+                content: parsed.entry,
+              }),
+              participantId: member.id,
+              rounds: currentRound,
+            });
+          }).concat(reactionMessage));
           roundMessageCount += 1;
         } catch {
           // Ignore a single member failure and keep the rest of the task flow running.
@@ -2678,7 +2779,7 @@ export function GroupChatSessionScreen({
 
       const shouldComplete =
         roundMessageCount === 0
-        || finishSignals >= Math.ceil(members.length / 2)
+        || finishSignals >= Math.ceil(activeTaskMembers.length / 2)
         || currentRound >= maxRounds;
 
       if (shouldComplete) {
@@ -2693,7 +2794,16 @@ export function GroupChatSessionScreen({
             status: 'completed',
           });
         });
-        setHistory(workingHistory);
+        setHistory((prev) => prev.map((message) => {
+          if (message.timestamp !== params.taskMessage.timestamp || !message.groupTaskCard) {
+            return message;
+          }
+          return updateGroupTaskMessage({
+            message,
+            rounds: currentRound,
+            status: 'completed',
+          });
+        }));
       }
     }
   };
@@ -2734,15 +2844,17 @@ export function GroupChatSessionScreen({
         senderCharacterId: params.senderCharacterId,
         timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [
-        ...prev,
+      const launchedHistory = [
+        ...history,
         systemMessage,
         pollMessage,
         ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
-      ]);
+      ];
+      setHistory(launchedHistory);
       void runAiVotesForPoll({
         pollMessage,
         pollOptions: params.plan.options,
+        initialHistory: launchedHistory,
       });
       return;
     }
@@ -2764,14 +2876,16 @@ export function GroupChatSessionScreen({
         senderCharacterId: params.senderCharacterId,
         timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [
-        ...prev,
+      const launchedHistory = [
+        ...history,
         systemMessage,
         relayMessage,
         ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
-      ]);
+      ];
+      setHistory(launchedHistory);
       void runAiRelayEntries({
         relayMessage,
+        initialHistory: launchedHistory,
       });
       return;
     }
@@ -2792,14 +2906,16 @@ export function GroupChatSessionScreen({
         senderCharacterId: params.senderCharacterId,
         timestamp: baseTimestamp + 1,
       });
-      setHistory((prev) => [
-        ...prev,
+      const launchedHistory = [
+        ...history,
         systemMessage,
         taskMessage,
         ...(consumedTemporaryPermissionMessage ? [consumedTemporaryPermissionMessage] : []),
-      ]);
+      ];
+      setHistory(launchedHistory);
       void runAiTaskEntries({
         taskMessage,
+        initialHistory: launchedHistory,
       });
     }
   };
@@ -2918,7 +3034,16 @@ export function GroupChatSessionScreen({
     }
 
     const followupMessages = recentNormalMessages.filter((message) => message.timestamp > latestUserMessage.timestamp);
-    if (followupMessages.length < 2) {
+    if (followupMessages.length < 3) {
+      return;
+    }
+
+    const distinctFollowupSpeakerIds = new Set(
+      followupMessages
+        .map((message) => message.senderCharacterId)
+        .filter((value): value is string => !!value),
+    );
+    if (distinctFollowupSpeakerIds.size < 3) {
       return;
     }
 
@@ -2974,6 +3099,7 @@ export function GroupChatSessionScreen({
             history,
             userName: groupUserDisplayName,
             directChatHistory,
+            activeWorldBooks: getActiveWorldBooksForSpeaker(initiator),
             perception,
           }),
         });
@@ -3031,6 +3157,7 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     hasUsableConfig,
@@ -3041,6 +3168,27 @@ export function GroupChatSessionScreen({
     perception,
     setHistory,
   ]);
+
+  useEffect(() => {
+    const pendingNoticeReaction = pendingNoticeReactionRef.current;
+    if (!pendingNoticeReaction) {
+      return;
+    }
+
+    const hasCommittedNoticeMessage = history.some((message) => (
+      message.timestamp === pendingNoticeReaction.noticeMessageTimestamp
+      && message.text === `[notice] ${pendingNoticeReaction.noticeText}`
+    ));
+    if (!hasCommittedNoticeMessage) {
+      return;
+    }
+
+    pendingNoticeReactionRef.current = null;
+    void reactToNoticeUpdate({
+      noticeText: pendingNoticeReaction.noticeText,
+      currentHistory: history,
+    });
+  }, [history, reactToNoticeUpdate]);
 
   useEffect(() => {
     if (!activeConfig || !hasUsableConfig || isLoading || pendingMessage || members.length === 0) {
@@ -3065,7 +3213,16 @@ export function GroupChatSessionScreen({
     }
 
     const followupMessages = recentNormalMessages.filter((message) => message.timestamp > latestUserMessage.timestamp);
-    if (followupMessages.length < 2) {
+    if (followupMessages.length < 3) {
+      return;
+    }
+
+    const distinctFollowupSpeakerIds = new Set(
+      followupMessages
+        .map((message) => message.senderCharacterId)
+        .filter((value): value is string => !!value),
+    );
+    if (distinctFollowupSpeakerIds.size < 3) {
       return;
     }
 
@@ -3132,6 +3289,7 @@ export function GroupChatSessionScreen({
               history,
               userName: groupUserDisplayName,
               directChatHistory,
+              activeWorldBooks: getActiveWorldBooksForSpeaker(requester),
               perception,
             }),
           });
@@ -3199,6 +3357,7 @@ export function GroupChatSessionScreen({
             history,
             userName: groupUserDisplayName,
             directChatHistory,
+            activeWorldBooks: getActiveWorldBooksForSpeaker(proposer),
             perception,
           }),
         });
@@ -3270,6 +3429,7 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     hasUsableConfig,
@@ -3309,14 +3469,9 @@ export function GroupChatSessionScreen({
               userName: groupUserDisplayName,
               history: inviteGenerationHistory,
               mode: 'invited',
-              activeWorldBooks: selectActiveGroupWorldBooks({
-                speaker: invitedCharacter,
-                group: {
-                  activeWorldBookIds: group.activeWorldBookIds,
-                },
-                worldBooks,
-              }),
+              activeWorldBooks: getActiveWorldBooksForSpeaker(invitedCharacter),
               directChatHistory,
+              perception,
             }),
           }),
           history: inviteGenerationHistory,
@@ -3343,10 +3498,11 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     members,
-    worldBooks,
+    perception,
   ]);
 
   const runGovernanceFollowupReactions = useCallback(async (params: {
@@ -3392,6 +3548,7 @@ export function GroupChatSessionScreen({
           history: workingHistory,
           userName: groupUserDisplayName,
           directChatHistory,
+          activeWorldBooks: getActiveWorldBooksForSpeaker(speaker, params.groupOverride || group),
           perception,
         }),
       });
@@ -3449,6 +3606,7 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     hasUsableConfig,
@@ -3507,6 +3665,7 @@ export function GroupChatSessionScreen({
           history: workingHistory,
           userName: groupUserDisplayName,
           directChatHistory,
+          activeWorldBooks: getActiveWorldBooksForSpeaker(speaker, runtimeGroup),
           perception,
         }),
       });
@@ -3565,6 +3724,7 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     hasUsableConfig,
@@ -3615,7 +3775,7 @@ export function GroupChatSessionScreen({
       const nextHistory = [...history, systemMessage];
 
       onUpdateGroup(nextPatch);
-      setHistory(nextHistory);
+      setHistory((prev) => [...prev, systemMessage]);
       void runModerationFollowupReactions({
         kind: 'mute',
         targetMemberId: params.targetMemberId,
@@ -3646,7 +3806,7 @@ export function GroupChatSessionScreen({
       const nextHistory = [...history, systemMessage];
 
       onUpdateGroup(nextPatch);
-      setHistory(nextHistory);
+      setHistory((prev) => [...prev, systemMessage]);
       void runModerationFollowupReactions({
         kind: 'unmute',
         targetMemberId: params.targetMemberId,
@@ -3679,7 +3839,7 @@ export function GroupChatSessionScreen({
     const nextHistory = [...history, systemMessage];
 
     onUpdateGroup(nextPatch);
-    setHistory(nextHistory);
+    setHistory((prev) => [...prev, systemMessage]);
     void runModerationFollowupReactions({
       kind: 'remove',
       targetMemberId: params.targetMemberId,
@@ -3789,6 +3949,20 @@ export function GroupChatSessionScreen({
       return;
     }
 
+    const followupMessages = recentNormalMessages.filter((message) => message.timestamp > latestUserMessage.timestamp);
+    if (followupMessages.length < 3) {
+      return;
+    }
+
+    const distinctFollowupSpeakerIds = new Set(
+      followupMessages
+        .map((message) => message.senderCharacterId)
+        .filter((value): value is string => !!value),
+    );
+    if (distinctFollowupSpeakerIds.size < 3) {
+      return;
+    }
+
     const activeAdminMembers = members.filter((member) => (
       resolveGroupMemberRole(group, member.id) === 'admin'
       && !isGroupMemberMuted(group, member.id)
@@ -3859,6 +4033,7 @@ export function GroupChatSessionScreen({
             history,
             userName: groupUserDisplayName,
             directChatHistory,
+            activeWorldBooks: getActiveWorldBooksForSpeaker(initiator),
             perception,
           }),
         });
@@ -3917,6 +4092,7 @@ export function GroupChatSessionScreen({
   }, [
     activeConfig,
     directChatHistory,
+    getActiveWorldBooksForSpeaker,
     group,
     groupUserDisplayName,
     hasUsableConfig,
@@ -3961,7 +4137,12 @@ export function GroupChatSessionScreen({
       : createRejectJoinRequestSystemMessage(targetName, resolvedAt + 1);
     const nextHistory = [...resolvedHistory, systemMessage];
 
-    setHistory(nextHistory);
+    setHistory((prev) => [
+      ...prev.map((message) => (
+        message.timestamp === messageTimestamp ? resolvedMessage : message
+      )),
+      systemMessage,
+    ]);
 
     if (decision === 'approved') {
       onUpdateGroup({
@@ -4031,7 +4212,12 @@ export function GroupChatSessionScreen({
       ? createApproveAdminNominationSystemMessage(nomineeName, resolvedAt + 1)
       : createRejectAdminNominationSystemMessage(nomineeName, resolvedAt + 1);
 
-    setHistory([...resolvedHistory, systemMessage]);
+    setHistory((prev) => [
+      ...prev.map((message) => (
+        message.timestamp === messageTimestamp ? resolvedMessage : message
+      )),
+      systemMessage,
+    ]);
 
     if (decision === 'approved') {
       onUpdateGroup({
@@ -4066,23 +4252,22 @@ export function GroupChatSessionScreen({
     });
   };
 
-  const renderTextWithMentions = useCallback((text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
-    const parts = text.split(/(@[^\s@]+)/g);
-    return parts.map((part, index) => {
-      if (!part.startsWith('@')) {
-        return <span key={`${part}-${index}`}>{part}</span>;
+  const renderTextWithMentions = useCallback((text: string, variant: 'incoming' | 'outgoing' = 'incoming') => (
+    tokenizeGroupTextMentions(text, members).map((part, index) => {
+      if (part.kind !== 'mention') {
+        return <span key={`text-${index}`}>{part.text}</span>;
       }
 
       return (
         <span
-          key={`${part}-${index}`}
+          key={`mention-${part.memberId}-${index}`}
           className={variant === 'outgoing' ? 'font-semibold text-white/95' : 'font-medium text-blue-600'}
         >
-          {part}
+          {part.text}
         </span>
       );
-    });
-  }, []);
+    })
+  ), [members]);
 
   const getMessageVisualKind = (message: ChatMessage, content: string) => {
     if (message.groupPollCard) {
@@ -4127,7 +4312,7 @@ export function GroupChatSessionScreen({
 
     return content
       .replace(/^\[(?:sticker|notice)\]\s*/i, '')
-      .replace(/^\[(?:quote|reply|reply to|回复)\s*[:：]\s*[^\]]+\]\s*/i, '')
+      .replace(/^\[(?:quote|reply(?:\s+to)?|回复)\s*(?:[:：]|\s)\s*@?[^\]]+\]\s*/i, '')
       .trim();
   };
 
@@ -5311,7 +5496,7 @@ export function GroupChatSessionScreen({
 	                        <div className="truncate text-sm font-medium text-zinc-900">
 	                          {member.remarkName?.trim() || member.name}
 	                        </div>
-	                        <div className="truncate text-[12px] text-zinc-500">@{member.name}</div>
+	                        <div className="truncate text-[12px] text-zinc-500">@{member.remarkName?.trim() || member.name}</div>
 	                      </div>
 	                    </button>
 	                  ))}

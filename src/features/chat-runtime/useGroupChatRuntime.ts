@@ -266,6 +266,46 @@ function buildGroupAudioMessageKey(message: Pick<ChatMessage, 'timestamp' | 'sen
   return `${message.timestamp}::${message.senderCharacterId || ''}::${message.text}`;
 }
 
+export function buildGroupHistoryMessageKey(message: Pick<
+  ChatMessage,
+  'timestamp' | 'role' | 'senderCharacterId' | 'text' | 'imageUrl' | 'contentType' | 'isSystem' | 'isRecalled'
+>) {
+  return [
+    message.timestamp,
+    message.role,
+    message.senderCharacterId || '',
+    message.text || '',
+    message.imageUrl || '',
+    message.contentType || '',
+    message.isSystem ? 'system' : 'normal',
+    message.isRecalled ? 'recalled' : 'visible',
+  ].join('::');
+}
+
+export function appendUniqueGroupHistoryMessages(
+  history: ChatMessage[],
+  nextMessages: ChatMessage[],
+): ChatMessage[] {
+  if (nextMessages.length === 0) {
+    return history;
+  }
+
+  const seenKeys = new Set(history.map((message) => buildGroupHistoryMessageKey(message)));
+  const mergedHistory = [...history];
+
+  nextMessages.forEach((message) => {
+    const key = buildGroupHistoryMessageKey(message);
+    if (seenKeys.has(key)) {
+      return;
+    }
+
+    seenKeys.add(key);
+    mergedHistory.push(message);
+  });
+
+  return mergedHistory;
+}
+
 function buildCharacterEvidence(character: Character): string {
   const corePersona = buildCharacterContext({ character }).corePersona;
 
@@ -300,22 +340,6 @@ function resolveCharacterByPublicName(name: string, members: Character[]): Chara
       .filter((value): value is string => !!value);
     return aliases.includes(normalized);
   }) || null;
-}
-
-function sanitizeUserMentionText(text: string, members: Character[]): string {
-  let sanitized = text;
-
-  members.forEach((member) => {
-    const remark = member.remarkName?.trim();
-    if (!remark || remark === member.name) {
-      return;
-    }
-
-    const escapedRemark = escapeRegExp(remark);
-    sanitized = sanitized.replace(new RegExp(`@${escapedRemark}(?=\\s|$)`, 'gi'), `@${member.name}`);
-  });
-
-  return sanitized;
 }
 
 function matchesExplicitTargetAlias(text: string, alias: string): boolean {
@@ -460,8 +484,10 @@ function getMessageMainText(message: ChatMessage): string {
   const text = message.text || '';
   if (message.role === 'model') {
     let normalized = text.trim();
-    const senderPrefix = /^[^:：\n]+[:：]\s*/;
-    while (senderPrefix.test(normalized)) {
+    // Strip only the outer speaker label. Reply cues like "[reply: Name]" are part of the content,
+    // not a second sender prefix.
+    const senderPrefix = /^(?!\[)[^:：\n]{1,24}[:：]\s*/u;
+    if (senderPrefix.test(normalized)) {
       normalized = normalized.replace(senderPrefix, '').trim();
     }
     return normalized;
@@ -568,7 +594,7 @@ function hasSenderCharacterId(message: ChatMessage): message is ChatMessage & { 
   return typeof message.senderCharacterId === 'string' && message.senderCharacterId.trim().length > 0;
 }
 
-function parseActionCue(segment: string): {
+export function parseGroupActionCue(segment: string): {
   kind: 'normal' | 'reply' | 'notice' | 'sticker' | 'recall';
   content: string;
   replyTargetName?: string;
@@ -581,6 +607,24 @@ function parseActionCue(segment: string): {
       kind: 'reply',
       replyTargetName: replyMatch[1].trim(),
       content: replyMatch[2].trim(),
+    };
+  }
+
+  const relaxedReplyMatch = normalized.match(/^\[(?:quote|reply(?:\s+to)?|\u56de\u590d)\s*(?:[:：]|\s)\s*@?([^\]]+?)\]\s*(.*)$/i);
+  if (relaxedReplyMatch) {
+    return {
+      kind: 'reply',
+      replyTargetName: relaxedReplyMatch[1].trim(),
+      content: relaxedReplyMatch[2].trim(),
+    };
+  }
+
+  const normalizedReplyCueFallback = normalized.match(/^\[(?:quote|reply(?:\s+to)?|\u56de\u590d)\s*(?:[:：]|\s)\s*@?([^\]]+?)\]\s*(.*)$/i);
+  if (normalizedReplyCueFallback) {
+    return {
+      kind: 'reply',
+      replyTargetName: normalizedReplyCueFallback[1].trim(),
+      content: normalizedReplyCueFallback[2].trim(),
     };
   }
 
@@ -1082,7 +1126,7 @@ function splitStructuredGroupReplyEnvelopeIntoMessages(
         continue;
       }
 
-      const cue = parseActionCue(normalizedText);
+      const cue = parseGroupActionCue(normalizedText);
       messages.push({
         role: 'model',
         text: cue.kind === 'notice' ? `[notice] ${cue.content || normalizedText}` : `${speaker.name}: ${normalizedText}`,
@@ -1153,7 +1197,7 @@ export function splitGroupReplyIntoMessages(text: string, speaker: Character, ba
       break;
     }
 
-    const cue = parseActionCue(segment);
+    const cue = parseGroupActionCue(segment);
     if (cue.kind !== 'normal') {
       parts.push(segment);
       continue;
@@ -1180,7 +1224,7 @@ export function splitGroupReplyIntoMessages(text: string, speaker: Character, ba
   });
 
   return parts.map((part, index) => {
-    const cue = parseActionCue(part);
+    const cue = parseGroupActionCue(part);
     return {
       role: 'model' as const,
       text: cue.kind === 'notice' ? `[notice] ${cue.content}` : `${speaker.name}: ${part}`,
@@ -1813,7 +1857,7 @@ export function useGroupChatRuntime({
   }, [setError, setHistory]);
 
   const resolveReplyTarget = useCallback((targetName: string, currentHistory: ChatMessage[]) => {
-    const normalizedTarget = targetName.trim().toLowerCase();
+    const normalizedTarget = targetName.trim().replace(/^@+/, '').toLowerCase();
     if (!normalizedTarget) {
       return null;
     }
@@ -1834,9 +1878,9 @@ export function useGroupChatRuntime({
 
       if (hasSenderCharacterId(message)) {
         const sender = members.find((member) => member.id === message.senderCharacterId);
-        const aliases = [sender?.name].filter((value): value is string => !!value?.trim());
+        const aliases = [sender?.name, sender?.remarkName?.trim()].filter((value): value is string => !!value?.trim());
         if (aliases.some((alias) => alias.trim().toLowerCase() === normalizedTarget)) {
-          return buildReplyPreviewPayload(message, sender?.name || targetName);
+          return buildReplyPreviewPayload(message, sender?.remarkName?.trim() || sender?.name || targetName);
         }
       }
     }
@@ -1961,7 +2005,7 @@ export function useGroupChatRuntime({
         .filter((key): key is string => !!key),
     );
 
-    const shouldRecallPrevious = messages.some((message) => parseActionCue(getMessageMainText(message)).kind === 'recall');
+    const shouldRecallPrevious = messages.some((message) => parseGroupActionCue(getMessageMainText(message)).kind === 'recall');
     const historyAfterRecall = shouldRecallPrevious
       ? currentHistory.map((message) => (
           previousMessageBySpeaker && message.timestamp === previousMessageBySpeaker.timestamp
@@ -1990,7 +2034,7 @@ export function useGroupChatRuntime({
         };
       }
 
-      const cue = parseActionCue(rawContent);
+      const cue = parseGroupActionCue(rawContent);
       const effectiveStickerPool = resolvedStickerPool?.length
         ? resolvedStickerPool
         : getSpeakerStickerPool(speaker);
@@ -2432,9 +2476,9 @@ export function useGroupChatRuntime({
           },
         };
 
-        let workingHistory = [...currentHistory, systemMessage];
+        let workingHistory = appendUniqueGroupHistoryMessages(currentHistory, [systemMessage]);
         historyRef.current = workingHistory;
-        setHistory(workingHistory);
+        setHistory((prevHistory) => appendUniqueGroupHistoryMessages(prevHistory, [systemMessage]));
 
         const targetAppendedMessages = await appendSpeakerMessage(
           targetMember,
@@ -2451,7 +2495,7 @@ export function useGroupChatRuntime({
           },
         );
         if (targetAppendedMessages.length > 0) {
-          workingHistory = [...workingHistory, ...targetAppendedMessages];
+          workingHistory = appendUniqueGroupHistoryMessages(workingHistory, targetAppendedMessages);
           historyRef.current = workingHistory;
         }
 
@@ -2479,7 +2523,7 @@ export function useGroupChatRuntime({
               },
             );
             if (spectatorAppendedMessages.length > 0) {
-              workingHistory = [...workingHistory, ...spectatorAppendedMessages];
+              workingHistory = appendUniqueGroupHistoryMessages(workingHistory, spectatorAppendedMessages);
               historyRef.current = workingHistory;
             }
           }
@@ -2499,9 +2543,9 @@ export function useGroupChatRuntime({
               step: 'counter',
             },
           };
-          workingHistory = [...workingHistory, counterMessage];
+          workingHistory = appendUniqueGroupHistoryMessages(workingHistory, [counterMessage]);
           historyRef.current = workingHistory;
-          setHistory(workingHistory);
+          setHistory((prevHistory) => appendUniqueGroupHistoryMessages(prevHistory, [counterMessage]));
         }
       });
     } catch (runtimeError) {
@@ -2695,7 +2739,7 @@ export function useGroupChatRuntime({
         const recentCount = countRecentMessagesBySpeaker(member.id);
         const isReplyTarget = !!replyingTo
           && replyingTo.role === 'model'
-          && replyingTo.authorLabel.trim().toLowerCase() === member.name.trim().toLowerCase();
+          && getMemberAliases(member).some((alias) => alias.trim().toLowerCase() === replyingTo.authorLabel.trim().toLowerCase());
 
         const participationBonus = computeGroupParticipationBonus({
           character: member,
@@ -3327,11 +3371,11 @@ export function useGroupChatRuntime({
     openingRequestIdRef.current += 1;
     secondarySpeakerRequestIdRef.current += 1;
 
-    const sanitizedMessageText = sanitizeUserMentionText(params.message.text, members);
-    const sanitizedPromptText = sanitizeUserMentionText(params.promptText, members);
-    const mentionedMembers = extractMentionedMembers(sanitizedPromptText);
+    const messageText = params.message.text;
+    const promptText = params.promptText;
+    const mentionedMembers = extractMentionedMembers(promptText);
     const intent = resolveGroupReplyIntent({
-      text: sanitizedPromptText,
+      text: promptText,
       mentionedMemberIds: mentionedMembers.map((member) => member.id),
       memberIds: members.map((member) => member.id),
     });
@@ -3344,13 +3388,13 @@ export function useGroupChatRuntime({
 
     const newHistory = [...historyRef.current, {
       ...params.message,
-      text: sanitizedMessageText,
+      text: messageText,
     }];
     setHistory(newHistory);
     setInput('');
     setReplyingTo(null);
     console.info('[group-chat] user message appended', {
-      text: sanitizedMessageText,
+      text: messageText,
       historyLength: newHistory.length,
       memberCount: members.length,
       intent: intent.kind,
@@ -3366,7 +3410,7 @@ export function useGroupChatRuntime({
 
     try {
       await runGeneration(async ({ generationId }) => {
-        const responder = pickPrimaryResponder(sanitizedPromptText, intent, preferredSpeakerIds);
+        const responder = pickPrimaryResponder(promptText, intent, preferredSpeakerIds);
 
         if (!responder) {
           throw new Error('\u7fa4\u804a\u4e2d\u6ca1\u6709\u53ef\u7528\u7684\u56de\u590d\u89d2\u8272');
@@ -3417,7 +3461,7 @@ export function useGroupChatRuntime({
           setPendingMessage(null);
           const latestHistory = [...newHistory, ...resolvedMessages];
 
-          const conversationHeat = computeConversationHeat(intent, sanitizedPromptText, response.text);
+          const conversationHeat = computeConversationHeat(intent, promptText, response.text);
           const forcedSpeakerIds = preferredSpeakerIds.filter((speakerId) => speakerId !== responder.id);
           const conversationPlan = createGroupConversationPlan({
             trigger: 'auto',
@@ -3428,7 +3472,7 @@ export function useGroupChatRuntime({
           });
           scheduleFollowUpSpeakers({
             intent,
-            contextText: sanitizedPromptText,
+            contextText: promptText,
             latestHistory,
             previousSpeaker: responder,
             latestResponse: response.text,
@@ -3476,7 +3520,7 @@ export function useGroupChatRuntime({
   ]);
 
   const requestManualReply = useCallback(async () => {
-    if (!hasActiveConfig || isLoading || members.length === 0 || pendingMessage) {
+    if (!hasActiveConfig || isLoading || activeSpeakerMembers.length === 0 || pendingMessage) {
       return;
     }
 
@@ -3495,15 +3539,24 @@ export function useGroupChatRuntime({
         let workingHistory = currentHistory;
         let latestReplyText = latestText;
         const selectedSpeakerIds: string[] = [];
+        const activeSpeakerIdSet = new Set(activeSpeakerMembers.map((member) => member.id));
+        const manualMentionedMemberIds = Array.from(
+          new Set(
+            Array.from(latestText.matchAll(MENTION_REGEX))
+              .map((match) => resolveCharacterByPublicName(match[1], members))
+              .filter((member): member is Character => !!member && activeSpeakerIdSet.has(member.id))
+              .map((member) => member.id),
+          ),
+        );
         const manualIntent = resolveGroupReplyIntent({
           text: latestText,
-          mentionedMemberIds: [],
-          memberIds: members.map((member) => member.id),
+          mentionedMemberIds: manualMentionedMemberIds,
+          memberIds: activeSpeakerMembers.map((member) => member.id),
         });
         const manualPlan = createGroupConversationPlan({
           trigger: 'manual',
           intent: manualIntent,
-          memberCount: members.length,
+          memberCount: activeSpeakerMembers.length,
           conversationHeat: manualIntent.kind === 'group_topic' || manualIntent.kind === 'open_floor' ? 1.4 : 0.7,
         });
         const targetCount = manualPlan.targetCount;
@@ -3512,7 +3565,7 @@ export function useGroupChatRuntime({
             .reverse()
             .find((message) => message.role === 'model' && !message.isSystem)
             ?.senderCharacterId;
-          const weightedMembers = members
+          const weightedMembers = activeSpeakerMembers
             .filter((member) => !selectedSpeakerIds.includes(member.id))
             .map((member) => {
               const recentCount = workingHistory
@@ -3598,6 +3651,7 @@ export function useGroupChatRuntime({
     }
   }, [
     activeGenerationIdRef,
+    activeSpeakerMembers,
     appendSpeakerMessage,
     appendSystemFailure,
     clearDelayedSpeakerTimer,
@@ -3673,10 +3727,10 @@ export function useGroupChatRuntime({
 
     const baseHistory = currentHistory.slice(0, start);
     const replyTarget = currentHistory[start]?.replyTo ?? null;
+    let didRegenerate = false;
 
     try {
       await runGeneration(async ({ generationId }) => {
-        setHistory(baseHistory);
         const response = await generateMessageForSpeaker({
           speaker,
           currentHistory: baseHistory,
@@ -3688,7 +3742,7 @@ export function useGroupChatRuntime({
           return;
         }
 
-        await appendSpeakerMessage(
+        const appendedMessages = await appendSpeakerMessage(
           speaker,
           response.text,
           response.timestamp,
@@ -3698,9 +3752,10 @@ export function useGroupChatRuntime({
           response.sharedState,
           response.stickerPool,
         );
+        didRegenerate = appendedMessages.length > 0;
         setPendingMessage(null);
       });
-      return true;
+      return didRegenerate;
     } catch (runtimeError) {
       console.error('Regenerate latest group reply error:', runtimeError);
       setPendingMessage(null);

@@ -36,16 +36,16 @@ export function createGroupConversationPlan(params: {
 
   if (params.intent.kind === 'force_all_members') {
     const count = Math.max(params.memberCount, forcedSpeakerCount);
-    return { targetCount: count, maxFollowUpDepth: Math.max(count + 1, forcedSpeakerCount + 2) };
+    return { targetCount: count, maxFollowUpDepth: Math.max(0, count - 1) };
   }
 
   if (params.intent.kind === 'force_targets') {
     const count = clamp(Math.max(forcedSpeakerCount, 1), 1, params.memberCount);
-    return { targetCount: count, maxFollowUpDepth: count };
+    return { targetCount: count, maxFollowUpDepth: Math.max(0, count - 1) };
   }
 
   if (params.intent.kind === 'stop_followups') {
-    return { targetCount: 1, maxFollowUpDepth: 1 };
+    return { targetCount: 1, maxFollowUpDepth: 0 };
   }
 
   if (params.trigger === 'manual') {

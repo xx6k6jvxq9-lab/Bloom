@@ -6,7 +6,7 @@ function escapeRegExp(value: string): string {
 
 function stripLeadingMeta(text: string): string {
   return text
-    .replace(/^\[(?:reply|reply to)\s*:\s*[^\]]+\]\s*/i, '')
+    .replace(/^\[(?:reply(?:\s+to)?|回复)\s*(?:[:：]|\s)\s*@?[^\]]+\]\s*/i, '')
     .replace(/^\[(?:notice|system|sticker|image)\]\s*/i, '')
     .replace(/^[\s"'`\u201c\u201d\u2018\u2019!?,，。？]+/u, '')
     .trim();
@@ -35,6 +35,7 @@ export function stripAssistantSpeakerPrefix(text: string, aliases: string[]): st
     }
   }
 
+  normalized = stripLeadingMeta(normalized);
   return normalized.replace(/^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/g, '').trim();
 }
 
