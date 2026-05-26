@@ -3,7 +3,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { MouseEventHandler } from 'react';
 import { memo, useCallback, useLayoutEffect, useMemo } from 'react';
 import {
+  Banknote,
   Camera,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -51,6 +53,7 @@ import {
 import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { resolveMessageTranslationForDisplay } from '../../services/chat/messageText';
+import { extractTransferAmountText } from '../../services/chat/transferContextText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import {
   buildGroupOfflineRecruitStatusSummary,
@@ -955,6 +958,7 @@ export function GroupChatSessionScreen({
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [activeIncomingTransferIndex, setActiveIncomingTransferIndex] = useState<number | null>(null);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
     timestamp: number;
     text: string;
@@ -1571,6 +1575,8 @@ export function GroupChatSessionScreen({
     requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,
+    handleReceiveTransfer,
+    handleRejectTransfer,
   } = useGroupChatRuntime({
     members,
     availableStickers: availableCustomStickers,
@@ -1889,6 +1895,8 @@ export function GroupChatSessionScreen({
     && !message.audioUrl
     && !message.location
     && !message.isVoiceCall
+    && message.contentType !== 'transfer'
+    && !extractTransferAmountText(message.text)
     && !message.groupPollCard
     && !message.groupRelayCard
     && !message.groupTaskCard
@@ -4298,6 +4306,10 @@ export function GroupChatSessionScreen({
       return 'sticker' as const;
     }
 
+    if (message.contentType === 'transfer' || !!extractTransferAmountText(message.text)) {
+      return 'transfer' as const;
+    }
+
     if (message.replyTo) {
       return 'reply' as const;
     }
@@ -4312,6 +4324,8 @@ export function GroupChatSessionScreen({
 
     return content
       .replace(/^\[(?:sticker|notice)\]\s*/i, '')
+      .replace(/^\[transfer\]\s*[\d.]+\s*\[\/transfer\]\s*/i, '')
+      .replace(/^\[转账\s*[\d.]+\]\s*/i, '')
       .replace(/^\[(?:quote|reply(?:\s+to)?|回复)\s*(?:[:：]|\s)\s*@?[^\]]+\]\s*/i, '')
       .trim();
   };
@@ -4322,8 +4336,8 @@ export function GroupChatSessionScreen({
     currentMessage: ChatMessage;
     currentContent: string;
     streakIndex: number;
-    previousVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
-    currentVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
+    previousVisualKind: 'notice' | 'sticker' | 'transfer' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
+    currentVisualKind: 'notice' | 'sticker' | 'transfer' | 'reply' | 'normal' | 'poll' | 'relay' | 'task' | 'governance' | 'offline';
   }) => {
     const {
       previousMessage,
@@ -4972,6 +4986,148 @@ export function GroupChatSessionScreen({
                       <div className="mt-2 text-[12px] leading-5 text-zinc-500">
                         任务发起后，成员会用下面的正常消息气泡继续参与，直到任务自然结束。
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (visualKind === 'transfer') {
+            const amountText = extractTransferAmountText(msg.text) || '0.00';
+            const isReceived = msg.transferStatus === 'received';
+            const isRejected = msg.transferStatus === 'rejected';
+            const canManualReceive = !isUser && !isReceived && !isRejected;
+            const transferTargetName = msg.transferTargetLabel || (!isUser ? groupUserDisplayName : '你');
+            const cardLabel = msg.transferDisplayLabel || (
+              isReceived
+                ? '你已收款'
+                : isRejected
+                  ? '你已退回'
+                  : '待你确认'
+            );
+            const footerText = isUser ? '群聊转账已处理' : `转账给 ${transferTargetName}`;
+            const cardBgClass = isReceived
+              ? 'bg-[#FBC48A]'
+              : isRejected
+                ? 'bg-[#F8B86B]'
+                : 'bg-[#FA9D3B]';
+
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div
+                  data-message-timestamp={msg.timestamp}
+                  data-message-text={msg.text}
+                  className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'} ${
+                    highlightedMessageTarget
+                    && highlightedMessageTarget.timestamp === msg.timestamp
+                    && highlightedMessageTarget.text === msg.text
+                      ? 'rounded-[28px] bg-amber-50/70 px-2 py-2 ring-1 ring-amber-200 transition-all'
+                      : ''
+                  }`}
+                >
+                  {isGroupedWithPrevious ? (
+                    <div className="h-10 w-10 shrink-0" />
+                  ) : (
+                    <GroupMessageAvatar
+                      value={isUser ? userAvatar : avatar}
+                      fallbackValue={undefined}
+                      alt={isUser ? groupUserDisplayName : senderName}
+                      fit={isUser ? 'contain' : 'cover'}
+                      frameVariant="lite"
+                      scopeClassName={isUser
+                        ? 'group-avatar-frame-theme group-avatar-frame-user'
+                        : `group-avatar-frame-theme group-avatar-frame-model ${senderCharacter?.id ? `group-avatar-frame-char-${toAvatarFrameScopeId(senderCharacter.id)}` : ''}`}
+                      borderRadius={settings.visualSettings?.chat?.avatarBorderRadius ?? 20}
+                      borderWidth={settings.visualSettings?.chat?.avatarBorderWidth ?? 0}
+                      borderColor={settings.visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      className={
+                        !isUser && senderCharacter?.id
+                          ? isLoading || !!pendingMessage
+                            ? 'cursor-not-allowed opacity-70'
+                            : 'cursor-pointer transition-transform active:scale-95'
+                          : undefined
+                      }
+                      onClick={
+                        !isUser && senderCharacter?.id
+                          ? (event) => handleGroupMemberAvatarTap(event, senderCharacter.id)
+                          : undefined
+                      }
+                    />
+                  )}
+                  <div className={`flex max-w-[88%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                    {!isGroupedWithPrevious && (
+                      <div className={`mb-1 flex flex-wrap items-center gap-2 ${isUser ? 'justify-end mr-1' : 'ml-1'}`}>
+                        {badge ? (
+                          <span
+                            className="inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                            style={{ backgroundColor: badge.color }}
+                          >
+                            {badge.label}
+                          </span>
+                        ) : null}
+                        <span className="text-[12px] font-medium text-zinc-500">{senderName}</span>
+                        {!badge && roleLabel && roleLabel !== '普通成员' ? (
+                          <span className="inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            {roleLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    <div className={`flex items-end gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div
+                        onClick={(event) => {
+                          if (canManualReceive) {
+                            setActiveIncomingTransferIndex(idx);
+                          } else {
+                            handleMessageClick(event, idx);
+                          }
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          openContextMenu(event, idx);
+                        }}
+                        onPointerDown={(event) => {
+                          clearLongPressTimer();
+                          longPressTimerRef.current = window.setTimeout(() => {
+                            openContextMenu(event, idx);
+                          }, 420);
+                        }}
+                        onPointerUp={clearLongPressTimer}
+                        onPointerLeave={clearLongPressTimer}
+                        onPointerCancel={clearLongPressTimer}
+                        className="chat-transfer-card w-[15.5rem] cursor-pointer overflow-hidden rounded-xl shadow-sm transition-opacity active:opacity-90"
+                      >
+                        <div className={`${cardBgClass} chat-transfer-card-header flex items-center gap-3 p-3.5`}>
+                          <div className="chat-transfer-card-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 text-white">
+                            {isReceived ? <Check size={24} /> : isRejected ? <X size={24} /> : <Banknote size={24} />}
+                          </div>
+                          <div className="chat-transfer-card-content flex min-w-0 flex-col">
+                            <span className="text-[16px] font-bold text-white">￥{amountText}</span>
+                            <span className="truncate text-[12px] text-white/80">{cardLabel}</span>
+                          </div>
+                        </div>
+                        <div className="chat-transfer-card-footer border border-t-0 border-zinc-100 bg-white p-2">
+                          <div className="flex items-center justify-between gap-3 px-1">
+                            <span className="text-[10px] text-zinc-400">{footerText}</span>
+                            {canManualReceive && (
+                              <span className="text-[10px] text-zinc-300">点击处理</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {showChatMessageTime && (
+                        <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                          {formatChatMessageTime(msg.timestamp)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -5637,6 +5793,72 @@ export function GroupChatSessionScreen({
         onClose={() => setShowLocationPicker(false)}
         onSend={sendLocationMessage}
       />
+
+      <AnimatePresence>
+        {activeIncomingTransferIndex !== null && history[activeIncomingTransferIndex] && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="w-full max-w-[300px] rounded-2xl bg-white p-6 shadow-xl"
+            >
+              <div className="mb-4 flex justify-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#FA9D3B]/12 text-[#FA9D3B]">
+                  <Banknote size={28} />
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-zinc-400">转账金额</div>
+                <div className="mt-2 text-4xl font-bold text-zinc-900">
+                  ￥{extractTransferAmountText(history[activeIncomingTransferIndex]?.text) || '0.00'}
+                </div>
+                <div className="mt-2 text-sm text-zinc-500">
+                  {(() => {
+                    const transferMessage = history[activeIncomingTransferIndex];
+                    if (!transferMessage) {
+                      return '群成员向你发起转账';
+                    }
+                    return `${resolveSenderInfo(transferMessage).senderName} 向你发起转账`;
+                  })()}
+                </div>
+              </div>
+              <div className="mt-6 rounded-2xl bg-zinc-50 px-4 py-3 text-center text-sm text-zinc-500">
+                请确认是否收下这笔群聊转账
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleRejectTransfer(activeIncomingTransferIndex);
+                    setActiveIncomingTransferIndex(null);
+                  }}
+                  className="flex-1 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-500"
+                >
+                  退回
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleReceiveTransfer(activeIncomingTransferIndex);
+                    setActiveIncomingTransferIndex(null);
+                  }}
+                  className="flex-1 rounded-xl bg-[#FA9D3B] px-4 py-3 text-sm font-medium text-white"
+                >
+                  收款
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveIncomingTransferIndex(null)}
+                className="mt-3 w-full text-center text-xs text-zinc-400"
+              >
+                稍后处理
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {groupOfflineModal}
 

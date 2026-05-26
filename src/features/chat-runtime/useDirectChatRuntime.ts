@@ -139,6 +139,10 @@ import {
 } from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
+import {
+  resolveTransferReplyTextForEvent,
+  type TransferSettlementEvent,
+} from '../../services/chat/transferEventSemantics';
 import { collectRecentDirectPokeState } from '../../services/chat/lightInteractionHistory';
 import {
   buildDirectProactivePokeProtocolPrompt,
@@ -4684,6 +4688,13 @@ export function useDirectChatRuntime({
 
     const amountStr = extractTransferAmount(transferMessage.text) || '0.00';
     const amount = parseFloat(amountStr);
+    const transferEvent: TransferSettlementEvent = {
+      direction: 'user_to_character',
+      status,
+      amount,
+      userName,
+      characterName: character.name,
+    };
     const settledAt = Date.now();
     const nextHistory = [...latestHistory];
     nextHistory[transferIndex] = {
@@ -4703,10 +4714,11 @@ export function useDirectChatRuntime({
       transferSettledAt: settledAt,
     });
 
-    if (replyText) {
+    const safeReplyText = resolveTransferReplyTextForEvent(transferEvent, replyText);
+    if (safeReplyText) {
       nextHistory.push({
         role: 'model',
-        text: replyText,
+        text: safeReplyText,
         timestamp: settledAt + 1,
       });
     }
@@ -4735,7 +4747,7 @@ export function useDirectChatRuntime({
     }
 
     commitHistory(nextHistory);
-  }, [character.name, commitHistory, onUpdateWalletData, walletData]);
+  }, [character.name, commitHistory, onUpdateWalletData, userName, walletData]);
 
   const queueTransferDecision = useCallback((params: {
     transferId: string;
@@ -4773,10 +4785,7 @@ export function useDirectChatRuntime({
       });
   }, [activeConfig, applyTransferDecision, character, userName]);
 
-  const triggerTransferEventReaction = useCallback((params: {
-    amount: number;
-    direction: 'character_to_user_received' | 'character_to_user_rejected';
-  }) => {
+  const triggerTransferEventReaction = useCallback((event: TransferSettlementEvent) => {
     if (!activeConfig) {
       return;
     }
@@ -4785,13 +4794,11 @@ export function useDirectChatRuntime({
     void generateTransferEventReaction({
       activeConfig,
       character,
-      amount: params.amount,
       history: historySnapshot,
-      userName,
-      direction: params.direction,
+      event,
     })
       .then(result => {
-        const replyText = result.replyText.trim();
+        const replyText = resolveTransferReplyTextForEvent(event, result.replyText);
         if (!replyText) {
           return;
         }
@@ -4805,7 +4812,7 @@ export function useDirectChatRuntime({
       .catch(error => {
         console.error('Transfer reaction failed:', error);
       });
-  }, [activeConfig, character, commitHistory, userName]);
+  }, [activeConfig, character, commitHistory]);
 
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
@@ -5104,11 +5111,14 @@ export function useDirectChatRuntime({
       }
 
       triggerTransferEventReaction({
+        direction: 'character_to_user',
+        status: 'received',
         amount,
-        direction: 'character_to_user_received',
+        userName,
+        characterName: character.name,
       });
     }
-  }, [activeConfig, character, character.name, commitHistory, history, onUpdateWalletData, triggerTransferEventReaction, userName, walletData]);
+  }, [character.name, commitHistory, history, onUpdateWalletData, triggerTransferEventReaction, userName, walletData]);
 
   const requestManualReply = useCallback(() => {
     if (isLoading) {
@@ -5161,11 +5171,14 @@ export function useDirectChatRuntime({
 
     if (!Number.isNaN(amount) && amount > 0) {
       triggerTransferEventReaction({
+        direction: 'character_to_user',
+        status: 'rejected',
         amount,
-        direction: 'character_to_user_rejected',
+        userName,
+        characterName: character.name,
       });
     }
-  }, [character.name, commitHistory, history, triggerTransferEventReaction]);
+  }, [character.name, commitHistory, history, triggerTransferEventReaction, userName]);
 
   return {
     isLoading,

@@ -21,6 +21,12 @@ import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../.
 import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
 import { collectRecentGroupPokeState } from '../../services/chat/lightInteractionHistory';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
+import { extractTransferAmountText } from '../../services/chat/transferContextText';
+import {
+  buildTransferSettlementEventLine,
+  resolveTransferReplyTextForEvent,
+  type TransferSettlementEvent,
+} from '../../services/chat/transferEventSemantics';
 import {
   buildAssistantStickerPromptSection,
   pickAssistantSticker,
@@ -117,10 +123,14 @@ type UseGroupChatRuntimeResult = {
     noticeText: string;
     currentHistory: ChatMessage[];
   }) => Promise<void>;
+  handleReceiveTransfer: (index: number) => Promise<void>;
+  handleRejectTransfer: (index: number) => Promise<void>;
 };
 
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
+const TRANSFER_BRACKET_REGEX = /\[转账\s*[\d.]+\]/ig;
+const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*[\d.]+\s*\[\/transfer\]/ig;
 
 const EXTRA_SPEAKER_KEYWORDS = [
   '\u5176\u4ed6\u4eba',
@@ -478,6 +488,14 @@ function normalizeGeneratedReply(text: string, speaker: Character): string {
 
 function buildFailureText(detail: string): string {
   return `[\u7cfb\u7edf\u63d0\u793a] \u7fa4\u804a\u56de\u590d\u5931\u8d25\uff1a${detail}`;
+}
+
+function stripTransferProtocolText(text: string): string {
+  return text
+    .replace(TRANSFER_BLOCK_REGEX, '')
+    .replace(TRANSFER_BRACKET_REGEX, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function getMessageMainText(message: ChatMessage): string {
@@ -1361,6 +1379,11 @@ export function useGroupChatRuntime({
     historyRef.current = history;
   }, [history]);
 
+  const commitHistory = useCallback((nextHistory: ChatMessage[]) => {
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
+  }, [setHistory]);
+
   const activeSpeakerMembers = useMemo(() => {
     const mutedMemberIds = new Set(groupMeta?.mutedMemberIds || []);
     return members.filter((member) => !mutedMemberIds.has(member.id));
@@ -2030,6 +2053,7 @@ export function useGroupChatRuntime({
       ) {
         return {
           ...message,
+          ...(message.contentType === 'transfer' && !message.transferTargetLabel ? { transferTargetLabel: userName } : {}),
           ...(lightInteractionMeta ? { lightInteractionMeta } : {}),
         };
       }
@@ -2123,7 +2147,9 @@ export function useGroupChatRuntime({
         hasReplyTo: !!message.replyTo,
       })),
     });
-    setHistory(() => [...historyAfterRecall, ...structuredMessages]);
+    const nextHistory = [...historyAfterRecall, ...structuredMessages];
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
     if (structuredMessages.length > 0) {
       await recordGroupSpeakerSettlement(speaker, structuredMessages, sharedState);
     }
@@ -2140,6 +2166,7 @@ export function useGroupChatRuntime({
     groupMeta?.publicFacts,
     groupMeta?.groupShortTermSummary,
     setHistory,
+    userName,
   ]);
 
   const triggerAISpeaker = useCallback(async (
@@ -2379,6 +2406,179 @@ export function useGroupChatRuntime({
     activeSpeakerMembers,
     pickWeightedMember,
   ]);
+
+  const runTransferSettlementReaction = useCallback(async (params: {
+    sender: Character;
+    event: TransferSettlementEvent;
+    currentHistory: ChatMessage[];
+  }): Promise<ChatMessage[]> => {
+    if (!hasActiveConfig) {
+      return [];
+    }
+
+    const reactionPrompt = [
+      '群里刚发生了一笔转账互动。',
+      `已发生事实：${buildTransferSettlementEventLine(params.event)}`,
+      '请你只按这个已发生事实，在群里自然接一句短消息。',
+      '不要再次输出转账协议，不要把结果说反，不要总结流程，也不要长篇解释。',
+    ].join('\n');
+
+    try {
+      const response = await generateMessageForSpeaker({
+        speaker: params.sender,
+        currentHistory: [
+          ...params.currentHistory,
+          {
+            role: 'user',
+            text: reactionPrompt,
+            timestamp: Date.now(),
+          },
+        ],
+        mode: 'reply',
+        speechActInstruction: '这是一条群聊里的转账结果反应。只发 1 到 2 句短促群聊消息，不要再次发起转账，也不要解释规则。',
+      });
+      const safeReplyText = resolveTransferReplyTextForEvent(
+        params.event,
+        stripTransferProtocolText(response.text),
+      );
+      if (!safeReplyText) {
+        setPendingMessage(null);
+        return [];
+      }
+
+      const appendedMessages = await appendSpeakerMessage(
+        params.sender,
+        safeReplyText,
+        response.timestamp,
+        params.currentHistory,
+        null,
+        true,
+        response.sharedState,
+        response.stickerPool,
+      );
+      setPendingMessage(null);
+      if (appendedMessages.length > 0) {
+        historyRef.current = [...params.currentHistory, ...appendedMessages];
+      }
+      return appendedMessages;
+    } catch (error) {
+      console.error('[group-chat] transfer settlement reaction failed', error);
+      setPendingMessage(null);
+      return [];
+    }
+  }, [
+    appendSpeakerMessage,
+    generateMessageForSpeaker,
+    hasActiveConfig,
+  ]);
+
+  const handleReceiveTransfer = useCallback(async (index: number) => {
+    const latestHistory = historyRef.current;
+    const transferMessage = latestHistory[index];
+    if (
+      !transferMessage
+      || transferMessage.role !== 'model'
+      || transferMessage.transferStatus === 'received'
+      || transferMessage.transferStatus === 'rejected'
+    ) {
+      return;
+    }
+
+    const amountText = extractTransferAmountText(transferMessage.text) || '0.00';
+    const amount = Number.parseFloat(amountText);
+    const settledAt = Date.now();
+    const nextHistory = [...latestHistory];
+    nextHistory[index] = {
+      ...transferMessage,
+      transferStatus: 'received',
+      transferSettledAt: settledAt,
+      transferTargetLabel: transferMessage.transferTargetLabel || userName,
+    };
+    nextHistory.push({
+      role: 'user',
+      text: `[转账 ${amountText}]`,
+      contentType: 'transfer',
+      timestamp: settledAt,
+      transferStatus: 'received',
+      transferDisplayLabel: '已收款',
+      transferTargetLabel: userName,
+      transferSettledAt: settledAt,
+    });
+    commitHistory(nextHistory);
+
+    const sender = transferMessage.senderCharacterId
+      ? members.find((member) => member.id === transferMessage.senderCharacterId) || null
+      : null;
+    if (!sender || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+
+    await runTransferSettlementReaction({
+      sender,
+      event: {
+        direction: 'character_to_user',
+        status: 'received',
+        amount,
+        userName,
+        characterName: sender.remarkName?.trim() || sender.name,
+      },
+      currentHistory: nextHistory,
+    });
+  }, [commitHistory, members, runTransferSettlementReaction, userName]);
+
+  const handleRejectTransfer = useCallback(async (index: number) => {
+    const latestHistory = historyRef.current;
+    const transferMessage = latestHistory[index];
+    if (
+      !transferMessage
+      || transferMessage.role !== 'model'
+      || transferMessage.transferStatus === 'received'
+      || transferMessage.transferStatus === 'rejected'
+    ) {
+      return;
+    }
+
+    const amountText = extractTransferAmountText(transferMessage.text) || '0.00';
+    const amount = Number.parseFloat(amountText);
+    const settledAt = Date.now();
+    const nextHistory = [...latestHistory];
+    nextHistory[index] = {
+      ...transferMessage,
+      transferStatus: 'rejected',
+      transferSettledAt: settledAt,
+      transferTargetLabel: transferMessage.transferTargetLabel || userName,
+    };
+    nextHistory.push({
+      role: 'user',
+      text: `[转账 ${amountText}]`,
+      contentType: 'transfer',
+      timestamp: settledAt,
+      transferStatus: 'rejected',
+      transferDisplayLabel: '已退回',
+      transferTargetLabel: userName,
+      transferSettledAt: settledAt,
+    });
+    commitHistory(nextHistory);
+
+    const sender = transferMessage.senderCharacterId
+      ? members.find((member) => member.id === transferMessage.senderCharacterId) || null
+      : null;
+    if (!sender || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+
+    await runTransferSettlementReaction({
+      sender,
+      event: {
+        direction: 'character_to_user',
+        status: 'rejected',
+        amount,
+        userName,
+        characterName: sender.remarkName?.trim() || sender.name,
+      },
+      currentHistory: nextHistory,
+    });
+  }, [commitHistory, members, runTransferSettlementReaction, userName]);
 
   const sendPokeInteraction = useCallback(async (memberId: string) => {
     if (!hasActiveConfig || isLoading || members.length === 0 || pendingMessage) {
@@ -3933,5 +4133,7 @@ export function useGroupChatRuntime({
     requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,
+    handleReceiveTransfer,
+    handleRejectTransfer,
   };
 }

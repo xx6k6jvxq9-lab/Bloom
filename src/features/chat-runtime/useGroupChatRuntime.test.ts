@@ -47,3 +47,18 @@ test('splitGroupReplyIntoMessages keeps structured game card items as card messa
   assert.equal(messages[0]?.translation, '那你先说。');
   assert.equal(messages[0]?.senderCharacterId, 'speaker');
 });
+
+test('splitGroupReplyIntoMessages keeps structured transfer items as pending transfer cards', () => {
+  const speaker = createSpeaker();
+  const messages = splitGroupReplyIntoMessages(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"transfer","amount":"88.00"}]}',
+    speaker,
+    3000,
+  );
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0]?.contentType, 'transfer');
+  assert.equal(messages[0]?.text, '[转账 88.00]');
+  assert.equal(messages[0]?.transferStatus, 'pending');
+  assert.equal(messages[0]?.senderCharacterId, 'speaker');
+});
