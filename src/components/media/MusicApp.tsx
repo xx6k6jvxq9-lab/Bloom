@@ -189,6 +189,11 @@ type NeteaseSearchResponse = {
   };
 };
 
+type UploadedSongMetadata = Pick<Song, "title" | "artist" | "duration" | "lyricsText"> & {
+  coverBlob?: Blob;
+  coverFileName?: string;
+};
+
 function stripFileExtension(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, "").trim();
 }
@@ -219,6 +224,54 @@ function isAudioUploadFile(file: File): boolean {
 
 function isLyricUploadFile(file: File): boolean {
   return /\.(?:lrc|txt)$/i.test(file.name);
+}
+
+function isImageUploadFile(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|apng)$/i.test(file.name);
+}
+
+function pickSongCoverFile(files: File[]): File | undefined {
+  return files.find((file) => isImageUploadFile(file));
+}
+
+function inferImageMimeTypeFromFileName(fileName: string): string {
+  if (/\.png$/i.test(fileName)) return "image/png";
+  if (/\.jpe?g$/i.test(fileName)) return "image/jpeg";
+  if (/\.webp$/i.test(fileName)) return "image/webp";
+  if (/\.gif$/i.test(fileName)) return "image/gif";
+  if (/\.bmp$/i.test(fileName)) return "image/bmp";
+  if (/\.svg$/i.test(fileName)) return "image/svg+xml";
+  if (/\.avif$/i.test(fileName)) return "image/avif";
+  if (/\.apng$/i.test(fileName)) return "image/apng";
+  return "image/jpeg";
+}
+
+function normalizeUploadedCoverMimeType(value: string | null | undefined, fileName = "cover.jpg"): string {
+  const normalized = value?.trim().toLowerCase() || "";
+  if (normalized.startsWith("image/")) {
+    return normalized;
+  }
+
+  if (normalized === "jpg" || normalized === "jpeg") return "image/jpeg";
+  if (normalized === "png") return "image/png";
+  if (normalized === "webp") return "image/webp";
+  if (normalized === "gif") return "image/gif";
+  if (normalized === "bmp") return "image/bmp";
+  if (normalized === "svg" || normalized === "svg+xml") return "image/svg+xml";
+  if (normalized === "avif") return "image/avif";
+  if (normalized === "apng") return "image/apng";
+
+  return inferImageMimeTypeFromFileName(fileName);
+}
+
+function buildSongCoverFileName(fileName: string, mimeType: string): string {
+  const normalizedMimeType = normalizeUploadedCoverMimeType(mimeType, fileName);
+  const extension = normalizedMimeType
+    .split("/")[1]
+    ?.replace("svg+xml", "svg")
+    .replace("jpeg", "jpg") || "jpg";
+
+  return `${stripFileExtension(fileName)}-cover.${extension}`;
 }
 
 function pickSidecarLyricFile(files: File[], audioFile: File): File | undefined {
@@ -353,15 +406,20 @@ async function searchNeteaseLyricsForSong(song: Song): Promise<ParsedLyricLine[]
   return [];
 }
 
-async function readUploadedSongMetadata(file: File): Promise<Pick<Song, "title" | "artist" | "duration" | "lyricsText">> {
+async function readUploadedSongMetadata(file: File): Promise<UploadedSongMetadata> {
   const inferredIdentity = inferSongIdentityFromFileName(file.name);
 
   try {
     ensureMusicMetadataBrowserGlobals();
     const { parseBlob } = await import("music-metadata-browser");
     const metadata = await parseBlob(file);
+    const embeddedCoverPicture = metadata.common.picture?.find((picture) => picture?.data && picture.data.length > 0);
+    const embeddedCoverMimeType = normalizeUploadedCoverMimeType(embeddedCoverPicture?.format, file.name);
+    const embeddedCoverBlob = embeddedCoverPicture?.data
+      ? new Blob([embeddedCoverPicture.data], { type: embeddedCoverMimeType })
+      : undefined;
 
-    const result: Pick<Song, "title" | "artist" | "duration" | "lyricsText"> = {
+    const result: UploadedSongMetadata = {
       title: metadata.common.title?.trim() || inferredIdentity.title,
       artist: metadata.common.artist?.trim() || "本地音乐",
       duration:
@@ -369,12 +427,18 @@ async function readUploadedSongMetadata(file: File): Promise<Pick<Song, "title" 
           ? Math.max(0, Math.round(metadata.format.duration))
           : 0,
       lyricsText: pickPrimaryLyricText(metadata.common.lyrics),
+      ...(embeddedCoverBlob
+        ? {
+          coverBlob: embeddedCoverBlob,
+          coverFileName: buildSongCoverFileName(file.name, embeddedCoverMimeType),
+        }
+        : {}),
     };
     result.artist = metadata.common.artist?.trim() || inferredIdentity.artist;
     return result;
   } catch (error) {
     console.warn("Failed to read uploaded song metadata:", error);
-    const fallbackResult: Pick<Song, "title" | "artist" | "duration" | "lyricsText"> = {
+    const fallbackResult: UploadedSongMetadata = {
       title: stripFileExtension(file.name),
       artist: "本地音乐",
       duration: 0,
@@ -384,6 +448,33 @@ async function readUploadedSongMetadata(file: File): Promise<Pick<Song, "title" 
     fallbackResult.artist = inferredIdentity.artist;
     return fallbackResult;
   }
+}
+
+async function persistSongCoverAsset(
+  customCoverFile: File | null | undefined,
+  fallbackCover?: {
+    blob?: Blob;
+    fileName?: string;
+  },
+): Promise<string | null> {
+  if (customCoverFile) {
+    const mimeType = normalizeUploadedCoverMimeType(customCoverFile.type, customCoverFile.name);
+    return saveUploadedBlob(customCoverFile, {
+      fileName: customCoverFile.name,
+      mimeType,
+    });
+  }
+
+  if (fallbackCover?.blob) {
+    const fileName = fallbackCover.fileName?.trim() || "song-cover.jpg";
+    const mimeType = normalizeUploadedCoverMimeType(fallbackCover.blob.type, fileName);
+    return saveUploadedBlob(fallbackCover.blob, {
+      fileName,
+      mimeType,
+    });
+  }
+
+  return null;
 }
 
 function ResolvedMusicAvatar({
@@ -539,6 +630,9 @@ export default function MusicApp({
   const [isImporting, setIsImporting] = useState(false);
   const [directMusicUrl, setDirectMusicUrl] = useState("");
   const [directMusicTitle, setDirectMusicTitle] = useState("");
+  const [pendingSongCoverFile, setPendingSongCoverFile] = useState<File | null>(null);
+  const [pendingSongCoverPreviewUrl, setPendingSongCoverPreviewUrl] = useState<string | null>(null);
+  const [isAddingDirectMusic, setIsAddingDirectMusic] = useState(false);
   const [showPlayerMoreMenu, setShowPlayerMoreMenu] = useState(false);
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [showCollaborativeLibrary, setShowCollaborativeLibrary] =
@@ -574,6 +668,20 @@ export default function MusicApp({
 
     prefersDirectGesturePlaybackRef.current = isMobileUa || prefersCoarsePointer;
   }, []);
+
+  useEffect(() => {
+    if (!pendingSongCoverFile) {
+      setPendingSongCoverPreviewUrl(null);
+      return undefined;
+    }
+
+    const objectUrl = URL.createObjectURL(pendingSongCoverFile);
+    setPendingSongCoverPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [pendingSongCoverFile]);
 
   const resolveSongPlaybackUrl = async (song: Song | null | undefined) => {
     if (!song) return "";
@@ -747,6 +855,8 @@ export default function MusicApp({
       songLibrary: normalizedSongLibrary,
     };
   }, [defaultMusicData, musicData]);
+  const { resolvedUrl: resolvedCurrentSongAlbumArtUrl } = useResolvedPersistentValue(currentMusicData.currentSong?.albumArt);
+  const currentSongArtworkUrl = resolvedCurrentSongAlbumArtUrl || "";
   const currentPlayerStylePreset = currentMusicData.playerStylePreset || "ios-air";
   const currentPlayerShapePreset = currentMusicData.playerShapeByStyle?.[currentPlayerStylePreset]
     || currentMusicData.playerShapePreset
@@ -1727,9 +1837,9 @@ export default function MusicApp({
       ? "rounded-[28px]"
       : "rounded-[22px]";
   const renderPlayerArtwork = () => {
-    const artworkNode = currentMusicData.currentSong?.albumArt ? (
+    const artworkNode = currentSongArtworkUrl ? (
       <img
-        src={currentMusicData.currentSong.albumArt}
+        src={currentSongArtworkUrl}
         className="h-full w-full object-cover"
       />
     ) : (
@@ -1898,7 +2008,7 @@ export default function MusicApp({
         <div
           className="absolute inset-0 scale-110 bg-cover bg-center opacity-30 blur-[48px]"
           style={{
-            backgroundImage: `url(${currentMusicData.currentSong?.albumArt})`,
+            backgroundImage: currentSongArtworkUrl ? `url(${currentSongArtworkUrl})` : undefined,
           }}
         />
         <div className={`absolute inset-0 ${playerStyleSurface.backdropWashClass}`} />
@@ -2099,9 +2209,9 @@ export default function MusicApp({
                     }}
                     className={`relative h-full w-full overflow-hidden shadow-[0_28px_80px_rgba(15,23,42,0.22)] ${artworkOuterRadiusClass}`}
                   >
-                    {currentMusicData.currentSong?.albumArt ? (
+                    {currentSongArtworkUrl ? (
                       <img
-                        src={currentMusicData.currentSong.albumArt}
+                        src={currentSongArtworkUrl}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -2621,6 +2731,7 @@ export default function MusicApp({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     const audioFile = selectedFiles.find((file) => isAudioUploadFile(file));
+    const selectedCoverFile = pickSongCoverFile(selectedFiles) || pendingSongCoverFile;
 
     if (!audioFile) {
       e.target.value = "";
@@ -2643,34 +2754,44 @@ export default function MusicApp({
           mimeType: audioFile.type || "application/octet-stream",
         }),
       ]);
+      const persistedAlbumArt = await persistSongCoverAsset(
+        selectedCoverFile,
+        metadata.coverBlob
+          ? {
+              blob: metadata.coverBlob,
+              fileName: metadata.coverFileName,
+            }
+          : undefined,
+      );
 
       const newSong: Song = {
-      id: `uploaded-${Date.now()}`,
-      title: metadata.title || stripFileExtension(audioFile.name),
-      artist: "本地音乐",
-      albumArt: LOCAL_MUSIC_PLACEHOLDER_ART,
-      url: persistedUrl,
-      duration: typeof metadata.duration === "number" ? metadata.duration : 0,
-      ...(sidecarLyricText || metadata.lyricsText
-        ? { lyricsText: sidecarLyricText || metadata.lyricsText }
-        : {}),
-    };
+        id: `uploaded-${Date.now()}`,
+        title: metadata.title || stripFileExtension(audioFile.name),
+        artist: "本地音乐",
+        albumArt: persistedAlbumArt || LOCAL_MUSIC_PLACEHOLDER_ART,
+        url: persistedUrl,
+        duration: typeof metadata.duration === "number" ? metadata.duration : 0,
+        ...(sidecarLyricText || metadata.lyricsText
+          ? { lyricsText: sidecarLyricText || metadata.lyricsText }
+          : {}),
+      };
       newSong.artist = metadata.artist || LOCAL_MUSIC_ARTIST_LABEL;
 
-    onUpdateMusicData(withSongLibrary({
-      ...currentMusicData,
-      currentSong: newSong,
-      isPlaying: true,
-      queue: [newSong, ...currentMusicData.queue],
-      recentlyPlayed: [
-        newSong.id,
-        ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
-      ],
-    }, [newSong]));
+      onUpdateMusicData(withSongLibrary({
+        ...currentMusicData,
+        currentSong: newSong,
+        isPlaying: true,
+        queue: [newSong, ...currentMusicData.queue],
+        recentlyPlayed: [
+          newSong.id,
+          ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
+        ],
+      }, [newSong]));
 
-    setLocalProgress(0);
-    setLocalCurrentTime(0);
-    setShowAddMusicDialog(false);
+      setLocalProgress(0);
+      setLocalCurrentTime(0);
+      closeAddMusicDialog();
+      setActiveTab("player");
     } catch (error) {
       console.error("Error importing local music:", error);
       alert("Local music import failed. Please try again.");
@@ -2679,35 +2800,61 @@ export default function MusicApp({
     }
   };
 
-  const handleAddDirectMusic = () => {
-    if (!directMusicUrl.trim() || !directMusicTitle.trim()) return;
-
-    const newSong: Song = {
-      id: `url-${Date.now()}`,
-      title: directMusicTitle,
-      artist: "网络歌曲",
-      albumArt: "https://picsum.photos/seed/music_url/300/300",
-      url: directMusicUrl,
-      duration: 0,
-    };
-
-    onUpdateMusicData(withSongLibrary({
-      ...currentMusicData,
-      currentSong: newSong,
-      isPlaying: true,
-      queue: [newSong, ...currentMusicData.queue],
-      recentlyPlayed: [
-        newSong.id,
-        ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
-      ],
-    }, [newSong]));
-
-    setLocalProgress(0);
-    setLocalCurrentTime(0);
+  const closeAddMusicDialog = () => {
     setShowAddMusicDialog(false);
-    setDirectMusicUrl("");
-    setDirectMusicTitle("");
-    setActiveTab("player");
+    setPendingSongCoverFile(null);
+  };
+
+  const handleSongCoverUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedCover = pickSongCoverFile(Array.from(event.target.files || []));
+    if (!selectedCover) {
+      event.target.value = "";
+      return;
+    }
+
+    setPendingSongCoverFile(selectedCover);
+    event.target.value = "";
+  };
+
+  const handleAddDirectMusic = async () => {
+    if (!directMusicUrl.trim() || !directMusicTitle.trim() || isAddingDirectMusic) return;
+
+    try {
+      setIsAddingDirectMusic(true);
+      const persistedAlbumArt = await persistSongCoverAsset(pendingSongCoverFile);
+
+      const newSong: Song = {
+        id: `url-${Date.now()}`,
+        title: directMusicTitle,
+        artist: "网络歌曲",
+        albumArt: persistedAlbumArt || "https://picsum.photos/seed/music_url/300/300",
+        url: directMusicUrl,
+        duration: 0,
+      };
+
+      onUpdateMusicData(withSongLibrary({
+        ...currentMusicData,
+        currentSong: newSong,
+        isPlaying: true,
+        queue: [newSong, ...currentMusicData.queue],
+        recentlyPlayed: [
+          newSong.id,
+          ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
+        ],
+      }, [newSong]));
+
+      setLocalProgress(0);
+      setLocalCurrentTime(0);
+      closeAddMusicDialog();
+      setDirectMusicUrl("");
+      setDirectMusicTitle("");
+      setActiveTab("player");
+    } catch (error) {
+      console.error("Error adding direct music:", error);
+      alert("Music link import failed. Please try again.");
+    } finally {
+      setIsAddingDirectMusic(false);
+    }
   };
 
   const renderMe = () => {
@@ -3148,10 +3295,7 @@ export default function MusicApp({
                     className="group flex cursor-pointer items-center gap-3 rounded-[22px] border border-white/72 bg-white/68 p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur-xl transition-transform active:scale-[0.98]"
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                      <img
-                        src={song.albumArt}
-                        className="w-full h-full object-cover"
-                      />
+                      <ResolvedMusicCover value={song.albumArt} alt={song.title} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-[13px] font-bold text-zinc-800 truncate">
@@ -3548,10 +3692,7 @@ export default function MusicApp({
               }`}
             >
               <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                <img
-                  src={song.albumArt}
-                  className="w-full h-full object-cover"
-                />
+                <ResolvedMusicCover value={song.albumArt} alt={song.title} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 min-w-0">
                 <h4
@@ -3798,6 +3939,60 @@ export default function MusicApp({
                     <p className="text-[11px] font-medium leading-5 text-zinc-400">
                       支持读取音频内嵌歌词，也可以同时选择同名 `.lrc` 或 `.txt` 歌词文件。
                     </p>
+                    <div className="rounded-[22px] border border-zinc-200 bg-zinc-50/80 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-bold text-zinc-800">歌曲封面</div>
+                          <p className="mt-1 text-[11px] leading-5 text-zinc-400">
+                            {pendingSongCoverFile
+                              ? "这张图会直接替换播放器封面；没上传时会优先读取音频内嵌封面。"
+                              : "可选，支持 jpg / png / webp；没上传时会优先读取音频内嵌封面。"}
+                          </p>
+                        </div>
+                        {pendingSongCoverFile ? (
+                          <button
+                            type="button"
+                            onClick={() => setPendingSongCoverFile(null)}
+                            className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-zinc-500 active:scale-95 transition-transform"
+                          >
+                            移除
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-white text-zinc-300 shadow-sm ring-1 ring-zinc-100">
+                          {pendingSongCoverPreviewUrl ? (
+                            <img
+                              src={pendingSongCoverPreviewUrl}
+                              alt="歌曲封面预览"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <MusicIcon size={24} strokeWidth={1.8} />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-semibold text-zinc-800">
+                            {pendingSongCoverFile ? pendingSongCoverFile.name : "还没选择封面图"}
+                          </div>
+                          <div className="mt-1 text-[11px] leading-5 text-zinc-400">
+                            {pendingSongCoverFile
+                              ? "添加后会直接显示在播放器封面位。"
+                              : "可以单独上传，也可以之后重新换一张。"}
+                          </div>
+                        </div>
+                        <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-bold text-zinc-700 active:scale-95 transition-transform">
+                          上传封面
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleSongCoverUpload}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3821,14 +4016,19 @@ export default function MusicApp({
                       placeholder="音频链接 (mp3/wav...)"
                       className="w-full bg-zinc-100 rounded-xl px-4 py-3 font-bold text-zinc-800 outline-none focus:ring-2 focus:ring-pink-500/20"
                     />
+                    {pendingSongCoverFile ? (
+                      <p className="text-[11px] font-medium leading-5 text-zinc-400">
+                        会复用上面选的封面图，添加后会直接替换播放器封面。
+                      </p>
+                    ) : null}
                     <button
                       onClick={handleAddDirectMusic}
                       disabled={
-                        !directMusicUrl.trim() || !directMusicTitle.trim()
+                        !directMusicUrl.trim() || !directMusicTitle.trim() || isAddingDirectMusic
                       }
                       className="w-full py-3 rounded-xl bg-pink-500 font-bold text-white shadow-lg shadow-pink-200/80 active:scale-95 transition-transform disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none"
                     >
-                      立即播放
+                      {isAddingDirectMusic ? "保存中..." : "立即播放"}
                     </button>
                   </div>
                 </div>
@@ -3866,7 +4066,7 @@ export default function MusicApp({
 
               <div className="px-6 pb-6">
                 <button
-                  onClick={() => setShowAddMusicDialog(false)}
+                  onClick={closeAddMusicDialog}
                   className="w-full py-3 bg-zinc-50 rounded-xl font-bold text-zinc-400 active:scale-95 transition-transform border border-zinc-100"
                 >
                   取消
