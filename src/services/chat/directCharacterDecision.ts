@@ -1,6 +1,7 @@
 import type { Character, ChatMessage } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import type { DirectUserIntentAnalysis } from './intentAnalysis';
+import { isTransferInitiationReplyConsistent } from './transferEventSemantics';
 
 export type RelationshipCloseness = 'low' | 'medium' | 'high';
 export type CharacterActionStyle = 'guarded' | 'steady' | 'indulgent' | 'tsundere';
@@ -404,8 +405,9 @@ export function applyDirectTransferBridge(params: {
   const hasGrantCue = EXPLICIT_GRANT_REGEX.test(trimmedReply);
   const hasRefuseCue = EXPLICIT_REFUSE_REGEX.test(trimmedReply);
   const hasHedgeCue = HEDGE_REGEX.test(trimmedReply);
+  const hasInitiationConflict = !isTransferInitiationReplyConsistent('character_to_user', trimmedReply);
 
-  if (hasRefuseCue && !hasGrantCue) {
+  if ((hasRefuseCue || hasInitiationConflict) && !hasGrantCue) {
     return replyText;
   }
 

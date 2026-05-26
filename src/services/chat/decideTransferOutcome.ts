@@ -2,6 +2,13 @@ import type { ApiConfig, Character, ChatMessage } from '../../types';
 import { streamTextWithConfig } from '../ai/runtimeClient';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { formatTransferMessageForContext } from './transferContextText';
+import {
+  buildTransferReactionFactPrompt,
+  buildTransferSettlementEventLine,
+  isTransferReplyConsistentWithEvent,
+  resolveTransferReplyTextForEvent,
+  type TransferSettlementEvent,
+} from './transferEventSemantics';
 
 export type TransferDecision = {
   decision: 'accept' | 'reject';
@@ -42,7 +49,7 @@ const parseDecision = (text: string): TransferDecision | null => {
   }
 };
 
-async function generateTransferDecisionText(options: {
+async function generateTransferModelText(options: {
   activeConfig: ApiConfig;
   prompt: string;
 }) {
@@ -82,6 +89,52 @@ function resolveTransferPersonaSummary(character: Character): string {
   return parts.length > 0 ? parts.join('\n') : '未提供';
 }
 
+function buildTransferDecisionPrompt(params: {
+  character: Character;
+  amount: number;
+  compactHistory: string;
+  personaSummary: string;
+}): string {
+  return [
+    '你现在只负责判断一个聊天角色是否会收下用户的转账。',
+    `角色名：${params.character.name}`,
+    `角色设定：${params.personaSummary}`,
+    `转账金额：${params.amount.toFixed(2)} 元`,
+    '最近聊天：',
+    params.compactHistory || '无',
+    '',
+    '请只返回 JSON，不要输出任何解释，也不要使用 Markdown 代码块。',
+    '格式如下：{"decision":"accept","replyText":"角色在这个场景下会自然说出的回应"}',
+    '规则：',
+    '1. decision 只能是 accept 或 reject。',
+    '2. replyText 必须像角色本人说的话，自然、贴合人设和当前气氛，不要写成系统说明。',
+    '3. 这次只判断“你是否收下用户转来的这笔钱”，不要把转账方向看反。',
+    '4. 如果 decision=accept，replyText 必须和“你已经收下用户的转账”一致，不能再说不收、退回、让对方把钱留着。',
+    '5. 如果 decision=reject，replyText 必须和“你已经退回用户的转账”一致，不能再说已经收下或到账。',
+  ].join('\n');
+}
+
+function buildTransferEventReactionPrompt(params: {
+  character: Character;
+  personaSummary: string;
+  compactHistory: string;
+  event: TransferSettlementEvent;
+}): string {
+  return [
+    '你现在只负责生成角色在转账结果落地后的即时自然反应。',
+    `角色名：${params.character.name}`,
+    `角色设定：${params.personaSummary}`,
+    `事件：${buildTransferSettlementEventLine(params.event)}`,
+    buildTransferReactionFactPrompt(params.event),
+    '最近聊天：',
+    params.compactHistory || '无',
+    '',
+    '请只输出角色此刻会自然说出的内容，不要输出 JSON、协议、旁白、解释或系统提示。',
+    '反应长度和语气由角色人设、关系和当前气氛自然决定，但必须像真实聊天。',
+    '不要再次输出任何转账协议，例如 [transfer]、[转账]、TRANSFER|...|... 。',
+  ].join('\n');
+}
+
 function formatCompactHistoryLine(
   message: ChatMessage,
   options: {
@@ -116,72 +169,73 @@ export async function decideTransferOutcome(options: {
     }))
     .join('\n');
   const personaSummary = resolveTransferPersonaSummary(character);
-
-  const prompt = [
-    '你现在只负责判断一个聊天角色是否会收下用户的转账。',
-    `角色名：${character.name}`,
-    `角色设定：${personaSummary}`,
-    `转账金额：${amount.toFixed(2)} 元`,
-    '最近聊天：',
-    compactHistory || '无',
-    '',
-    '请只返回 JSON，不要输出任何解释，也不要使用 Markdown 代码块。',
-    '格式如下：{"decision":"accept","replyText":"角色在这个场景下会自然说出的回应"}',
-    '规则：',
-    '1. decision 只能是 accept 或 reject。',
-    '2. replyText 必须像角色本人说的话，自然、贴合人设和当前气氛，不要写成系统说明。',
-    '3. 如果角色会收款就返回 accept，否则返回 reject。',
-  ].join('\n');
-
-  const result = await generateTransferDecisionText({
+  const result = await generateTransferModelText({
     activeConfig,
-    prompt,
+    prompt: buildTransferDecisionPrompt({
+      character,
+      amount,
+      compactHistory,
+      personaSummary,
+    }),
   });
+  const parsed = parseDecision(result);
+  if (!parsed) {
+    return null;
+  }
 
-  return parseDecision(result);
+  const event: TransferSettlementEvent = {
+    direction: 'user_to_character',
+    status: parsed.decision === 'accept' ? 'received' : 'rejected',
+    amount,
+    userName,
+    characterName: character.name,
+  };
+  if (!isTransferReplyConsistentWithEvent(event, parsed.replyText)) {
+    console.warn('[transfer-decision] replyText contradicted transfer fact; dropping conflicting reply.', {
+      decision: parsed.decision,
+      replyText: parsed.replyText,
+      eventLine: buildTransferSettlementEventLine(event),
+    });
+  }
+
+  return {
+    ...parsed,
+    replyText: resolveTransferReplyTextForEvent(event, parsed.replyText),
+  };
 }
 
 export async function generateTransferEventReaction(options: {
   activeConfig: ApiConfig;
   character: Character;
-  amount: number;
   history: ChatMessage[];
-  userName: string;
-  direction: 'character_to_user_received' | 'character_to_user_rejected';
+  event: TransferSettlementEvent;
 }) {
-  const { activeConfig, character, amount, history, userName, direction } = options;
+  const { activeConfig, character, history, event } = options;
   const compactHistory = history
     .slice(-8)
     .map(message => formatCompactHistoryLine(message, {
-      userName,
+      userName: event.userName,
       characterName: character.name,
     }))
     .join('\n');
   const personaSummary = resolveTransferPersonaSummary(character);
-
-  const eventLine = direction === 'character_to_user_received'
-    ? `${userName} 刚刚领取了 ${character.name} 转出的 ${amount.toFixed(2)} 元。`
-    : `${userName} 刚刚退回了 ${character.name} 转出的 ${amount.toFixed(2)} 元。`;
-
-  const prompt = [
-    '你现在只负责生成角色在转账结果落地后的即时自然反应。',
-    `角色名：${character.name}`,
-    `角色设定：${personaSummary}`,
-    `事件：${eventLine}`,
-    '最近聊天：',
-    compactHistory || '无',
-    '',
-    '请只输出角色此刻会自然说出的内容，不要输出 JSON、协议、旁白、解释或系统提示。',
-    '反应长度和语气由角色人设、关系和当前气氛自然决定，但必须像真实聊天。',
-    '不要再次输出任何转账协议，例如 [transfer]、[转账]、TRANSFER|...|... 。',
-  ].join('\n');
-
-  const replyText = (await generateTransferDecisionText({
+  const replyText = (await generateTransferModelText({
     activeConfig,
-    prompt,
+    prompt: buildTransferEventReactionPrompt({
+      character,
+      personaSummary,
+      compactHistory,
+      event,
+    }),
   })).trim();
+  if (!isTransferReplyConsistentWithEvent(event, replyText)) {
+    console.warn('[transfer-reaction] reply contradicted transfer event; dropping conflicting reply.', {
+      replyText,
+      eventLine: buildTransferSettlementEventLine(event),
+    });
+  }
 
   return {
-    replyText,
+    replyText: resolveTransferReplyTextForEvent(event, replyText),
   } satisfies TransferReactionResult;
 }
