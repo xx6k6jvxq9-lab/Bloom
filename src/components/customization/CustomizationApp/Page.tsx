@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw, Moon } from 'lucide-react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -19,19 +19,29 @@ import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolv
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
   type BackupRestoreProgress,
-  buildModularBackupArchive,
-  buildSplitModularBackupBundle,
   isFullBackupArchive,
   isModularBackupAssetsArchive,
   isModularBackupArchive,
   isModularBackupDataArchive,
+  isSingleFileModularBackupBundle,
   restoreModularBackupAssetsArchive,
   restoreModularBackupDataArchive,
   restoreModularBackupArchive,
   restoreFullBackupArchive,
+  restoreSingleFileModularBackupBundle,
 } from '../../../features/persistence/backupArchive';
 import { saveJsonRecord } from '../../../features/persistence/browserJsonStore';
+import {
+  downloadBlobFile,
+  downloadJsonFile,
+  estimateBackupModuleSizes,
+  formatBytes,
+  waitForNextPaint,
+} from '../../../features/persistence/backupUiHelpers';
+import { runBackupImportJob } from '../../../features/persistence/backupImportWorkerClient';
+import { runBackupExportJob } from '../../../features/persistence/backupExportWorkerClient';
 import { buildPersistableCoupleSpacePayload } from '../../../features/persistence/coupleSpaceStore';
+import { persistFriendRequests } from '../../../features/persistence/friendRequestsStore';
 import {
   clearLegacyCompatibilityCopy,
   evaluateMigrationStatus,
@@ -45,11 +55,16 @@ import {
   hydratePerceptionSettings,
 } from '../../../features/persistence/perceptionStore';
 import {
+  buildPersistableNonChatAppDataSnapshot,
+  persistNonChatAppDataSnapshot,
+} from '../../../features/persistence/persistNonChatAppDataSnapshot';
+import {
   buildCharacterMemoryRecord,
   stripCharacterMemoryFromCharacters,
 } from '../../../features/persistence/characterMemoryStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../../services/memory/buildMemoryRecordData';
 import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../../services/memory/memoryRecordSnapshots';
+import { persistSettings } from '../../../features/persistence/settingsStore';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import {
   extractDirectFactTraces,
@@ -57,6 +72,7 @@ import {
   extractDirectSessionMetadata,
   extractGroupSessions,
 } from '../../../features/persistence/chatHistoryStore';
+import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 import { AvatarFrame } from '../../chat/AvatarFrame';
@@ -3276,7 +3292,12 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const [isImporting, setIsImporting] = useState(false);
   const [importProgressText, setImportProgressText] = useState('');
   const [isExportingFull, setIsExportingFull] = useState(false);
+  const [isExportingSelected, setIsExportingSelected] = useState(false);
   const [isExportingSplit, setIsExportingSplit] = useState(false);
+  const [exportProgressText, setExportProgressText] = useState('');
+  const [isEstimatingSizes, setIsEstimatingSizes] = useState(false);
+  const [moduleSizeBytes, setModuleSizeBytes] = useState<Record<string, number>>({});
+  const [assetBytes, setAssetBytes] = useState(0);
   const [migrationInfo, setMigrationInfo] = useState<MigrationCheckResult | null>(() => {
     const meta = loadMigrationMeta();
     return {
@@ -3316,101 +3337,229 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     { id: 'walletData', label: '钱包数据', icon: <Banknote size={20} />, category: 'apps', data: appData?.walletData },
   ];
 
-  const getModuleSizeBytes = (data: any): number => {
-    if (data == null) return 0;
-    try {
-      const json = JSON.stringify(data);
-      return new TextEncoder().encode(json).length;
-    } catch {
-      return 0;
-    }
-  };
+  const sizeEstimateFallbacks = useMemo(() => ({
+    settings,
+    characters: appData?.characters,
+    chatHistory: appData?.chatHistory,
+    groups: appData?.groups,
+    chatGroups: appData?.chatGroups,
+    friendRequests: appData?.friendRequests,
+    callHistory: appData?.callHistory,
+    userProfile: appData?.userProfile,
+    favorites: appData?.favorites,
+    masks: appData?.masks,
+    coupleSpace: appData?.coupleSpaceState ?? appData?.coupleSpace,
+    worldBooks: appData?.worldBooks,
+    moments: appData?.moments,
+    forumData: appData?.forumData,
+    savedDates: appData?.savedDates,
+    collectedDates: appData?.collectedDates,
+    visualSettings: appData?.visualSettings,
+    musicData: appData?.musicData,
+    walletData: appData?.walletData,
+  }), [appData, settings]);
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes >= 10 * 1024 ? 0 : 1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
-  };
-
-  const totalDataBytes = modules.reduce((sum, mod) => sum + getModuleSizeBytes(mod.data), 0);
+  const totalDataBytes = modules.reduce((sum, mod) => sum + (moduleSizeBytes[mod.id] ?? 0), 0);
   const totalModuleCount = modules.length;
+  const isRunningBackupExport = isExportingFull || isExportingSplit;
 
-  const downloadJsonFile = (payload: unknown, fileName: string) => {
-    const dataStr = JSON.stringify(payload, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+  const flushLatestBackupState = async () => {
+    setExportProgressText('正在同步最新数据...');
+    const pendingWrites: Promise<unknown>[] = [
+      persistSettings(settings),
+    ];
+
+    if (appData) {
+      const snapshot = buildPersistableNonChatAppDataSnapshot(appData, appData);
+      pendingWrites.push(
+        persistNonChatAppDataSnapshot(snapshot),
+        persistChatOrganization({
+          groups: appData.groups ?? [],
+          chatGroups: appData.chatGroups ?? [],
+        }),
+        persistFriendRequests(appData.friendRequests ?? []),
+      );
+    }
+
+    await Promise.all(pendingWrites);
+    await waitForNextPaint();
   };
 
   const handleExportFull = async () => {
     try {
       setIsExportingFull(true);
-      const archive = await buildModularBackupArchive({
+      await flushLatestBackupState();
+      const result = await runBackupExportJob({
         appData,
+        mode: 'full',
+        onProgress: setExportProgressText,
         settings,
       });
-      const timestamp = Date.now();
-      downloadJsonFile(archive, `full_backup_${timestamp}.json`);
-      alert(`全量备份导出成功！已生成 1 个完整备份文件，共包含 ${archive.assets.length} 个本地资源。`);
+      result.files.forEach((file) => {
+        downloadBlobFile(file.blob, file.fileName);
+      });
+      alert(`全量备份导出成功！已生成 ${result.files.length} 个备份文件，共包含 ${result.assetCount} 个本地资源。`);
     } catch (error) {
       console.error('Failed to export full backup archive', error);
       alert('全量备份导出失败，请稍后重试。');
     } finally {
       setIsExportingFull(false);
+      setExportProgressText('');
     }
   };
 
   const handleExportSplit = async () => {
     try {
       setIsExportingSplit(true);
-      const bundle = await buildSplitModularBackupBundle({
+      await flushLatestBackupState();
+      const result = await runBackupExportJob({
         appData,
+        mode: 'split',
+        onProgress: setExportProgressText,
         settings,
       });
-      const timestamp = Date.now();
-      downloadJsonFile(bundle.dataArchive, `split_backup_${timestamp}_data.json`);
-      if (bundle.assetsArchive) {
-        downloadJsonFile(bundle.assetsArchive, `split_backup_${timestamp}_assets.json`);
-        alert(`分批备份导出成功！已生成主数据包和资源包，共包含 ${bundle.dataArchive.assetCount} 个本地资源。恢复时请先导入 data 包，再导入 assets 包。`);
-      } else {
-        alert('分批备份导出成功！已生成主数据包。当前没有需要单独打包的本地资源。');
-      }
+      result.files.forEach((file) => {
+        downloadBlobFile(file.blob, file.fileName);
+      });
+      alert(
+        result.assetCount > 0
+          ? `单文件备份导出成功！已生成 1 个备份文件，内部已按主数据和资源分段保存，共包含 ${result.assetCount} 个本地资源。恢复时直接导入这个文件即可。`
+          : '单文件备份导出成功！已生成 1 个备份文件。当前没有需要额外分段保存的本地资源。',
+      );
     } catch (error) {
       console.error('Failed to export split backup archive', error);
-      alert('分批备份导出失败，请稍后重试。');
+      alert('单文件备份导出失败，请稍后重试。');
     } finally {
       setIsExportingSplit(false);
+      setExportProgressText('');
     }
   };
 
-  const handleExportSelected = () => {
+  const handleExportSelected = async () => {
     if (selectedModules.length === 0) {
       alert('请先选择要备份的功能');
       return;
     }
 
-    const exportData: Record<string, unknown> = {};
-    selectedModules.forEach(id => {
-      const mod = modules.find(m => m.id === id);
-      if (mod) {
-        exportData[id] = mod.data;
-      }
-    });
+    try {
+      setIsExportingSelected(true);
 
-    downloadJsonFile(exportData, `backup_partial_${Date.now()}.json`);
-    alert('备份导出成功！');
+      const exportData: Record<string, unknown> = {};
+      selectedModules.forEach(id => {
+        const mod = modules.find(m => m.id === id);
+        if (mod) {
+          exportData[id] = mod.data;
+        }
+      });
+
+      await downloadJsonFile(exportData, `backup_partial_${Date.now()}.json`);
+      alert('备份导出成功！');
+    } catch (error) {
+      console.error('Failed to export selected backup modules', error);
+      alert('选中内容导出失败，请稍后重试。');
+    } finally {
+      setIsExportingSelected(false);
+    }
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    const runEstimate = async () => {
+      setIsEstimatingSizes(true);
+
+      try {
+        const nextEstimate = await estimateBackupModuleSizes(sizeEstimateFallbacks);
+        if (cancelled) {
+          return;
+        }
+
+        setModuleSizeBytes(nextEstimate.moduleBytes);
+        setAssetBytes(nextEstimate.assetBytes);
+      } catch (error) {
+        console.error('[CustomizationApp] Failed to estimate backup size', error);
+        if (!cancelled) {
+          setModuleSizeBytes({});
+          setAssetBytes(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsEstimatingSizes(false);
+        }
+      }
+    };
+
+    void runEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sizeEstimateFallbacks]);
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const confirmed = await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？');
+    if (!confirmed) {
+      e.target.value = '';
+      return;
+    }
+
     setIsImporting(true);
     setImportProgressText('正在读取备份文件...');
+
+    try {
+      const workerResult = await runBackupImportJob({
+        file,
+        onProgress: setImportProgressText,
+      });
+
+      if (workerResult.kind === 'single-file') {
+        alert(
+          workerResult.assetCount > 0
+            ? `单文件备份恢复成功！已恢复主数据和 ${workerResult.assetCount} 个本地资源，页面将重新加载。`
+            : '单文件备份恢复成功！当前备份没有额外资源包，页面将重新加载。',
+        );
+        window.location.reload();
+        return;
+      }
+
+      if (workerResult.kind === 'data-archive') {
+        const nextStepText = workerResult.assetCount > 0
+          ? `主数据包恢复成功！这份备份还有 ${workerResult.assetCount} 个本地资源，请继续导入对应的 assets 包。页面将先重新加载。`
+          : '主数据包恢复成功！当前备份没有额外资源包，页面将重新加载。';
+        alert(nextStepText);
+        window.location.reload();
+        return;
+      }
+
+      if (workerResult.kind === 'assets-archive') {
+        alert(`资源包恢复成功！已恢复 ${workerResult.assetCount} 个本地资源，页面将重新加载。`);
+        window.location.reload();
+        return;
+      }
+
+      if (workerResult.kind === 'modular-archive') {
+        alert(`模块化备份恢复成功！已按批恢复 ${workerResult.assetCount} 个本地资源，页面将重新加载。`);
+        window.location.reload();
+        return;
+      }
+
+      if (workerResult.kind === 'full-archive') {
+        alert(`完整备份恢复成功！已按批恢复 ${workerResult.assetCount} 个本地资源，页面将重新加载。`);
+        window.location.reload();
+        return;
+      }
+    } catch (error) {
+      console.error('[CustomizationApp] Failed to restore imported backup in worker', error);
+      alert('备份文件已读取成功，但后台恢复失败了。当前更像是浏览器本地存储环境异常，不是 JSON 文件本身无效。');
+      setIsImporting(false);
+      setImportProgressText('');
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       let parsed: any;
@@ -3560,7 +3709,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           await Promise.all(writes);
         };
         
-        if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
+        if (confirmed) {
           if (isModularBackupDataArchive(parsed)) {
             setImportProgressText('正在按批恢复主数据包...');
             await restoreModularBackupDataArchive(parsed, { onProgress: handleArchiveRestoreProgress });
@@ -3568,6 +3717,19 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               ? `主数据包恢复成功！这份备份还有 ${parsed.assetCount} 个本地资源，请继续导入对应的 assets 包。页面将先重新加载。`
               : '主数据包恢复成功！当前备份没有额外资源包，页面将重新加载。';
             alert(nextStepText);
+            window.location.reload();
+            return;
+          }
+
+          if (isSingleFileModularBackupBundle(parsed)) {
+            setImportProgressText('正在恢复单文件备份...');
+            await restoreSingleFileModularBackupBundle(parsed, { onProgress: handleArchiveRestoreProgress });
+            const assetCount = parsed.assetsArchive?.assets.length ?? 0;
+            alert(
+              assetCount > 0
+                ? `单文件备份恢复成功！已恢复主数据和 ${assetCount} 个本地资源，页面将重新加载。`
+                : '单文件备份恢复成功！当前备份没有额外资源包，页面将重新加载。',
+            );
             window.location.reload();
             return;
           }
@@ -3786,7 +3948,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               {mod.icon}
             </div>
             <span className="text-[13px] font-bold">{mod.label}</span>
-            <span className="text-[11px] text-zinc-400">{formatBytes(getModuleSizeBytes(mod.data))}</span>
+            <span className="text-[11px] text-zinc-400">
+              {typeof moduleSizeBytes[mod.id] === 'number' ? formatBytes(moduleSizeBytes[mod.id]) : '估算中...'}
+            </span>
             {selectedModules.includes(mod.id) && (
               <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center text-zinc-900">
                 <Check size={12} strokeWidth={4} />
@@ -3889,8 +4053,19 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
           <div className="text-[12px] text-zinc-500">总数据统计</div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-[22px] font-bold text-zinc-900">{formatBytes(totalDataBytes)}</span>
-            <span className="text-[12px] text-zinc-500">总占用 / {totalModuleCount} 个模块</span>
+            <span className="text-[22px] font-bold text-zinc-900">
+              {isEstimatingSizes ? '估算中...' : formatBytes(totalDataBytes)}
+            </span>
+            <span className="text-[12px] text-zinc-500">
+              {isEstimatingSizes ? `正在后台统计 ${totalModuleCount} 个模块` : `总占用 / ${totalModuleCount} 个模块`}
+            </span>
+          </div>
+          <div className="mt-2 text-[11px] text-zinc-500">
+            {isEstimatingSizes
+              ? '本地资源会一起后台估算，不会在打开页面时同步扫完整包。'
+              : assetBytes > 0
+                ? `本地资源约 ${formatBytes(assetBytes)}，全量备份时会一起导出。`
+                : '当前没有额外本地资源需要一起打包。'}
           </div>
         </div>
         
@@ -3898,7 +4073,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         <div className="grid grid-cols-2 gap-3">
           <button 
             onClick={() => void handleExportFull()}
-            disabled={isExportingFull}
+            disabled={isRunningBackupExport}
             className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
           >
             {isExportingFull ? <RefreshCw size={24} className="animate-spin" /> : <Database size={24} />}
@@ -3906,11 +4081,11 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           </button>
           <button 
             onClick={() => void handleExportSplit()}
-            disabled={isExportingSplit}
+            disabled={isRunningBackupExport}
             className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
           >
             {isExportingSplit ? <RefreshCw size={24} className="animate-spin" /> : <Layers size={24} />}
-            <span className="text-[14px] font-bold">分批备份</span>
+            <span className="text-[14px] font-bold">单文件备份</span>
           </button>
           <button 
             onClick={() => {
@@ -3929,6 +4104,11 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         {isImporting && importProgressText ? (
           <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
             {importProgressText}
+          </div>
+        ) : null}
+        {exportProgressText ? (
+          <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
+            {exportProgressText}
           </div>
         ) : null}
 
@@ -3950,11 +4130,11 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 {selectedModules.length === modules.length ? '取消全选' : '全选'}
               </button>
               <button 
-                onClick={handleExportSelected}
-                disabled={selectedModules.length === 0}
+                onClick={() => void handleExportSelected()}
+                disabled={selectedModules.length === 0 || isExportingSelected || isRunningBackupExport}
                 className="text-[12px] font-bold text-zinc-900 disabled:opacity-40"
               >
-                导出选中 ({selectedModules.length})
+                {isExportingSelected ? '导出中...' : `导出选中 (${selectedModules.length})`}
               </button>
             </div>
           </div>

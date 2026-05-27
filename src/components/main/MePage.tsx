@@ -11,6 +11,7 @@ import {
 import { Character, ChatGroup, DateSession, Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { downloadJsonFile } from '../../features/persistence/backupUiHelpers';
 import { saveDatingRecords } from '../../features/persistence/datingRecordsStore';
 import {
   getWorldBookPriorityLabel,
@@ -1182,29 +1183,27 @@ function DataManager({
     { id: 'userProfile', label: '个人资料', desc: '头像与昵称', icon: <UserRound size={20} />, data: userProfile },
   ];
 
-  const handleExportSelected = () => {
+  const handleExportSelected = async () => {
     if (selectedModules.length === 0) {
       alert('请先选择要备份的功能');
       return;
     }
 
-    const exportData: any = {};
-    selectedModules.forEach(id => {
-      const mod = modules.find(m => m.id === id);
-      if (mod) {
-        exportData[id] = mod.data;
-      }
-    });
+    try {
+      const exportData: any = {};
+      selectedModules.forEach(id => {
+        const mod = modules.find(m => m.id === id);
+        if (mod) {
+          exportData[id] = mod.data;
+        }
+      });
 
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `chat_data_backup_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    alert('备份导出成功！');
+      await downloadJsonFile(exportData, `chat_data_backup_${Date.now()}.json`);
+      alert('备份导出成功！');
+    } catch (error) {
+      console.error('Failed to export chat backup from MePage', error);
+      alert('备份导出失败，请稍后重试。');
+    }
   };
 
   const toggleModule = (id: string) => {
@@ -1221,7 +1220,7 @@ function DataManager({
           <h3 className="text-[17px] font-bold">聊天数据备份</h3>
         </div>
         <button 
-          onClick={handleExportSelected}
+          onClick={() => void handleExportSelected()}
           disabled={selectedModules.length === 0}
           className="px-2 text-[14px] font-bold text-zinc-900 disabled:opacity-40"
         >

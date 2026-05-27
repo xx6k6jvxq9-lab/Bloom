@@ -11,7 +11,7 @@ import {
 } from './characterMemoryStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
 import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../services/memory/memoryRecordSnapshots';
-import { loadMemoryRecordData } from './memoryRecordStore';
+import { loadMemoryRecordData, loadPreferredMemoryRecordData } from './memoryRecordStore';
 import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
@@ -27,6 +27,8 @@ export const MODULAR_BACKUP_DATA_SCHEMA = 'modular-persistence-data';
 export const MODULAR_BACKUP_DATA_VERSION = 1;
 export const MODULAR_BACKUP_ASSETS_SCHEMA = 'modular-persistence-assets';
 export const MODULAR_BACKUP_ASSETS_VERSION = 1;
+export const SINGLE_FILE_MODULAR_BACKUP_BUNDLE_SCHEMA = 'modular-persistence-bundle';
+export const SINGLE_FILE_MODULAR_BACKUP_BUNDLE_VERSION = 1;
 
 export type SerializedAssetRecord = Omit<StoredAssetRecord, 'blob'> & {
   dataUrl: string;
@@ -89,6 +91,21 @@ export type ModularBackupAssetsArchive = {
   assets: SerializedAssetRecord[];
 };
 
+export type SingleFileModularBackupIntegrity = {
+  algorithm: 'SHA-256';
+  payloadSha256: string;
+};
+
+export type SingleFileModularBackupBundle = {
+  version: typeof SINGLE_FILE_MODULAR_BACKUP_BUNDLE_VERSION;
+  schema: typeof SINGLE_FILE_MODULAR_BACKUP_BUNDLE_SCHEMA;
+  backupId: string;
+  exportedAt: number;
+  dataArchive: ModularBackupDataArchive;
+  assetsArchive: ModularBackupAssetsArchive | null;
+  integrity: SingleFileModularBackupIntegrity;
+};
+
 export type BackupRestoreProgress = {
   phase: 'modules' | 'assets' | 'complete';
   completed: number;
@@ -148,7 +165,72 @@ function createBackupBundleId(): string {
   return `backup_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+
+  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(',')}}`;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Current environment does not support SHA-256 integrity checks');
+  }
+
+  const encoded = new TextEncoder().encode(value);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', encoded);
+  return arrayBufferToHex(digest);
+}
+
+async function computeSingleFileBundleIntegrity(
+  dataArchive: ModularBackupDataArchive,
+  assetsArchive: ModularBackupAssetsArchive | null,
+): Promise<SingleFileModularBackupIntegrity> {
+  const payloadSha256 = await sha256Hex(stableStringify({
+    dataArchive,
+    assetsArchive,
+  }));
+
+  return {
+    algorithm: 'SHA-256',
+    payloadSha256,
+  };
+}
+
 function blobToDataUrl(blob: Blob): Promise<string> {
+  if (typeof FileReader === 'undefined') {
+    return blob.arrayBuffer().then((buffer) => (
+      `data:${blob.type || 'application/octet-stream'};base64,${arrayBufferToBase64(buffer)}`
+    ));
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -217,6 +299,17 @@ function collectStorageSnapshot(overrides?: FullBackupOverrides): Record<string,
   return storage;
 }
 
+function nextExportTick(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined') {
+      window.setTimeout(resolve, 0);
+      return;
+    }
+
+    setTimeout(resolve, 0);
+  });
+}
+
 async function collectSerializedAssets(): Promise<SerializedAssetRecord[]> {
   let assets: StoredAssetRecord[] = [];
   try {
@@ -226,8 +319,10 @@ async function collectSerializedAssets(): Promise<SerializedAssetRecord[]> {
     return [];
   }
 
-  return Promise.all(
-    assets.map(async (asset) => ({
+  const serializedAssets: SerializedAssetRecord[] = [];
+  for (let index = 0; index < assets.length; index += 1) {
+    const asset = assets[index];
+    serializedAssets.push({
       id: asset.id,
       kind: asset.kind,
       mimeType: asset.mimeType,
@@ -237,11 +332,15 @@ async function collectSerializedAssets(): Promise<SerializedAssetRecord[]> {
       source: asset.source,
       originalUrl: asset.originalUrl,
       dataUrl: await blobToDataUrl(asset.blob),
-    })),
-  );
+    });
+
+    await nextExportTick();
+  }
+
+  return serializedAssets;
 }
 
-function buildModularBackupModules({ appData, settings, modules }: ModularBackupOverrides): ModularBackupModules {
+async function buildModularBackupModules({ appData, settings, modules }: ModularBackupOverrides): Promise<ModularBackupModules> {
   const resolvedAppData = (appData || {}) as Partial<AppData>;
   const { coupleSpaceState } = buildPersistableCoupleSpacePayload(
     resolvedAppData.coupleSpaceState,
@@ -250,15 +349,25 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
   const characters = resolvedAppData.characters ?? [];
   const directHistory = resolvedAppData.chatHistory ?? {};
   const chatGroups = resolvedAppData.chatGroups ?? [];
+  const directSessionMetadata = extractDirectSessionMetadata(characters, directHistory);
+  await nextExportTick();
+  const directRelationshipWaves = extractDirectRelationshipWaves(directHistory);
+  await nextExportTick();
+  const directFactTraces = extractDirectFactTraces(directHistory);
+  await nextExportTick();
+  const groupSessions = extractGroupSessions(chatGroups);
+  await nextExportTick();
   const persistedChatHistory = {
     directHistory,
-    directSessionMetadata: extractDirectSessionMetadata(characters, directHistory),
-    directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
-    directFactTraces: extractDirectFactTraces(directHistory),
-    groupSessions: extractGroupSessions(chatGroups),
+    directSessionMetadata,
+    directRelationshipWaves,
+    directFactTraces,
+    groupSessions,
   };
   const legacyCharacterMemory = buildCharacterMemoryRecord(characters);
+  await nextExportTick();
   const fallbackMemoryRecords = buildMemoryRecordDataFromChatHistory(persistedChatHistory);
+  await nextExportTick();
   const mergedMemoryRecords = mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
     (
       modules?.memoryRecords
@@ -269,6 +378,7 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
     ) as ReturnType<typeof loadMemoryRecordData>,
     legacyCharacterMemory,
   );
+  await nextExportTick();
 
   return {
     settings,
@@ -312,11 +422,13 @@ async function collectIndexedDbModules(): Promise<Partial<ModularBackupModules>>
     STORAGE_KEYS.wechatBindSessions,
   ] as const;
 
-  const [wechatRoleBindings, wechatBindSessions] = await Promise.all(
-    keys.map((key) => loadJsonRecord<unknown>(key).catch(() => null)),
-  );
+  const [wechatRoleBindings, wechatBindSessions, memoryRecords] = await Promise.all([
+    ...keys.map((key) => loadJsonRecord<unknown>(key).catch(() => null)),
+    loadPreferredMemoryRecordData({ recordsByCharacterId: {} }).catch(() => ({ recordsByCharacterId: {} })),
+  ]);
 
   return {
+    memoryRecords,
     wechatRoleBindings: wechatRoleBindings ?? [],
     wechatBindSessions: wechatBindSessions ?? [],
   };
@@ -400,7 +512,9 @@ async function normalizeBlobUrlsInStorage(
 
 export async function buildFullBackupArchive(overrides?: FullBackupOverrides): Promise<FullBackupArchive> {
   const baseStorage = collectStorageSnapshot(overrides);
+  await nextExportTick();
   const existingAssets = await collectSerializedAssets();
+  await nextExportTick();
   const normalized = await normalizeBlobUrlsInStorage(baseStorage);
 
   return {
@@ -414,7 +528,8 @@ export async function buildFullBackupArchive(overrides?: FullBackupOverrides): P
 
 export async function buildModularBackupArchive(overrides: ModularBackupOverrides): Promise<ModularBackupArchive> {
   const indexedDbModules = await collectIndexedDbModules();
-  const baseModules = buildModularBackupModules({
+  await nextExportTick();
+  const baseModules = await buildModularBackupModules({
     ...overrides,
     modules: {
       ...indexedDbModules,
@@ -422,6 +537,7 @@ export async function buildModularBackupArchive(overrides: ModularBackupOverride
     },
   });
   const existingAssets = await collectSerializedAssets();
+  await nextExportTick();
   const remappedAssets: SerializedAssetRecord[] = [];
   const normalized = await normalizeBlobUrlsInValue(baseModules, remappedAssets, new Map<string, string>());
 
@@ -464,6 +580,26 @@ export async function buildSplitModularBackupBundle(
   return {
     dataArchive,
     assetsArchive,
+  };
+}
+
+export async function buildSingleFileModularBackupBundle(
+  overrides: ModularBackupOverrides,
+): Promise<SingleFileModularBackupBundle> {
+  const bundle = await buildSplitModularBackupBundle(overrides);
+  const integrity = await computeSingleFileBundleIntegrity(
+    bundle.dataArchive,
+    bundle.assetsArchive,
+  );
+
+  return {
+    version: SINGLE_FILE_MODULAR_BACKUP_BUNDLE_VERSION,
+    schema: SINGLE_FILE_MODULAR_BACKUP_BUNDLE_SCHEMA,
+    backupId: bundle.dataArchive.backupId,
+    exportedAt: bundle.dataArchive.exportedAt,
+    dataArchive: bundle.dataArchive,
+    assetsArchive: bundle.assetsArchive,
+    integrity,
   };
 }
 
@@ -522,6 +658,36 @@ export function isModularBackupAssetsArchive(value: unknown): value is ModularBa
     && Array.isArray(candidate.assets);
 }
 
+export function isSingleFileModularBackupBundle(value: unknown): value is SingleFileModularBackupBundle {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<SingleFileModularBackupBundle>;
+  return candidate.schema === SINGLE_FILE_MODULAR_BACKUP_BUNDLE_SCHEMA
+    && candidate.version === SINGLE_FILE_MODULAR_BACKUP_BUNDLE_VERSION
+    && typeof candidate.backupId === 'string'
+    && typeof candidate.exportedAt === 'number'
+    && isModularBackupDataArchive(candidate.dataArchive)
+    && !!candidate.integrity
+    && candidate.integrity.algorithm === 'SHA-256'
+    && typeof candidate.integrity.payloadSha256 === 'string'
+    && candidate.integrity.payloadSha256.length > 0
+    && (candidate.assetsArchive === null || candidate.assetsArchive === undefined || isModularBackupAssetsArchive(candidate.assetsArchive));
+}
+
+export async function verifySingleFileModularBackupBundleIntegrity(
+  bundle: SingleFileModularBackupBundle,
+): Promise<boolean> {
+  const expectedIntegrity = await computeSingleFileBundleIntegrity(
+    bundle.dataArchive,
+    bundle.assetsArchive,
+  );
+
+  return bundle.integrity.algorithm === expectedIntegrity.algorithm
+    && bundle.integrity.payloadSha256 === expectedIntegrity.payloadSha256;
+}
+
 function writeStorageValue(key: string, value: unknown | null, indexedDbWrites: Promise<void>[]) {
   if (value == null) {
     removeLocalStorageValue(key);
@@ -552,9 +718,13 @@ function emitRestoreProgress(
   options?.onProgress?.(progress);
 }
 
+function supportsPersistenceRestore(): boolean {
+  return typeof indexedDB !== 'undefined';
+}
+
 function nextRestoreTick(): Promise<void> {
   return new Promise((resolve) => {
-    window.setTimeout(resolve, 0);
+    globalThis.setTimeout(resolve, 0);
   });
 }
 
@@ -802,7 +972,7 @@ export async function restoreModularBackupDataArchive(
   archive: ModularBackupDataArchive,
   options?: RestoreOptions,
 ): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (!supportsPersistenceRestore()) {
     throw new Error('Current environment does not support restore');
   }
 
@@ -819,7 +989,7 @@ export async function restoreModularBackupAssetsArchive(
   archive: ModularBackupAssetsArchive,
   options?: RestoreOptions,
 ): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (!supportsPersistenceRestore()) {
     throw new Error('Current environment does not support restore');
   }
 
@@ -832,11 +1002,34 @@ export async function restoreModularBackupAssetsArchive(
   });
 }
 
+export async function restoreSingleFileModularBackupBundle(
+  bundle: SingleFileModularBackupBundle,
+  options?: RestoreOptions,
+): Promise<void> {
+  if (!supportsPersistenceRestore()) {
+    throw new Error('Current environment does not support restore');
+  }
+
+  await restoreModularBackupDataArchive(bundle.dataArchive, options);
+
+  if (bundle.assetsArchive) {
+    await restoreModularBackupAssetsArchive(bundle.assetsArchive, options);
+    return;
+  }
+
+  emitRestoreProgress(options, {
+    phase: 'complete',
+    completed: 1,
+    total: 1,
+    message: '妯″潡鍖呭崟鏂囦欢鎭㈠瀹屾垚',
+  });
+}
+
 export async function restoreFullBackupArchive(
   archive: FullBackupArchive,
   options?: RestoreOptions,
 ): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (!supportsPersistenceRestore()) {
     throw new Error('当前环境不支持恢复本地备份');
   }
 
@@ -866,7 +1059,7 @@ export async function restoreModularBackupArchive(
   archive: ModularBackupArchive,
   options?: RestoreOptions,
 ): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (!supportsPersistenceRestore()) {
     throw new Error('Current environment does not support restore');
   }
 

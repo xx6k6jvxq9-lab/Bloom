@@ -81,7 +81,7 @@ function openDbAtVersion(version?: number): Promise<IDBDatabase> {
       ? indexedDB.open(PERSISTENCE_DB_NAME, version)
       : indexedDB.open(PERSISTENCE_DB_NAME);
     let settled = false;
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       if (settled) {
         return;
       }
@@ -94,7 +94,7 @@ function openDbAtVersion(version?: number): Promise<IDBDatabase> {
         return;
       }
       settled = true;
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
       callback();
     };
 
