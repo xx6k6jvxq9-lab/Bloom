@@ -90,10 +90,12 @@ import {
   buildScopedAvatarFrameThemeCss,
 } from '../../../features/chat-session/avatarFrameStyleCss';
 import {
+  MAX_BUBBLE_STYLE_TEXT_LENGTH,
   buildScopedBubbleThemeCss,
   buildScopedBubbleVariantCss,
   hasBubbleThemeCss,
   parseBubbleStyleCss,
+  validateImportedBubbleStyleText,
 } from '../../../features/chat-session/bubbleStyleCss';
 
 const DESKTOP_ICON_ACCEPTED_IMAGE_TYPES = new Set([
@@ -424,52 +426,54 @@ function PersistentImageUploadControl({
           资源解析失败，刷新后如果资源仍存在会自动恢复。
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           type="text"
           value={localValue}
           onChange={e => setLocalValue(e.target.value)}
           placeholder="支持链接、Markdown或HTML图片"
-          className="flex-1 min-w-0 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-zinc-900"
+          className="min-w-0 w-full flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-zinc-900"
         />
-        <label className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center whitespace-nowrap">
-          <Upload size={14} className="mr-1" /> 上传
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={async e => {
-              const file = e.target.files?.[0];
-              if (file) {
-                try {
-                  if (fileValidator) {
-                    await fileValidator(file);
-                  }
-                  const nextValue = await setUploadedFile(file);
-                  let nextPreviewUrl = '';
+        <div className="flex gap-2 sm:shrink-0">
+          <label className="flex flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-200 sm:flex-none">
+            <Upload size={14} className="mr-1" /> 上传
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (file) {
                   try {
-                    nextPreviewUrl = await createImagePreviewDataUrlFromFile(file, previewOptions);
-                  } catch {
-                    nextPreviewUrl = '';
+                    if (fileValidator) {
+                      await fileValidator(file);
+                    }
+                    const nextValue = await setUploadedFile(file);
+                    let nextPreviewUrl = '';
+                    try {
+                      nextPreviewUrl = await createImagePreviewDataUrlFromFile(file, previewOptions);
+                    } catch {
+                      nextPreviewUrl = '';
+                    }
+                    setLocalValue(nextValue);
+                    onChange(nextValue, { previewUrl: nextPreviewUrl });
+                  } catch (uploadError) {
+                    alert(uploadError instanceof Error ? `上传失败: ${uploadError.message}` : '上传失败，请稍后重试。');
                   }
-                  setLocalValue(nextValue);
-                  onChange(nextValue, { previewUrl: nextPreviewUrl });
-                } catch (uploadError) {
-                  alert(uploadError instanceof Error ? `上传失败: ${uploadError.message}` : '上传失败，请稍后重试。');
                 }
-              }
-              e.target.value = '';
+                e.target.value = '';
+              }}
+            />
+          </label>
+          <button
+            onClick={() => {
+              void handleConfirm();
             }}
-          />
-        </label>
-        <button
-          onClick={() => {
-            void handleConfirm();
-          }}
-          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
-        >
-          确认
-        </button>
+            className="flex-1 whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 sm:flex-none"
+          >
+            确认
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2000,7 +2004,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500">字体颜色</label>
+            <label className="text-xs font-bold text-zinc-500">桌面字体颜色</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
@@ -2015,6 +2019,49 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 placeholder="#18181b"
                 className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
               />
+            </div>
+            <div className="text-[11px] leading-5 text-zinc-400">
+              这里只影响桌面图标、Dock 和首页文字，不会改聊天正文颜色。
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500">聊天/通用文字颜色</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={typography.textColor ?? '#18181b'}
+                onChange={e => updateTypography({ textColor: e.target.value })}
+                className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
+              />
+              <input
+                type="text"
+                value={typography.textColor ?? '#18181b'}
+                onChange={e => updateTypography({ textColor: e.target.value })}
+                placeholder="#18181b"
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+              />
+            </div>
+            <div className="rounded-[18px] border border-zinc-200 bg-zinc-50 px-4 py-3">
+              <div
+                className="text-[13px] font-semibold"
+                style={{
+                  color: typography.textColor || '#18181b',
+                  fontFamily: previewFontFamily,
+                }}
+              >
+                聊天文字预览：这段颜色会优先应用到聊天正文、翻译和输入框。
+              </div>
+              <div
+                className="mt-1 text-[12px] leading-6"
+                style={{
+                  color: typography.textColor || '#18181b',
+                  opacity: 0.72,
+                  fontFamily: previewFontFamily,
+                }}
+              >
+                默认蓝色的自己气泡会继续保留白字，避免可读性变差；如果某个气泡 CSS 里自己写了 `color`，那一条也会继续以气泡 CSS 为准。
+              </div>
             </div>
           </div>
 
@@ -2047,11 +2094,13 @@ function CodeEditor({
   onChange,
   placeholder,
   heightClass = 'h-48',
+  maxLength,
 }: {
   value: string;
   onChange: (nextValue: string) => void;
   placeholder: string;
   heightClass?: string;
+  maxLength?: number;
 }) {
   return (
     <textarea
@@ -2059,6 +2108,7 @@ function CodeEditor({
       onChange={(event) => onChange(event.target.value)}
       onInput={(event) => onChange((event.target as HTMLTextAreaElement).value)}
       placeholder={placeholder}
+      maxLength={maxLength}
       spellCheck="false"
       autoCapitalize="off"
       autoCorrect="off"
@@ -2071,9 +2121,11 @@ function CodeEditor({
 function ImportStyleButton({
   onImport,
   label = '导入 CSS',
+  validator,
 }: {
   onImport: (content: string) => void;
   label?: string;
+  validator?: (content: string, file: File) => string | null;
 }) {
   return (
     <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
@@ -2087,7 +2139,14 @@ function ImportStyleButton({
           if (!file) return;
           const reader = new FileReader();
           reader.onload = () => {
-            onImport(String(reader.result || ''));
+            const content = String(reader.result || '');
+            const error = validator?.(content, file);
+            if (error) {
+              window.alert(error);
+              event.target.value = '';
+              return;
+            }
+            onImport(content);
             event.target.value = '';
           };
           reader.readAsText(file, 'utf-8');
@@ -2095,6 +2154,19 @@ function ImportStyleButton({
       />
     </label>
   );
+}
+
+function validateBubbleStyleFileContent(content: string, file: File): string | null {
+  if (file.size > MAX_BUBBLE_STYLE_TEXT_LENGTH) {
+    return `气泡 CSS 文件太大了，请尽量控制在 ${Math.round(MAX_BUBBLE_STYLE_TEXT_LENGTH / 1024)}KB 以内。`;
+  }
+
+  const result = validateImportedBubbleStyleText(content);
+  if ('message' in result) {
+    return result.message;
+  }
+
+  return null;
 }
 
 function CharacterSelect({
@@ -2759,26 +2831,32 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <div className="text-[14px] font-medium text-zinc-700">角色气泡 CSS</div>
                           <div className="text-[12px] text-zinc-500">只覆盖这个角色发出的气泡，单聊和群聊都会读。</div>
                         </div>
-                        <ImportStyleButton onImport={(content) => patchSelectedCharacter({ bubbleStyleCss: content })} />
+                        <div className="flex flex-wrap gap-2 sm:shrink-0">
+                          <ImportStyleButton
+                            validator={validateBubbleStyleFileContent}
+                            onImport={(content) => patchSelectedCharacter({ bubbleStyleCss: content })}
+                          />
+                          {selectedCharacter.bubbleStyleCss?.trim() && (
+                            <button
+                              onClick={() => patchSelectedCharacter({ bubbleStyleCss: '' })}
+                              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-500 transition-colors hover:bg-rose-100"
+                            >
+                              清除 CSS
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <CodeEditor
                         value={selectedCharacter.bubbleStyleCss || ''}
                         onChange={(nextValue) => patchSelectedCharacter({ bubbleStyleCss: nextValue })}
                         placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);\nborder: 1px solid rgba(255, 255, 255, 0.65);'}
                         heightClass="h-44"
-                      />
-                      {selectedCharacter.bubbleStyleCss?.trim() && (
-                        <button
-                          onClick={() => patchSelectedCharacter({ bubbleStyleCss: '' })}
-                          className="text-[12px] font-medium text-rose-500"
-                        >
-                          清除该角色气泡 CSS
-                        </button>
+                        maxLength={MAX_BUBBLE_STYLE_TEXT_LENGTH}
                       )}
                       {(selectedCharacter.bubbleStyleCss?.trim() || selectedCharacter.bubbleColor || selectedCharacter.bubbleImage) && (
                         <button
@@ -2821,26 +2899,32 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <div className="text-[14px] font-medium text-zinc-700">用户气泡 CSS</div>
                           <div className="text-[12px] text-zinc-500">只覆盖你和这个角色单聊时自己发出的气泡，不影响别的角色。</div>
                         </div>
-                        <ImportStyleButton onImport={(content) => patchSelectedCharacter({ userBubbleStyleCss: content })} />
+                        <div className="flex flex-wrap gap-2 sm:shrink-0">
+                          <ImportStyleButton
+                            validator={validateBubbleStyleFileContent}
+                            onImport={(content) => patchSelectedCharacter({ userBubbleStyleCss: content })}
+                          />
+                          {selectedCharacter.userBubbleStyleCss?.trim() && (
+                            <button
+                              onClick={() => patchSelectedCharacter({ userBubbleStyleCss: '' })}
+                              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-500 transition-colors hover:bg-rose-100"
+                            >
+                              清除 CSS
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <CodeEditor
                         value={selectedCharacter.userBubbleStyleCss || ''}
                         onChange={(nextValue) => patchSelectedCharacter({ userBubbleStyleCss: nextValue })}
                         placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);\nborder: 1px solid rgba(255, 255, 255, 0.35);'}
                         heightClass="h-44"
-                      />
-                      {selectedCharacter.userBubbleStyleCss?.trim() && (
-                        <button
-                          onClick={() => patchSelectedCharacter({ userBubbleStyleCss: '' })}
-                          className="text-[12px] font-medium text-rose-500"
-                        >
-                          清除该角色用户气泡 CSS
-                        </button>
+                        maxLength={MAX_BUBBLE_STYLE_TEXT_LENGTH}
                       )}
                       {(selectedCharacter.userBubbleStyleCss?.trim() || selectedCharacter.userBubbleColor || selectedCharacter.userBubbleImage) && (
                         <button
