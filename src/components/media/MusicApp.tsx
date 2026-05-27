@@ -26,7 +26,7 @@ import {
   Upload,
   RefreshCw,
 } from "lucide-react";
-import { showInAppConfirm } from "../../utils";
+import { showInAppAlert, showInAppConfirm } from "../../utils";
 import {
   Song,
   Playlist,
@@ -51,10 +51,13 @@ import {
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 import {
-  parseNeteaseMediaInput,
   type NeteasePlaylistBinding,
 } from "../../features/music-netease/neteaseAccount";
 import { normalizeMusicCoverValue } from "../../features/music-netease/neteaseCover";
+import {
+  resolveNeteaseMediaInput,
+  resolveNeteasePlaylistInput,
+} from "../../features/music-netease/resolveNeteaseInput";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
 import { generateTogetherChatReply } from "../../features/music-together/generateTogetherChatReply";
 import { formatTogetherReplyMessages } from "../../features/music-together/formatTogetherChatReply";
@@ -1482,6 +1485,31 @@ export default function MusicApp({
     setShowCreatePlaylistDialog(false);
   };
 
+  const buildNeteasePlaylistImportMessage = ({
+    playlistName,
+    songCount,
+    replacedExisting,
+    willAutoPlay,
+  }: {
+    playlistName?: string;
+    songCount: number;
+    replacedExisting: boolean;
+    willAutoPlay: boolean;
+  }) => {
+    const actionLabel = replacedExisting ? "已更新" : "已导入";
+    const resolvedPlaylistName = playlistName || "网易云歌单";
+
+    if (songCount <= 0) {
+      return `${actionLabel}歌单“${resolvedPlaylistName}”，但当前没有可播放歌曲。常见原因是 VIP / 版权限制、歌单未公开，或歌曲已下架。`;
+    }
+
+    if (!willAutoPlay) {
+      return `${actionLabel}歌单“${resolvedPlaylistName}”，当前可播放 ${songCount} 首。移动端请再点一下播放键开始。`;
+    }
+
+    return `${actionLabel}歌单“${resolvedPlaylistName}”，当前可播放 ${songCount} 首。`;
+  };
+
   const importNeteasePlaylistById = async (id: string) => {
     const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
     if (!response.ok) throw new Error("获取歌单失败");
@@ -1520,13 +1548,20 @@ export default function MusicApp({
     const nextPlaylists = currentMusicData.playlists.some((item) => item.id === newPlaylist.id)
       ? currentMusicData.playlists.map((item) => item.id === newPlaylist.id ? newPlaylist : item)
       : [...currentMusicData.playlists, newPlaylist];
+    const shouldAutoPlayImportedSongs = newSongs.length > 0 && !prefersDirectGesturePlaybackRef.current;
+
+    if (newSongs.length > 0) {
+      setPlaybackError("");
+    }
 
     onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
       playlists: nextPlaylists,
       currentSong:
         newSongs.length > 0 ? newSongs[0] : currentMusicData.currentSong,
-      isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
+      isPlaying: newSongs.length > 0
+        ? shouldAutoPlayImportedSongs
+        : currentMusicData.isPlaying,
       progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
       queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
     }, newSongs));
@@ -1541,6 +1576,7 @@ export default function MusicApp({
       playlist,
       newSongs,
       replacedExisting: nextPlaylists.length === currentMusicData.playlists.length,
+      shouldAutoPlayImportedSongs,
     };
   };
 
@@ -1551,12 +1587,22 @@ export default function MusicApp({
 
     setIsImporting(true);
     try {
-      const { playlist, newSongs, replacedExisting } = await importNeteasePlaylistById(playlistBinding.id);
-      alert(`${replacedExisting ? "已更新" : "已导入"}歌单“${playlist.name || "网易云歌单"}”，当前可播放 ${newSongs.length} 首。`);
+      const {
+        playlist,
+        newSongs,
+        replacedExisting,
+        shouldAutoPlayImportedSongs,
+      } = await importNeteasePlaylistById(playlistBinding.id);
+      await showInAppAlert(buildNeteasePlaylistImportMessage({
+        playlistName: playlist.name,
+        songCount: newSongs.length,
+        replacedExisting,
+        willAutoPlay: shouldAutoPlayImportedSongs,
+      }));
       return true;
     } catch (error) {
       console.error("Direct NetEase playlist import error:", error);
-      alert("歌单导入失败，请检查歌单链接或稍后再试。");
+      await showInAppAlert("歌单导入失败，请检查歌单链接、分享文本，或稍后再试。");
       return false;
     } finally {
       setIsImporting(false);
@@ -1565,14 +1611,15 @@ export default function MusicApp({
 
   const handleImportNeteasePlaylist = async () => {
     if (!neteaseUrl.trim()) return;
-    const parsed = parseNeteaseMediaInput(neteaseUrl);
-    if (!parsed) {
-      alert("请输入有效的网易云歌曲链接，或歌单链接 / 歌单 ID");
-      return;
-    }
 
     setIsImporting(true);
     try {
+      const parsed = await resolveNeteaseMediaInput(neteaseUrl);
+      if (!parsed) {
+        await showInAppAlert("请输入有效的网易云歌曲/歌单链接、分享短链、歌单 ID，或直接粘贴网易云分享文本。");
+        return;
+      }
+
       if (parsed.kind === "song") {
         const response = await fetch(`/api/netease/song/detail?id=${parsed.song.id}`);
         if (!response.ok) throw new Error("获取歌曲失败");
@@ -1595,12 +1642,16 @@ export default function MusicApp({
           url: `/api/netease/song?id=${track.id}`,
           duration: Math.floor((track.dt || track.duration || 240000) / 1000),
         };
+        const shouldAutoPlayImportedSong = !prefersDirectGesturePlaybackRef.current;
+
+        setPlaybackError("");
 
         onUpdateMusicData(withSongLibrary({
           ...currentMusicData,
           currentSong: newSong,
-          isPlaying: true,
-          queue: [newSong, ...currentMusicData.queue],
+          isPlaying: shouldAutoPlayImportedSong,
+          progress: 0,
+          queue: [newSong, ...currentMusicData.queue.filter((song) => song.id !== newSong.id)],
           recentlyPlayed: [
             newSong.id,
             ...currentMusicData.recentlyPlayed.filter(
@@ -1615,16 +1666,29 @@ export default function MusicApp({
 
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
+        if (!shouldAutoPlayImportedSong) {
+          await showInAppAlert(`歌曲“${newSong.title || "网易云歌曲"}”已导入到播放器。移动端请再点一下播放键开始。`);
+        }
       } else {
-        const { newSongs, replacedExisting } = await importNeteasePlaylistById(parsed.playlist.id);
+        const {
+          playlist,
+          newSongs,
+          replacedExisting,
+          shouldAutoPlayImportedSongs,
+        } = await importNeteasePlaylistById(parsed.playlist.id);
 
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
-        alert(`${replacedExisting ? "歌单已更新" : "歌单导入完成"}，当前可播放 ${newSongs.length} 首。`);
+        await showInAppAlert(buildNeteasePlaylistImportMessage({
+          playlistName: playlist.name,
+          songCount: newSongs.length,
+          replacedExisting,
+          willAutoPlay: shouldAutoPlayImportedSongs,
+        }));
       }
     } catch (error) {
       console.error("Import error:", error);
-      alert("导入失败，请检查链接或稍后重试");
+      await showInAppAlert("导入失败，请检查链接、分享文本，或稍后重试。");
     } finally {
       setIsImporting(false);
     }
@@ -1638,7 +1702,7 @@ export default function MusicApp({
     try {
       const syncedPlaylists = await syncNeteasePlaylistsByUid(uid);
       if (syncedPlaylists.length === 0) {
-        alert("没有拉到可导入的公开歌单，请先确认主页链接或歌单公开状态。");
+        await showInAppAlert("没有拉到可导入的公开歌单。常见原因是 UID 不对、主页不是公开状态，或这些歌单里没有当前可播放的歌曲。");
         return;
       }
 
@@ -1655,10 +1719,10 @@ export default function MusicApp({
         (total, playlist) => total + playlist.songs.length,
         0,
       );
-      alert(`已同步 ${syncedPlaylists.length} 个网易云歌单，共 ${syncedSongCount} 首当前可播放歌曲。`);
+      await showInAppAlert(`已同步 ${syncedPlaylists.length} 个网易云歌单，共 ${syncedSongCount} 首当前可播放歌曲。`);
     } catch (error) {
       console.error("NetEase playlist sync error:", error);
-      alert("同步歌单失败，请稍后再试。");
+      await showInAppAlert("同步歌单失败，请稍后再试。");
     } finally {
       setIsSyncingNeteasePlaylists(false);
     }
@@ -3221,6 +3285,7 @@ export default function MusicApp({
               })
             }
             onImportPlaylist={handleDirectNeteasePlaylistImport}
+            resolvePlaylistInput={resolveNeteasePlaylistInput}
             isImportingPlaylist={isImporting}
             onSyncPlaylists={handleSyncNeteasePlaylists}
             isSyncing={isSyncingNeteasePlaylists}
@@ -3907,20 +3972,27 @@ export default function MusicApp({
       {/* Import Music Dialog */}
       <AnimatePresence>
         {showAddMusicDialog && (
-          <div className="absolute inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm px-6">
+          <div
+            className="absolute inset-0 z-[300] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm sm:px-6"
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+            }}
+          >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-md bg-white rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[80vh] overflow-y-auto"
+              className="flex max-h-full min-h-0 w-full max-w-md flex-col overflow-hidden rounded-[32px] bg-white shadow-2xl"
             >
-              <div className="p-6 border-b border-zinc-100">
+              <div className="shrink-0 p-6 border-b border-zinc-100">
                 <h3 className="text-xl font-black text-zinc-900 text-center">
                   添加音乐
                 </h3>
               </div>
 
-              <div className="p-6 space-y-6">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="p-6 space-y-6">
                 {/* Local File Section */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-bold text-zinc-800">本地上传</h4>
@@ -4045,7 +4117,7 @@ export default function MusicApp({
                       type="text"
                       value={neteaseUrl}
                       onChange={(e) => setNeteaseUrl(e.target.value)}
-                      placeholder="歌曲链接，或歌单链接 / 歌单 ID"
+                      placeholder="歌曲/歌单链接、分享短链，或歌单 ID"
                       className="w-full bg-zinc-100 rounded-xl px-4 py-3 font-bold text-zinc-800 outline-none focus:ring-2 focus:ring-pink-500/20"
                       disabled={isImporting}
                     />
@@ -4062,9 +4134,13 @@ export default function MusicApp({
                     </button>
                   </div>
                 </div>
+                </div>
               </div>
 
-              <div className="px-6 pb-6">
+              <div
+                className="shrink-0 px-6 pt-2"
+                style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+              >
                 <button
                   onClick={closeAddMusicDialog}
                   className="w-full py-3 bg-zinc-50 rounded-xl font-bold text-zinc-400 active:scale-95 transition-transform border border-zinc-100"

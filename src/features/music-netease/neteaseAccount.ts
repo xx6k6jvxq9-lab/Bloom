@@ -27,13 +27,37 @@ export type NeteaseMediaBinding =
     };
 
 const NETEASE_HOST_PATTERN = /(^|\.)music\.163\.com$|(^|\.)y\.music\.163\.com$/i;
+const EMBEDDED_NETEASE_URL_PATTERN = /((?:https?:\/\/)?(?:music\.163\.com|y\.music\.163\.com)\/[^\s"'<>]+)/i;
+const TRAILING_URL_PUNCTUATION_PATTERN = /[),.;!?'"，。！？；：》】）]+$/;
 
 function isNumericNeteaseId(value: string): boolean {
   return /^\d{5,}$/.test(value.trim());
 }
 
-function normalizeUrlCandidate(input: string): string {
+function stripTrailingUrlPunctuation(value: string): string {
+  return value.replace(TRAILING_URL_PUNCTUATION_PATTERN, '');
+}
+
+function extractEmbeddedNeteaseUrl(input: string): string {
   const trimmed = input.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  if (/^[a-z]+:\/\//i.test(trimmed) || /^(music|y\.music)\.163\.com\//i.test(trimmed)) {
+    return stripTrailingUrlPunctuation(trimmed);
+  }
+
+  const embeddedMatch = trimmed.match(EMBEDDED_NETEASE_URL_PATTERN);
+  if (embeddedMatch?.[1]) {
+    return stripTrailingUrlPunctuation(embeddedMatch[1]);
+  }
+
+  return trimmed;
+}
+
+function normalizeUrlCandidate(input: string): string {
+  const trimmed = extractEmbeddedNeteaseUrl(input);
   if (/^[a-z]+:\/\//i.test(trimmed)) {
     return trimmed;
   }
@@ -77,7 +101,36 @@ function readHashRoute(url: URL): { path: string; params: URLSearchParams } {
   }
 }
 
-function extractRouteId(url: URL): string {
+function extractPathRouteId(url: URL, routeKeywords: string[]): string {
+  if (routeKeywords.length === 0) {
+    return '';
+  }
+
+  const candidates = getRouteCandidates(url);
+  for (const candidate of candidates) {
+    const segments = candidate
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      const currentSegment = segments[index]?.toLowerCase() || '';
+      const nextSegment = segments[index + 1] || '';
+
+      if (!routeKeywords.includes(currentSegment)) {
+        continue;
+      }
+
+      if (isNumericNeteaseId(nextSegment)) {
+        return nextSegment;
+      }
+    }
+  }
+
+  return '';
+}
+
+function extractRouteId(url: URL, pathRouteKeywords: string[] = []): string {
   const directId = url.searchParams.get('id')?.trim() || '';
   if (isNumericNeteaseId(directId)) {
     return directId;
@@ -86,6 +139,11 @@ function extractRouteId(url: URL): string {
   const hashId = readHashRoute(url).params.get('id')?.trim() || '';
   if (isNumericNeteaseId(hashId)) {
     return hashId;
+  }
+
+  const pathId = extractPathRouteId(url, pathRouteKeywords);
+  if (pathId) {
+    return pathId;
   }
 
   return '';
@@ -103,7 +161,12 @@ function matchesNeteaseRoute(url: URL, routePatterns: string[]): boolean {
 
   const candidates = getRouteCandidates(url);
   return routePatterns.some((pattern) =>
-    candidates.some((candidate) => candidate === pattern || candidate.endsWith(pattern)),
+    candidates.some((candidate) =>
+      candidate === pattern
+      || candidate.endsWith(pattern)
+      || candidate.startsWith(`${pattern}/`)
+      || candidate.includes(`${pattern}/`),
+    ),
   );
 }
 
@@ -140,11 +203,11 @@ export function parseNeteaseAccountInput(input: string): NeteaseAccountBinding |
   }
 
   const url = tryParseUrl(trimmed);
-  if (!url || !matchesNeteaseRoute(url, ['/user/home', '/m/user'])) {
+  if (!url || !matchesNeteaseRoute(url, ['/user/home', '/m/user', '/user'])) {
     return null;
   }
 
-  const uid = extractRouteId(url);
+  const uid = extractRouteId(url, ['home', 'user']);
   if (!uid) {
     return null;
   }
@@ -165,7 +228,7 @@ export function parseNeteasePlaylistInput(input: string): NeteasePlaylistBinding
     return null;
   }
 
-  const id = extractRouteId(url);
+  const id = extractRouteId(url, ['playlist']);
   if (!id) {
     return null;
   }
@@ -186,7 +249,7 @@ export function parseNeteaseSongInput(input: string): NeteaseSongBinding | null 
     return null;
   }
 
-  const id = extractRouteId(url);
+  const id = extractRouteId(url, ['song']);
   if (!id) {
     return null;
   }

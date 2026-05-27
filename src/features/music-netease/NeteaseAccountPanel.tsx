@@ -22,6 +22,7 @@ type NeteaseAccountPanelProps = {
   onSyncPlaylists?: () => void | Promise<void>;
   isSyncing?: boolean;
   onImportPlaylist?: (playlist: NeteasePlaylistBinding) => void | Promise<boolean> | boolean;
+  resolvePlaylistInput?: (input: string) => Promise<NeteasePlaylistBinding | null> | NeteasePlaylistBinding | null;
   isImportingPlaylist?: boolean;
 };
 
@@ -46,6 +47,7 @@ export function NeteaseAccountPanel({
   onSyncPlaylists,
   isSyncing = false,
   onImportPlaylist,
+  resolvePlaylistInput,
   isImportingPlaylist = false,
 }: NeteaseAccountPanelProps) {
   const [accountInput, setAccountInput] = useState(value?.profileUrl || value?.uid || '');
@@ -79,9 +81,20 @@ export function NeteaseAccountPanel({
   const handleImportPlaylist = async () => {
     if (!onImportPlaylist || isImportingPlaylist) return;
 
-    const parsed = parseNeteasePlaylistInput(playlistInput);
+    let parsed: NeteasePlaylistBinding | null = null;
+
+    try {
+      parsed = resolvePlaylistInput
+        ? await resolvePlaylistInput(playlistInput)
+        : parseNeteasePlaylistInput(playlistInput);
+    } catch (error) {
+      console.error('Resolve playlist share input error:', error);
+      setPlaylistError('短链解析失败，请稍后再试。');
+      return;
+    }
+
     if (!parsed) {
-      setPlaylistError('请输入网易云歌单链接或歌单 ID。');
+      setPlaylistError('请输入网易云歌单链接、分享短链或歌单 ID。');
       return;
     }
 
@@ -162,7 +175,7 @@ export function NeteaseAccountPanel({
                         <span className={ACCENT_PILL_CLASS}>推荐</span>
                       </div>
                       <p className="mt-2 text-[12px] leading-5 text-zinc-500">
-                        贴歌单链接或歌单 ID，直接导入当前可播放的歌曲。
+                        贴歌单链接、分享短链或歌单 ID，直接导入当前可播放的歌曲。
                       </p>
                     </div>
                     <ChevronLeft
@@ -186,7 +199,7 @@ export function NeteaseAccountPanel({
                               type="text"
                               value={playlistInput}
                               onChange={(event) => setPlaylistInput(event.target.value)}
-                              placeholder="粘贴网易云歌单链接或歌单 ID"
+                              placeholder="粘贴网易云歌单链接、短链或歌单 ID"
                               className="flex-1 bg-transparent text-[13px] font-semibold text-zinc-800 outline-none placeholder:text-zinc-300"
                               disabled={isImportingPlaylist}
                             />

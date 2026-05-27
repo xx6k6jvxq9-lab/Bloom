@@ -13,6 +13,10 @@ const FREETOUSE_HEADERS = {
 };
 
 const NETEASE_COVER_HOST_PATTERN = /(^|\.)music\.126\.net$|(^|\.)nosdn\.127\.net$/i;
+const NETEASE_SHARE_HOST_PATTERN = /(^|\.)music\.163\.com$|(^|\.)y\.music\.163\.com$|(^|\.)163cn\.tv$/i;
+const NETEASE_SHARE_SHORT_HOST_PATTERN = /(^|\.)163cn\.tv$/i;
+const EMBEDDED_NETEASE_SHARE_URL_PATTERN = /((?:https?:\/\/)?(?:(?:music|y\.music)\.163\.com|163cn\.tv)\/[^\s"'<>]+)/i;
+const TRAILING_NETEASE_SHARE_PUNCTUATION_PATTERN = /[),.;!?'"，。！？；：》】）]+$/;
 const DEFAULT_NETEASE_COVER_PARAM = "400y400";
 
 function json(data, init = {}) {
@@ -39,6 +43,82 @@ async function fetchJson(url, init) {
     throw new Error(`Upstream request failed: ${response.status}`);
   }
   return response.json();
+}
+
+function stripTrailingNeteaseSharePunctuation(value) {
+  return String(value || "").replace(TRAILING_NETEASE_SHARE_PUNCTUATION_PATTERN, "");
+}
+
+function extractNeteaseShareCandidate(input) {
+  const trimmed = String(input || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^[a-z]+:\/\//i.test(trimmed) || /^(?:(?:music|y\.music)\.163\.com|163cn\.tv)\//i.test(trimmed)) {
+    return stripTrailingNeteaseSharePunctuation(trimmed);
+  }
+
+  const embeddedMatch = trimmed.match(EMBEDDED_NETEASE_SHARE_URL_PATTERN);
+  if (embeddedMatch?.[1]) {
+    return stripTrailingNeteaseSharePunctuation(embeddedMatch[1]);
+  }
+
+  return "";
+}
+
+function normalizeNeteaseShareCandidate(candidate) {
+  const trimmed = String(candidate || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withProtocol = /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  let url;
+  try {
+    url = new URL(withProtocol);
+  } catch {
+    return null;
+  }
+
+  if (!/^https?:$/i.test(url.protocol) || !NETEASE_SHARE_HOST_PATTERN.test(url.hostname)) {
+    return null;
+  }
+
+  url.protocol = "https:";
+  return url.toString();
+}
+
+async function readManualRedirectLocation(url) {
+  for (const method of ["HEAD", "GET"]) {
+    try {
+      const response = await fetch(url, {
+        method,
+        redirect: "manual",
+        headers: NETEASE_HEADERS,
+      });
+      const location = response.headers.get("location");
+      if (
+        location
+        && [301, 302, 303, 307, 308].includes(response.status)
+      ) {
+        return new URL(location, url).toString();
+      }
+
+      if (method === "HEAD" && response.status === 405) {
+        continue;
+      }
+
+      return null;
+    } catch (error) {
+      if (method === "GET") {
+        throw error;
+      }
+    }
+  }
+
+  return null;
 }
 
 function normalizeNeteaseCoverSource(src) {
@@ -154,6 +234,43 @@ export async function resolveNeteasePlayableUrl(id) {
     console.warn("Failed to pre-resolve NetEase playable URL, fallback to outer URL", error);
     return fallbackUrl;
   }
+}
+
+export async function resolveNeteaseShareInputToUrl(input, maxHops = 4) {
+  const normalizedCandidate = normalizeNeteaseShareCandidate(extractNeteaseShareCandidate(input));
+  if (!normalizedCandidate) {
+    return null;
+  }
+
+  let currentUrl = normalizedCandidate;
+  for (let hop = 0; hop < maxHops; hop += 1) {
+    let url;
+    try {
+      url = new URL(currentUrl);
+    } catch {
+      return null;
+    }
+
+    if (!/^https?:$/i.test(url.protocol) || !NETEASE_SHARE_HOST_PATTERN.test(url.hostname)) {
+      return null;
+    }
+
+    url.protocol = "https:";
+    currentUrl = url.toString();
+
+    if (!NETEASE_SHARE_SHORT_HOST_PATTERN.test(url.hostname)) {
+      return currentUrl;
+    }
+
+    const nextLocation = await readManualRedirectLocation(currentUrl);
+    if (!nextLocation) {
+      return currentUrl;
+    }
+
+    currentUrl = nextLocation;
+  }
+
+  return currentUrl;
 }
 
 function isAudioLikeResponse(response) {
