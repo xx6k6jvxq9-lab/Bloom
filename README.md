@@ -2,6 +2,8 @@
 
 Bloom is a Vite + React app for an AI phone-style relationship experience.
 
+Deployment trigger note: this line keeps Pages deployment checks attached to a non-empty commit.
+
 ## Scripts
 
 - `npm run dev`: start the local app server
